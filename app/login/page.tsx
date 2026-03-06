@@ -183,17 +183,6 @@ export default function LoginPage() {
                       Regístrate aquí
                     </Link>
                   </p>
-
-                  <div className="bg-muted rounded-lg p-3 text-sm">
-                    <p className="font-medium mb-1">Cuenta de prueba usuario normal:</p>
-                    <p>Email: demo@example.com</p>
-                    <p>Contraseña: demo123</p>
-                  </div>
-                  <div className="bg-muted rounded-lg p-3 text-sm">
-                    <p className="font-medium mb-1">Cuenta de prueba admin:</p>
-                    <p>Email: admin@ludicagames.com</p>
-                    <p>Contraseña: admin123</p>
-                  </div>
                 </div>
               </>
             ) : (
