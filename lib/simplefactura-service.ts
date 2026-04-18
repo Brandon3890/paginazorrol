@@ -1,3 +1,4 @@
+// lib/simplefactura-service.ts - CORREGIDO USANDO LA ESTRUCTURA QUE FUNCIONA
 import https from 'https';
 
 interface SimpleFacturaConfig {
@@ -24,10 +25,11 @@ const config: SimpleFacturaConfig = {
   ambiente: parseInt(process.env.SIMPLEFACTURA_AMBIENTE || '0')
 };
 
-// Emitir boleta - CORREGIDO URL
+// Emitir boleta - USANDO LA MISMA ESTRUCTURA QUE FUNCIONA EN EL SCRIPT
 export async function emitirBoletaSimpleFactura(productos: any[], receptor: any, total: number): Promise<any> {
   return new Promise((resolve, reject) => {
     const fechaActual = new Date().toISOString().split('T')[0];
+    const sucursalEncoded = encodeURIComponent(config.sucursal);
     
     // Calcular neto e IVA
     const neto = Math.round(total / 1.19);
@@ -43,47 +45,37 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
       MontoItem: Math.round(prod.cantidad * prod.precio)
     }));
     
-    // ESTRUCTURA CORRECTA SEGÚN DOCUMENTACIÓN SIMPLEFACTURA
+    // ESTRUCTURA IDÉNTICA A LA DEL SCRIPT FUNCIONAL - SIN wrapper dte
     const datosBoleta = {
-      credenciales: {
-        rutEmisor: config.rutEmisor,
-        nombreSucursal: config.sucursal
-      },
-      documento: {
-        Encabezado: {
-          IdDoc: {
-            TipoDTE: 39,
-            FchEmis: fechaActual
-          },
-          Emisor: {
-            RUTEmisor: config.rutEmisor,
-            RznSocEmisor: config.razonSocial,
-            GiroEmisor: config.giro,
-            DirOrigen: config.direccion,
-            CmnaOrigen: config.comuna,
-            CiudadOrigen: config.ciudad
-          },
-          Receptor: {
-            RUTRecep: receptor.rut || "55555555-5",
-            RznSocRecep: receptor.nombre || "Consumidor Final",
-            DirRecep: receptor.direccion || "Santiago",
-            CmnaRecep: receptor.comuna || "Santiago",
-            CiudadRecep: receptor.ciudad || "Santiago"
-          },
-          Totales: {
-            MntNeto: neto,
-            TasaIVA: 19,
-            IVA: iva,
-            MntTotal: total
+        datos: {
+          Documento: {
+            Encabezado: {
+              IdDoc: {
+                TipoDTE: 39,
+                FchEmis: fechaActual
+              },
+              Emisor: {
+                RUTEmisor: config.rutEmisor,
+                RznSoc: config.razonSocial,
+                GiroEmis: config.giro,
+                DirOrigen: config.direccion,
+                CmnaOrigen: config.comuna
+              },
+              Receptor: {
+                RUTRecep: receptor.rut,
+                RznSocRecep: receptor.nombre
+              },
+              Totales: {
+                MntTotal: total
+              }
+            },
+            Detalle: detalles
           }
-        },
-        Detalle: detalles
-      }
-    };
+        }
+      };
     
     const postData = JSON.stringify(datosBoleta);
-    // URL CORRECTA - sin sucursal en la URL
-    const path = '/invoiceV2';
+    const path = `/documento`;
     
     console.log('📡 Enviando a SimpleFactura:', `https://api.simplefactura.cl${path}`);
     console.log('📦 Datos:', JSON.stringify(datosBoleta, null, 2).substring(0, 500));
@@ -106,23 +98,21 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
         console.log('📊 Status:', res.statusCode);
         console.log('📄 Respuesta:', data.substring(0, 500));
         
-        // Verificar si la respuesta es HTML (error de SimpleFactura)
-        if (data.trim().startsWith('<!DOCTYPE') || data.trim().startsWith('<html')) {
-          console.error('❌ SimpleFactura devolvió HTML. Posible error de autenticación o URL incorrecta');
-          reject(new Error('Error de autenticación con SimpleFactura. Verifica tu token y credenciales.'));
-          return;
-        }
-        
         try {
-          const response = JSON.parse(data);
-          if (response.status === 200 || response.status === 201) {
-            resolve(response);
-          } else {
-            reject(new Error(response.message || 'Error al emitir boleta'));
-          }
-        } catch (err) {
+            if (!data || data.trim().startsWith('<')) {
+              return reject(new Error(`Respuesta inválida (HTML): ${data.substring(0, 200)}`));
+            }
+
+            const response = JSON.parse(data);
+
+            if (response.status === 200) {
+              resolve(response);
+            } else {
+              reject(new Error(response.message || 'Error al emitir boleta'));
+            }
+          } catch (err) {
           const error = err as Error;
-          reject(new Error(`Error al parsear JSON: ${error.message} - Respuesta: ${data.substring(0, 200)}`));
+          reject(new Error(`Error al parsear: ${error.message} - Respuesta: ${data.substring(0, 200)}`));
         }
       });
     });
@@ -136,7 +126,7 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
   });
 }
 
-// Obtener PDF de boleta - CORREGIDO
+// Obtener PDF de boleta - USANDO LA ESTRUCTURA QUE FUNCIONA
 export async function obtenerPDFSimpleFactura(folio: string | number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
@@ -163,9 +153,10 @@ export async function obtenerPDFSimpleFactura(folio: string | number): Promise<U
     };
 
     console.log(`📄 Descargando PDF para folio: ${folio}`);
+    console.log(`   Sucursal: ${config.sucursal}`);
 
     const req = https.request(options, (res) => {
-      const chunks: Buffer[] = [];
+      const chunks: Uint8Array[] = [];
 
       res.on('data', (chunk) => {
         chunks.push(chunk);
@@ -173,25 +164,26 @@ export async function obtenerPDFSimpleFactura(folio: string | number): Promise<U
 
       res.on('end', () => {
         const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-        const result = Buffer.concat(chunks, totalLength);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          result.set(chunk, offset);
+          offset += chunk.length;
+        }
         
         // Verificar si es PDF
         if (result.length > 4 && 
             result[0] === 0x25 && result[1] === 0x50 && 
             result[2] === 0x44 && result[3] === 0x46) {
-          resolve(new Uint8Array(result));
+          resolve(result);
         } else {
-          // Verificar si es HTML (error)
-          const text = result.toString('utf-8');
-          if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            reject(new Error('Error de autenticación al obtener PDF'));
-          } else {
-            try {
-              const errorResponse = JSON.parse(text);
-              reject(new Error(errorResponse.message || 'Error al obtener PDF'));
-            } catch (err) {
-              reject(new Error(`La respuesta no es un PDF válido`));
-            }
+          try {
+            const text = new TextDecoder().decode(result);
+            const errorResponse = JSON.parse(text);
+            reject(new Error(errorResponse.message || 'Error al obtener PDF'));
+          } catch (err) {
+            const error = err as Error;
+            reject(new Error(`La respuesta no es un PDF válido: ${error.message}`));
           }
         }
       });
@@ -210,10 +202,7 @@ export async function obtenerPDFSimpleFactura(folio: string | number): Promise<U
 export async function consultarBoletaSimpleFactura(folio: string | number): Promise<any> {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      credenciales: { 
-        rutEmisor: config.rutEmisor,
-        nombreSucursal: config.sucursal
-      },
+      credenciales: { rutEmisor: config.rutEmisor },
       dteReferenciadoExterno: {
         folio: typeof folio === 'string' ? parseInt(folio) : folio,
         codigoTipoDte: 39,
@@ -237,13 +226,18 @@ export async function consultarBoletaSimpleFactura(folio: string | number): Prom
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
-          const response = JSON.parse(data);
-          if (response.status === 200 && response.data) {
-            resolve(response.data);
-          } else {
-            reject(new Error(response.message || 'Error al consultar'));
-          }
-        } catch (err) {
+            if (!data || data.trim().startsWith('<')) {
+              return reject(new Error(`Respuesta inválida (HTML): ${data.substring(0, 200)}`));
+            }
+
+            const response = JSON.parse(data);
+
+            if (response.status === 200 && response.data) {
+              resolve(response.data);
+            } else {
+              reject(new Error(response.message || 'Error al consultar'));
+            }
+          } catch (err) {
           const error = err as Error;
           reject(new Error(`Error al parsear: ${error.message}`));
         }
