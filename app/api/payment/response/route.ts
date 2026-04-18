@@ -345,7 +345,10 @@ export async function POST(request: NextRequest) {
               commitResponse.installments_number,
               commitResponse.card_detail?.card_number || '',
               commitResponse.accounting_date,
-              commitResponse.transaction_date,
+              new Date(commitResponse.transaction_date)
+                .toISOString()
+                .slice(0, 19)
+                .replace('T', ' '), // cambio de fechas arregladas para el servidor
               order.id
             ]
           )
