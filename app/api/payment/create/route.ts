@@ -23,13 +23,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userRut = await query(
-      'SELECT rut FROM users WHERE id = ?',
-      [userId]
-    ) as any[]
-
-    const customerRut = userRut.length > 0 ? userRut[0].rut : null
-
     // Verificar que la orden existe y pertenece al usuario
     const orders = await query(
       `SELECT * FROM orders WHERE id = ? AND user_id = ?`,
@@ -59,11 +52,7 @@ export async function POST(request: NextRequest) {
     // Generar datos ÚNICOS para Transbank (completamente diferentes)
     const transbankBuyOrder = transbankService.generateBuyOrder()
     const sessionId = transbankService.generateSessionId()
-
-    // CORREGIDO: Usar la URL correcta
-    const baseUrl = process.env.BASE_URL || process.env.NEXTAUTH_URL || 'https://zorroludico.cl'
-    const returnUrl = `${baseUrl}/api/payment/response`
-    console.log('🔗 Return URL generada:', returnUrl)
+    const returnUrl = `${process.env.NEXTAUTH_URL}/api/payment/response`
 
     console.log('🎯 COMPARACIÓN DE NÚMEROS:', {
       'Nuestro Order Number': newOrderNumber,
@@ -82,10 +71,9 @@ export async function POST(request: NextRequest) {
         transbank_amount = ?,
         transbank_return_url = ?,
         payment_status = 'pending',
-        customer_rut = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, customerRut, orderId]
+      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, orderId]
     ) as any
 
     console.log('✅ Orden actualizada en BD:', {

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
-import { sendBoletaEmail } from '@/lib/email-service'; // ← Cambiado a sendBoletaEmail
+import { sendBoletaEmail } from '@/lib/email-service';
 
 // Función auxiliar para obtener el PDF de la boleta
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
@@ -308,14 +308,15 @@ export async function POST(request: NextRequest) {
                   }
                 };
 
-                // Enviar email con la boleta PDF (si tenemos PDF)
+                // Enviar email con la boleta PDF (los 3 argumentos requeridos)
                 if (pdfBuffer && folio) {
                   await sendBoletaEmail(emailData, pdfBuffer, folio);
                   console.log('📧 Email con boleta PDF enviado a:', firstItem.customer_email);
                 } else {
                   // Si no hay PDF, enviar solo confirmación sin boleta
                   console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
-                  // Podrías tener una función sendOrderConfirmationEmail sin PDF aquí
+                  // Enviar email sin PDF (pasar null o un buffer vacío)
+                  await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
                 }
               }
             } catch (emailError) {
