@@ -1,7 +1,6 @@
-// components/banner.tsx
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
@@ -25,9 +24,7 @@ interface Banner {
 
 const hexToRgba = (hex: string, opacity: number): string => {
   if (!hex) return `rgba(0,0,0,${opacity / 100})`
-  if (hex.startsWith('rgba')) {
-    return hex.replace(/[\d\.]+\)$/g, `${opacity / 100})`)
-  }
+  if (hex.startsWith('rgba')) return hex.replace(/[\d\.]+\)$/g, `${opacity / 100})`)
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
@@ -44,24 +41,9 @@ const getPositionClass = (position: string) => {
 
 const getTextSizeClasses = (size: string) => {
   switch (size) {
-    case "small":
-      return {
-        title: "text-xl md:text-2xl",
-        subtitle: "text-sm md:text-base",
-        text: "text-xs md:text-sm"
-      }
-    case "large":
-      return {
-        title: "text-3xl md:text-4xl",
-        subtitle: "text-lg md:text-xl",
-        text: "text-base md:text-lg"
-      }
-    default:
-      return {
-        title: "text-2xl md:text-3xl",
-        subtitle: "text-base md:text-lg",
-        text: "text-sm md:text-base"
-      }
+    case "small": return { title: "text-xl md:text-2xl", subtitle: "text-sm md:text-base", text: "text-xs md:text-sm" }
+    case "large": return { title: "text-3xl md:text-4xl", subtitle: "text-lg md:text-xl", text: "text-base md:text-lg" }
+    default: return { title: "text-2xl md:text-3xl", subtitle: "text-base md:text-lg", text: "text-sm md:text-base" }
   }
 }
 
@@ -70,21 +52,16 @@ export function Banner() {
   const [index, setIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
   const [loading, setLoading] = useState(true)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const versionRef = useRef<number | null>(null)
 
   const fetchBanners = useCallback(async () => {
     try {
-      // Agregar timestamp para evitar cache
-      const response = await fetch(`/api/banners?t=${Date.now()}`, {
+      const res = await fetch(`/api/banners?t=${Date.now()}`, {
         cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-        }
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
       })
-      const data = await response.json()
-      if (data.success) {
-        setBanners(data.banners)
-      }
+      const data = await res.json()
+      if (data.success) setBanners(data.banners)
     } catch (error) {
       console.error('Error fetching banners:', error)
     } finally {
@@ -92,36 +69,48 @@ export function Banner() {
     }
   }, [])
 
-  // Polling cada 5 segundos para detectar cambios
+  // Carga inicial
   useEffect(() => {
     fetchBanners()
-    
-    const pollingInterval = setInterval(() => {
-      fetchBanners()
-    }, 5000) // Verificar cambios cada 5 segundos
-    
-    return () => clearInterval(pollingInterval)
   }, [fetchBanners])
 
-  // Auto-rotación
+  // Polling liviano cada 3s al endpoint de versión
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/banners/version?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        })
+        const data = await res.json()
+
+        if (versionRef.current === null) {
+          versionRef.current = data.version
+        } else if (data.version !== versionRef.current) {
+          versionRef.current = data.version
+          await fetchBanners()
+        }
+      } catch {
+        // silencioso
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [fetchBanners])
+
+  // Auto-slide
   useEffect(() => {
     if (banners.length <= 1 || isHovered) return
-    
-    if (intervalRef.current) clearInterval(intervalRef.current)
-    
-    intervalRef.current = setInterval(() => {
+    const interval = setInterval(() => {
       setIndex((prev) => (prev + 1) % banners.length)
     }, 5000)
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
+    return () => clearInterval(interval)
   }, [banners.length, isHovered])
 
-  // Resetear índice si cambian los banners
+  // Resetear índice si queda fuera de rango
   useEffect(() => {
-    setIndex(0)
-  }, [banners.length])
+    if (banners.length > 0 && index >= banners.length) setIndex(0)
+  }, [banners.length, index])
 
   if (loading) {
     return (
@@ -131,17 +120,10 @@ export function Banner() {
     )
   }
 
-  if (banners.length === 0) {
-    return null
-  }
+  if (banners.length === 0) return null
 
-  const prevSlide = () => {
-    setIndex((prev) => (prev - 1 + banners.length) % banners.length)
-  }
-
-  const nextSlide = () => {
-    setIndex((prev) => (prev + 1) % banners.length)
-  }
+  const prevSlide = () => setIndex((prev) => (prev - 1 + banners.length) % banners.length)
+  const nextSlide = () => setIndex((prev) => (prev + 1) % banners.length)
 
   const currentBanner = banners[index]
   const overlayRgba = hexToRgba(currentBanner.overlay_color, currentBanner.overlay_opacity)
@@ -151,47 +133,32 @@ export function Banner() {
   const BannerContent = () => (
     <div className="relative w-full h-[250px] md:h-[345px] lg:h-[400px] overflow-hidden bg-gray-100">
       <Image
-        src={currentBanner.image}
+        key={`${currentBanner.id}-${currentBanner.image}`}
+        src={`${currentBanner.image}?t=${Date.now()}`}
         alt={currentBanner.title || "Banner"}
         fill
         className="object-cover"
         priority
         sizes="100vw"
+        unoptimized
       />
-      
-      <div 
-        className="absolute inset-0 pointer-events-none"
-        style={{ backgroundColor: overlayRgba }}
-      />
-      
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: overlayRgba }} />
       {currentBanner.show_text === 1 && currentBanner.title && (
         <div className={`absolute inset-0 flex items-center px-6 md:px-12 ${positionClass} pointer-events-none`}>
           <div className="max-w-md space-y-3">
-            <p 
-              className="text-xs tracking-widest uppercase"
-              style={{ color: currentBanner.text_color, opacity: 0.7 }}
-            >
+            <p className="text-xs tracking-widest uppercase" style={{ color: currentBanner.text_color, opacity: 0.7 }}>
               NOVEDADES
             </p>
-            <h2 
-              className={`font-bold leading-tight ${textSizes.title}`}
-              style={{ color: currentBanner.text_color }}
-            >
+            <h2 className={`font-bold leading-tight ${textSizes.title}`} style={{ color: currentBanner.text_color }}>
               {currentBanner.title}
             </h2>
             {currentBanner.subtitle && (
-              <p 
-                className={textSizes.subtitle}
-                style={{ color: currentBanner.text_color }}
-              >
+              <p className={textSizes.subtitle} style={{ color: currentBanner.text_color }}>
                 {currentBanner.subtitle}
               </p>
             )}
             {currentBanner.text && (
-              <p 
-                className={`font-medium ${textSizes.text}`}
-                style={{ color: currentBanner.text_color }}
-              >
+              <p className={`font-medium ${textSizes.text}`} style={{ color: currentBanner.text_color }}>
                 {currentBanner.text}
               </p>
             )}
@@ -202,16 +169,15 @@ export function Banner() {
   )
 
   return (
-    <div 
+    <div
       className="w-full px-4 mt-4"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative rounded-2xl overflow-hidden border border-gray-200 shadow-md">
-        
         <AnimatePresence mode="wait">
           <motion.div
-            key={`${index}-${currentBanner.id}`}
+            key={index}
             initial={{ opacity: 0, scale: 1.02 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
@@ -223,30 +189,22 @@ export function Banner() {
 
         {banners.length > 1 && (
           <>
-            <button
-              onClick={prevSlide}
+            <button onClick={prevSlide}
               className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-md transition-all hover:scale-110 z-10"
-              aria-label="Anterior"
-            >
+              aria-label="Anterior">
               <ChevronLeft size={18} />
             </button>
-            
-            <button
-              onClick={nextSlide}
+            <button onClick={nextSlide}
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-md transition-all hover:scale-110 z-10"
-              aria-label="Siguiente"
-            >
+              aria-label="Siguiente">
               <ChevronRight size={18} />
             </button>
-            
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
               {banners.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setIndex(i)}
+                <button key={i} onClick={() => setIndex(i)}
                   className={`transition-all duration-200 rounded-full ${
-                    i === index 
-                      ? "w-6 sm:w-8 h-1.5 sm:h-2 bg-gray-800" 
+                    i === index
+                      ? "w-6 sm:w-8 h-1.5 sm:h-2 bg-gray-800"
                       : "w-1.5 sm:w-2 h-1.5 sm:h-2 bg-gray-400 hover:bg-gray-600"
                   }`}
                   aria-label={`Ir al banner ${i + 1}`}
