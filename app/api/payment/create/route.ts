@@ -59,7 +59,11 @@ export async function POST(request: NextRequest) {
     // Generar datos ÚNICOS para Transbank (completamente diferentes)
     const transbankBuyOrder = transbankService.generateBuyOrder()
     const sessionId = transbankService.generateSessionId()
-    const returnUrl = `${process.env.NEXTAUTH_URL}/api/payment/response`
+
+    // CORREGIDO: Usar la URL correcta
+    const baseUrl = process.env.BASE_URL || process.env.NEXTAUTH_URL || 'https://zorroludico.cl'
+    const returnUrl = `${baseUrl}/api/payment/response`
+    console.log('🔗 Return URL generada:', returnUrl)
 
     console.log('🎯 COMPARACIÓN DE NÚMEROS:', {
       'Nuestro Order Number': newOrderNumber,
