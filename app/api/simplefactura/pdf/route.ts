@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let folioNumero: string | number | null = folio;
+    let folioNumero: number | null = folio ? parseInt(folio) : null;
 
     if (orderId && !folio) {
       const boletas = await query(

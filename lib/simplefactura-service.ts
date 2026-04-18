@@ -1,4 +1,3 @@
-// lib/simplefactura-service.ts - CORREGIDO USANDO LA ESTRUCTURA QUE FUNCIONA
 import https from 'https';
 
 interface SimpleFacturaConfig {
@@ -11,6 +10,7 @@ interface SimpleFacturaConfig {
   ciudad: string;
   sucursal: string;
   ambiente: number;
+  apiUrl: string;
 }
 
 const config: SimpleFacturaConfig = {
@@ -22,31 +22,79 @@ const config: SimpleFacturaConfig = {
   comuna: process.env.SIMPLEFACTURA_COMUNA || '',
   ciudad: process.env.SIMPLEFACTURA_CIUDAD || '',
   sucursal: process.env.SIMPLEFACTURA_SUCURSAL_NOMBRE || "Casa Matriz",
-  ambiente: parseInt(process.env.SIMPLEFACTURA_AMBIENTE || '0')
+  ambiente: parseInt(process.env.SIMPLEFACTURA_AMBIENTE || '0'),
+  apiUrl: process.env.SIMPLEFACTURA_API_URL || 'https://api.simplefactura.cl'
 };
 
-// Emitir boleta - USANDO LA MISMA ESTRUCTURA QUE FUNCIONA EN EL SCRIPT
-export async function emitirBoletaSimpleFactura(productos: any[], receptor: any, total: number): Promise<any> {
+// 🔥 Helper request robusto
+function requestSimpleFactura(path: string, postData: string): Promise<any> {
   return new Promise((resolve, reject) => {
-    const fechaActual = new Date().toISOString().split('T')[0];
-    const sucursalEncoded = encodeURIComponent(config.sucursal);
-    
-    // Calcular neto e IVA
-    const neto = Math.round(total / 1.19);
-    const iva = total - neto;
-    
-    // Detalles de productos
-    const detalles = productos.map((prod, idx) => ({
-      NroLinDet: idx + 1,
-      NmbItem: prod.nombre,
-      QtyItem: prod.cantidad,
-      UnmdItem: "un",
-      PrcItem: Math.round(prod.precio),
-      MontoItem: Math.round(prod.cantidad * prod.precio)
-    }));
-    
-    // ESTRUCTURA IDÉNTICA A LA DEL SCRIPT FUNCIONAL - SIN wrapper dte
-    const datosBoleta = {
+
+    const options = {
+      method: 'POST',
+      hostname: 'api.simplefactura.cl',
+      path,
+      headers: {
+        'Authorization': `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json', // 🔥 CLAVE
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', chunk => data += chunk);
+
+      res.on('end', () => {
+        console.log('📊 Status:', res.statusCode);
+        console.log('📄 Raw:', data.substring(0, 500));
+
+        // 🔥 detectar HTML (tu error actual)
+        if (!data || data.trim().startsWith('<')) {
+          return reject(new Error(`❌ API devolvió HTML (endpoint malo, token inválido o IP bloqueada)\n${data.substring(0, 200)}`));
+        }
+
+        try {
+          const json = JSON.parse(data);
+
+          if (json.status === 200) {
+            resolve(json);
+          } else {
+            reject(new Error(json.message || 'Error API SimpleFactura'));
+          }
+
+        } catch (err: any) {
+          reject(new Error(`❌ JSON inválido: ${err.message}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(new Error(`❌ Error conexión: ${err.message}`));
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
+// ✅ EMITIR BOLETA
+export async function emitirBoletaSimpleFactura(productos: any[], receptor: any, total: number) {
+  const fechaActual = new Date().toISOString().split('T')[0];
+
+  const detalles = productos.map((p, i) => ({
+    NroLinDet: i + 1,
+    NmbItem: p.nombre,
+    QtyItem: p.cantidad,
+    UnmdItem: "un",
+    PrcItem: Math.round(p.precio),
+    MontoItem: Math.round(p.cantidad * p.precio)
+  }));
+
+  const body = {
+    datos: {
       Documento: {
         Encabezado: {
           IdDoc: {
@@ -55,87 +103,56 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
           },
           Emisor: {
             RUTEmisor: config.rutEmisor,
-            RznSocEmisor: config.razonSocial,
-            GiroEmisor: config.giro,
+            RznSoc: config.razonSocial,
+            GiroEmis: config.giro,
             DirOrigen: config.direccion,
-            CmnaOrigen: config.comuna,
-            CiudadOrigen: config.ciudad
+            CmnaOrigen: config.comuna
           },
           Receptor: {
-            RUTRecep: receptor.rut || "55555555-5",
-            RznSocRecep: receptor.nombre || "Consumidor Final",
-            DirRecep: receptor.direccion || "Santiago",
-            CmnaRecep: receptor.comuna || "Santiago",
-            CiudadRecep: receptor.ciudad || "Santiago"
+            RUTRecep: receptor.rut,
+            RznSocRecep: receptor.nombre
           },
           Totales: {
-            MntNeto: neto,
-            TasaIVA: 19,
-            IVA: iva,
             MntTotal: total
           }
         },
         Detalle: detalles
       }
-    };
-    
-    const postData = JSON.stringify(datosBoleta);
-    const path = `/invoiceV2/${sucursalEncoded}`;
-    
-    console.log('📡 Enviando a SimpleFactura:', `https://api.simplefactura.cl${path}`);
-    console.log('📦 Datos:', JSON.stringify(datosBoleta, null, 2).substring(0, 500));
-    
-    const options = {
-      method: 'POST',
-      hostname: 'api.simplefactura.cl',
-      path: path,
-      headers: {
-        'Authorization': `Bearer ${config.token}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-    
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        console.log('📊 Status:', res.statusCode);
-        console.log('📄 Respuesta:', data.substring(0, 500));
-        
-        try {
-          const response = JSON.parse(data);
-          if (response.status === 200) {
-            resolve(response);
-          } else {
-            reject(new Error(response.message || 'Error al emitir boleta'));
-          }
-        } catch (err) {
-          const error = err as Error;
-          reject(new Error(`Error al parsear: ${error.message} - Respuesta: ${data.substring(0, 200)}`));
-        }
-      });
-    });
-    
-    req.on('error', (err) => {
-      reject(new Error(`Error de conexión: ${err.message}`));
-    });
-    
-    req.write(postData);
-    req.end();
-  });
+    }
+  };
+
+  console.log('📄 Emitiendo boleta...');
+
+  return requestSimpleFactura('/v1/documento', JSON.stringify(body));
 }
 
-// Obtener PDF de boleta - USANDO LA ESTRUCTURA QUE FUNCIONA
-export async function obtenerPDFSimpleFactura(folio: string | number): Promise<Uint8Array> {
+// ✅ CONSULTAR
+export async function consultarBoletaSimpleFactura(folio: number) {
+  const body = {
+    credenciales: {
+      rutEmisor: config.rutEmisor
+    },
+    dteReferenciadoExterno: {
+      folio,
+      codigoTipoDte: 39,
+      ambiente: config.ambiente
+    }
+  };
+
+  return requestSimpleFactura('/v1/documentIssued', JSON.stringify(body));
+}
+
+// ✅ PDF
+export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({
+
+    const body = JSON.stringify({
       credenciales: {
         rutEmisor: config.rutEmisor,
         nombreSucursal: config.sucursal
       },
       dteReferenciadoExterno: {
-        folio: typeof folio === 'string' ? parseInt(folio) : folio,
+        folio,
         codigoTipoDte: 39,
         ambiente: config.ambiente
       }
@@ -144,106 +161,33 @@ export async function obtenerPDFSimpleFactura(folio: string | number): Promise<U
     const options = {
       method: 'POST',
       hostname: 'api.simplefactura.cl',
-      path: '/getPdf',
+      path: '/v1/getPdf',
       headers: {
         'Authorization': `Bearer ${config.token}`,
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
+        'Accept': 'application/pdf',
+        'Content-Length': Buffer.byteLength(body)
       }
     };
-
-    console.log(`📄 Descargando PDF para folio: ${folio}`);
-    console.log(`   Sucursal: ${config.sucursal}`);
 
     const req = https.request(options, (res) => {
       const chunks: Uint8Array[] = [];
 
-      res.on('data', (chunk) => {
-        chunks.push(chunk);
-      });
+      res.on('data', chunk => chunks.push(chunk));
 
       res.on('end', () => {
-        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-        const result = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const chunk of chunks) {
-          result.set(chunk, offset);
-          offset += chunk.length;
-        }
-        
-        // Verificar si es PDF
-        if (result.length > 4 && 
-            result[0] === 0x25 && result[1] === 0x50 && 
-            result[2] === 0x44 && result[3] === 0x46) {
-          resolve(result);
+        const buffer = Buffer.concat(chunks);
+
+        if (buffer.slice(0, 4).toString() === '%PDF') {
+          resolve(buffer);
         } else {
-          try {
-            const text = new TextDecoder().decode(result);
-            const errorResponse = JSON.parse(text);
-            reject(new Error(errorResponse.message || 'Error al obtener PDF'));
-          } catch (err) {
-            const error = err as Error;
-            reject(new Error(`La respuesta no es un PDF válido: ${error.message}`));
-          }
+          reject(new Error('❌ No es PDF válido'));
         }
       });
     });
 
-    req.on('error', (err) => {
-      reject(new Error(`Error de conexión: ${err.message}`));
-    });
-    
-    req.write(postData);
-    req.end();
-  });
-}
-
-// Consultar estado de boleta
-export async function consultarBoletaSimpleFactura(folio: string | number): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({
-      credenciales: { rutEmisor: config.rutEmisor },
-      dteReferenciadoExterno: {
-        folio: typeof folio === 'string' ? parseInt(folio) : folio,
-        codigoTipoDte: 39,
-        ambiente: config.ambiente
-      }
-    });
-
-    const options = {
-      method: 'POST',
-      hostname: 'api.simplefactura.cl',
-      path: '/documentIssued',
-      headers: {
-        'Authorization': `Bearer ${config.token}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data);
-          if (response.status === 200 && response.data) {
-            resolve(response.data);
-          } else {
-            reject(new Error(response.message || 'Error al consultar'));
-          }
-        } catch (err) {
-          const error = err as Error;
-          reject(new Error(`Error al parsear: ${error.message}`));
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(new Error(`Error de conexión: ${err.message}`));
-    });
-    
-    req.write(postData);
+    req.on('error', err => reject(err));
+    req.write(body);
     req.end();
   });
 }
