@@ -1,6 +1,9 @@
+// app/api/banners/admin/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
+
+export const dynamic = 'force-dynamic';
 
 // GET - Obtener todos los banners
 export async function GET(request: NextRequest) {
@@ -25,7 +28,11 @@ export async function GET(request: NextRequest) {
       []
     ) as any[];
 
-    return NextResponse.json({ success: true, banners });
+    return NextResponse.json({ success: true, banners }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
     return NextResponse.json(
@@ -80,6 +87,9 @@ export async function POST(request: NextRequest) {
         textPosition || 'left', textSize || 'medium'
       ]
     );
+
+    // Revalidar la ruta principal para actualizar el cache
+    await revalidatePath('/');
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -213,5 +223,17 @@ export async function PATCH(request: NextRequest) {
       { success: false, error: 'Error al reordenar banners' },
       { status: 500 }
     );
+  }
+}
+
+// Helper para revalidar
+async function revalidatePath(path: string) {
+  try {
+    const res = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/revalidate?path=${path}`, {
+      method: 'POST',
+    });
+    console.log('Revalidation result:', await res.json());
+  } catch (error) {
+    console.error('Revalidation error:', error);
   }
 }

@@ -1,7 +1,7 @@
 // components/banner.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
@@ -23,7 +23,6 @@ interface Banner {
   text_size: "small" | "medium" | "large"
 }
 
-// Función para convertir hex a rgba
 const hexToRgba = (hex: string, opacity: number): string => {
   if (!hex) return `rgba(0,0,0,${opacity / 100})`
   if (hex.startsWith('rgba')) {
@@ -57,7 +56,7 @@ const getTextSizeClasses = (size: string) => {
         subtitle: "text-lg md:text-xl",
         text: "text-base md:text-lg"
       }
-    default: // medium
+    default:
       return {
         title: "text-2xl md:text-3xl",
         subtitle: "text-base md:text-lg",
@@ -71,14 +70,17 @@ export function Banner() {
   const [index, setIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
   const [loading, setLoading] = useState(true)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  useEffect(() => {
-    fetchBanners()
-  }, [])
-
-  const fetchBanners = async () => {
+  const fetchBanners = useCallback(async () => {
     try {
-      const response = await fetch('/api/banners')
+      // Agregar timestamp para evitar cache
+      const response = await fetch(`/api/banners?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        }
+      })
       const data = await response.json()
       if (data.success) {
         setBanners(data.banners)
@@ -88,22 +90,42 @@ export function Banner() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
+  // Polling cada 5 segundos para detectar cambios
+  useEffect(() => {
+    fetchBanners()
+    
+    const pollingInterval = setInterval(() => {
+      fetchBanners()
+    }, 5000) // Verificar cambios cada 5 segundos
+    
+    return () => clearInterval(pollingInterval)
+  }, [fetchBanners])
+
+  // Auto-rotación
   useEffect(() => {
     if (banners.length <= 1 || isHovered) return
     
-    const interval = setInterval(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    
+    intervalRef.current = setInterval(() => {
       setIndex((prev) => (prev + 1) % banners.length)
     }, 5000)
 
-    return () => clearInterval(interval)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
   }, [banners.length, isHovered])
+
+  // Resetear índice si cambian los banners
+  useEffect(() => {
+    setIndex(0)
+  }, [banners.length])
 
   if (loading) {
     return (
       <div className="w-full px-4 mt-4">
-        {/* Altura aumentada 15%: 220 * 1.15 = 253 (redondeado a 250) en mobile, 300 * 1.15 = 345 en tablet, 350 * 1.15 = 402 en PC */}
         <div className="h-[250px] md:h-[345px] lg:h-[400px] bg-gray-100 rounded-2xl animate-pulse" />
       </div>
     )
@@ -127,10 +149,6 @@ export function Banner() {
   const textSizes = getTextSizeClasses(currentBanner.text_size)
 
   const BannerContent = () => (
-    // Altura aumentada 15%:
-    // Mobile: 220 * 1.15 = 253 → 250px
-    // Tablet: 300 * 1.15 = 345 → 345px
-    // PC: 350 * 1.15 = 402 → 400px
     <div className="relative w-full h-[250px] md:h-[345px] lg:h-[400px] overflow-hidden bg-gray-100">
       <Image
         src={currentBanner.image}
@@ -193,7 +211,7 @@ export function Banner() {
         
         <AnimatePresence mode="wait">
           <motion.div
-            key={index}
+            key={`${index}-${currentBanner.id}`}
             initial={{ opacity: 0, scale: 1.02 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}

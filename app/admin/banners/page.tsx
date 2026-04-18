@@ -340,6 +340,24 @@ export default function AdminBannersPage() {
     }
   };
 
+    const forceUpdateBanner = async () => {
+    try {
+      // Llamar a revalidate para purgar cache
+      await fetch('/api/revalidate?path=/', { method: 'POST' })
+      
+      // Recargar banners localmente
+      await loadBanners()
+      
+      // Pequeño delay para asegurar que el cache se purgó
+      setTimeout(async () => {
+        await loadBanners()
+      }, 500)
+    } catch (error) {
+      console.error('Error forcing update:', error)
+    }
+  }
+
+
   const toggleActive = async (id: number, currentActive: number) => {
     const banner = banners.find(b => b.id === id)
     if (!banner) return
