@@ -1,19 +1,14 @@
-// components/product-card.tsx - ACTUALIZADO CON STOCK
+// components/product-card.tsx
 "use client"
 
 import type React from "react"
-
+import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { ShoppingCart } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 import Image from "next/image"
 import Link from "next/link"
-import { useCartStore } from "@/lib/cart-store"
-import { useToast } from "@/hooks/use-toast"
-import { useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 
-// En components/product-card.tsx - actualizar la interfaz Product
 interface Product {
   id: number
   name: string
@@ -36,7 +31,7 @@ interface Product {
   age: string
   players: string
   duration: string
-  tags: string[]
+  tags: string[] // Ahora es un array de strings
   description: string
   inStock: boolean
   stock: number 
@@ -45,238 +40,237 @@ interface Product {
 
 interface ProductCardProps {
   product: Product
+  index?: number
 }
 
-// Función para formatear precio en CLP
 const formatCLP = (price: number): string => {
   return Math.round(price).toLocaleString('es-CL');
 };
 
-// Función para calcular porcentaje de descuento
 const calculateDiscountPercent = (originalPrice: number, currentPrice: number): number => {
   if (!originalPrice || originalPrice <= currentPrice) return 0;
   return Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
 };
 
-export function ProductCard({ product }: ProductCardProps) {
+// Función para verificar si tiene un tag específico
+const hasTag = (tags: string[], tagName: string): boolean => {
+  if (!tags || !Array.isArray(tags)) return false;
+  return tags.some(tag => tag.toLowerCase().includes(tagName.toLowerCase()));
+};
+
+// Configuración de etiquetas
+interface BadgeConfig {
+  text: string | ((product: Product) => string);
+  color: string;
+  priority: number;
+  condition: (product: Product) => boolean;
+}
+
+const BADGE_CONFIGS: BadgeConfig[] = [
+  {
+    text: "PREVENTA",
+    color: "rgb(251, 176, 59)",
+    priority: 1,
+    condition: (product) => hasTag(product.tags, "preventa")
+  },
+  {
+    text: (product) => {
+      if (!product.originalPrice || product.originalPrice <= product.price) return "";
+      const discountPercent = calculateDiscountPercent(product.originalPrice, product.price);
+      return `-${discountPercent}%`;
+    },
+    color: "rgba(241, 90, 36)",
+    priority: 2,
+    condition: (product) => product.originalPrice !== undefined && product.originalPrice > product.price
+  },
+  {
+    text: "NOVEDAD",
+    color: "rgba(26, 26, 26)",
+    priority: 3,
+    condition: (product) => hasTag(product.tags, "novedad")
+  },
+  {
+    text: "AGOTADO",
+    color: "rgba(237, 28, 36)",
+    priority: 4,
+    condition: (product) => !product.inStock || product.stock <= 0
+  }
+];
+
+// Función para obtener todas las etiquetas que debe mostrar el producto
+const getAllBadges = (product: Product): Array<{ text: string; color: string; priority: number }> => {
+  const badges: Array<{ text: string; color: string; priority: number }> = [];
+  
+  for (const config of BADGE_CONFIGS) {
+    if (config.condition(product)) {
+      const text = typeof config.text === 'function' ? config.text(product) : config.text;
+      if (text) {
+        badges.push({
+          text,
+          color: config.color,
+          priority: config.priority
+        });
+      }
+    }
+  }
+  
+  // Ordenar por prioridad (menor número = mayor prioridad, se muestra arriba)
+  return badges.sort((a, b) => a.priority - b.priority);
+};
+
+export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const hasDiscount = product.originalPrice && product.originalPrice > product.price
-  const discountPercent = hasDiscount 
-    ? calculateDiscountPercent(product.originalPrice!, product.price)
-    : 0
-    
-  const addItem = useCartStore((state) => state.addItem)
-  const { toast } = useToast()
+  const badges = getAllBadges(product)
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
+  
   const allImages = [product.image, ...(product.additionalImages || [])]
 
-  // Obtener todas las subcategorías del producto
-  const allSubcategories = product.subcategories || []
-  
-  // Combinar categoría y subcategorías en una sola lista
-  const allCategories = [
-    { name: product.category, type: 'category' as const },
-    ...allSubcategories.map(sub => ({ 
-      name: sub.name, 
-      type: 'subcategory' as const,
-      isPrimary: sub.isPrimary 
-    }))
-  ]
-
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-      category: product.category,
-      inStock: product.inStock,
-      stock: product.stock, // ← AGREGADO
-      categoryId: product.categoryId,
-      subcategoryId: product.subcategoryId
-    })
-
-    toast({
-      title: "Producto agregado",
-      description: `${product.name} se agregó al carrito`,
-      duration: 5000,
-    })
-  }
-
-  const handleMouseEnter = () => {
-    if (allImages.length > 1) {
-      let index = 0
-      const interval = setInterval(() => {
-        index = (index + 1) % allImages.length
-        setCurrentImageIndex(index)
-      }, 800)
-
-      // Store interval ID to clear on mouse leave
-      ;(window as any)[`productImageInterval_${product.id}`] = interval
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    
+    if (isHovered && allImages.length > 1) {
+      interval = setInterval(() => {
+        setCurrentImageIndex((prev) => (prev + 1) % allImages.length)
+      }, 2000)
     }
-  }
 
-  const handleMouseLeave = () => {
-    const interval = (window as any)[`productImageInterval_${product.id}`]
-    if (interval) {
-      clearInterval(interval)
-      delete (window as any)[`productImageInterval_${product.id}`]
+    return () => {
+      if (interval) clearInterval(interval)
     }
-    setCurrentImageIndex(0)
-  }
+  }, [isHovered, allImages.length])
 
-  // Determinar el texto del stock
-  const getStockText = () => {
-    if (!product.inStock) return "Sin Stock";
-    if (product.stock <= 5) return `Últimas ${product.stock} unidades`;
-    if (product.stock <= 10) return `Stock bajo (${product.stock})`;
-    return `En Stock (${product.stock})`;
-  };
-
-  // Determinar el color del badge de stock
-  const getStockBadgeVariant = () => {
-    if (!product.inStock) return "destructive";
-    if (product.stock <= 5) return "destructive";
-    if (product.stock <= 10) return "secondary";
-    return "default";
-  };
+  // Debug: log para verificar tags
+  console.log(`🏷️ Producto: ${product.name}, Tags:`, product.tags, `Badges a mostrar:`, badges.map(b => b.text));
 
   return (
-    <Link href={`/products/${product.id}`} className="block h-full">
-      <Card
-        className="group hover:shadow-lg transition-shadow duration-200 h-full flex flex-col w-full cursor-pointer border-border/50"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <CardContent className="p-4 flex-1 flex flex-col">
-          {/* Product Image */}
-          <div className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted">
-            <Image
-              src={allImages[currentImageIndex] || "/placeholder.svg"}
-              alt={product.name}
-              fill
-              className="object-cover group-hover:scale-105 transition-transform duration-200"
-            />
-            {/* Badges superpuestos */}
-            <div className="absolute top-2 left-2 flex flex-col gap-1">
-              {hasDiscount && (
-                <Badge className="bg-[#DC2626] text-white border-0 font-semibold">
-                  -{discountPercent}%
-                </Badge>
-              )}
-              {product.isOnSale && !hasDiscount && (
-                <Badge className="bg-[#EA580C] text-white border-0 font-semibold">
-                  OFERTA
-                </Badge>
-              )}
-            </div>
-            
-            {/* Badge de stock en la esquina superior derecha */}
-            <div className="absolute top-2 right-2">
-              <Badge 
-                variant={getStockBadgeVariant()} 
-                className="text-xs font-semibold"
-              >
-                {getStockText()}
-              </Badge>
-            </div>
-
-            {allImages.length > 1 && (
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                {allImages.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                      index === currentImageIndex ? "bg-white" : "bg-white/50"
-                    }`}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ 
+        duration: 0.4, 
+        delay: index * 0.05,
+        type: "spring",
+        stiffness: 100
+      }}
+      whileHover={{ y: -5 }}
+      className="h-full"
+    >
+      <Link href={`/products/${product.id}`} className="block h-full">
+        <Card
+          className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col w-full cursor-pointer border-border/50 relative overflow-hidden"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => {
+            setIsHovered(false)
+            setCurrentImageIndex(0)
+          }}
+        >
+          <CardContent className="p-4 flex-1 flex flex-col relative z-10">
+            <motion.div 
+              className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted"
+              animate={{ scale: isHovered ? 1.02 : 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentImageIndex}
+                  initial={{ opacity: 0, scale: 1.1 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3 }}
+                  className="relative w-full h-full"
+                >
+                  <Image
+                    src={allImages[currentImageIndex] || "/placeholder.svg"}
+                    alt={product.name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   />
-                ))}
-              </div>
-            )}
-          </div>
+                </motion.div>
+              </AnimatePresence>
 
-          {/* Product Info */}
-          <div className="space-y-3 flex-1 flex flex-col">
-            <h3 className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] group-hover:text-[#C2410C] transition-colors break-words">
-              {product.name}
-            </h3>
-
-            {/* Game Details - Fixed text overflow and consistent sizing */}
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="bg-[#FEF3F2] rounded px-2 py-2 text-center min-h-[3.5rem] flex flex-col justify-center border border-[#FEE2E2]">
-                <div className="font-medium text-[9px] uppercase tracking-wide text-[#991B1B] mb-1">EDAD</div>
-                <div className="text-foreground text-xs font-semibold break-words">{product.age}</div>
-              </div>
-              <div className="bg-[#FEF3F2] rounded px-2 py-2 text-center min-h-[3.5rem] flex flex-col justify-center border border-[#FEE2E2]">
-                <div className="font-medium text-[9px] uppercase tracking-wide text-[#991B1B] mb-1">JUGADORES</div>
-                <div className="text-foreground text-xs font-semibold break-words leading-tight">{product.players}</div>
-              </div>
-              <div className="bg-[#FEF3F2] rounded px-2 py-2 text-center min-h-[3.5rem] flex flex-col justify-center border border-[#FEE2E2]">
-                <div className="font-medium text-[9px] uppercase tracking-wide text-[#991B1B] mb-1">DURACIÓN</div>
-                <div className="text-foreground text-xs font-semibold break-words leading-tight hyphens-auto">
-                  {product.duration}
-                </div>
-              </div>
-            </div>
-
-            {/* CATEGORÍAS Y SUBCATEGORÍAS - LISTA HORIZONTAL COMPACTA */}
-            <div className="flex flex-wrap gap-1.5">
-              {allCategories.map((item, index) => (
-                <Badge
-                  key={index}
-                  variant={item.type === 'category' ? "default" : "secondary"}
-                  className={`
-                    text-xs px-2 py-0.5 break-words border-0 font-medium
-                    ${item.type === 'category' 
-                      ? 'bg-[#FEE2E2] text-[#991B1B] hover:bg-[#FEE2E2]' 
-                      : item.isPrimary 
-                        ? 'bg-[#FEF3F2] text-[#991B1B] border border-[#FEE2E2] hover:bg-[#FEE2E2]' 
-                        : 'bg-[#FEE2E2] text-[#991B1B] border border-[#FEE2E2] hover:bg-[#FEE2E2]'
-                    }
-                  `}
+              {allImages.length > 1 && (
+                <motion.div 
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
                 >
-                  {item.name}
-                </Badge>
-              ))}
-            </div>
-
-            {/* Tags - Fixed height for consistent spacing */}
-            <div className="flex flex-wrap gap-1 min-h-[2rem] items-start">
-              {product.tags.slice(0, 3).map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="secondary"
-                  className="text-xs px-2 py-0.5 break-words bg-[#FEF3F2] text-[#991B1B] border-[#FEE2E2] hover:bg-[#FEE2E2]"
-                >
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-
-            {/* Price - Push to bottom with margin-top auto */}
-            <div className="flex items-center gap-2 mt-auto pt-2">
-              <span className="text-lg font-bold text-[#C2410C]">${formatCLP(product.price)} </span>
-              {hasDiscount && (
-                <span className="text-sm text-muted-foreground line-through">${formatCLP(product.originalPrice!)} </span>
+                  {allImages.map((_, idx) => (
+                    <motion.div
+                      key={idx}
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                        idx === currentImageIndex ? "bg-white" : "bg-white/50"
+                      }`}
+                    />
+                  ))}
+                </motion.div>
               )}
-            </div>
-          </div>
-        </CardContent>
 
-        <CardFooter className="p-4 pt-0 mt-auto">
-          <Button
-            className="w-full h-10 text-sm bg-[#C2410C] hover:bg-[#9A3412] text-white"
-            disabled={!product.inStock}
-            onClick={handleAddToCart}
-          >
-            <ShoppingCart className="w-4 h-4 mr-2" />
-            {product.inStock ? "Agregar al Carrito" : "Sin Stock"}
-          </Button>
-        </CardFooter>
-      </Card>
-    </Link>
+              {/* Múltiples etiquetas apiladas en la esquina superior derecha */}
+                {badges.length > 0 && (
+                  <motion.div
+                    initial={{ x: 50, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
+                    className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
+                  >
+                    {badges.map((badge, idx) => (
+                      <motion.div
+                        key={badge.text}
+                        initial={{ x: 30, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        transition={{ delay: 0.1 + idx * 0.05 }}
+                      >
+                        <Badge 
+                          className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap"
+                          style={{ 
+                            backgroundColor: badge.color,
+                            color: "white"
+                          }}
+                        >
+                          {badge.text}
+                        </Badge>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+            </motion.div>
+
+            <div className="space-y-2 flex-1 flex flex-col">
+              <motion.h3 
+                className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] break-words"
+                animate={{ color: isHovered ? "#C2410C" : "#000000" }}
+                transition={{ duration: 0.3 }}
+              >
+                {product.name}
+              </motion.h3>
+
+              <motion.div 
+                className="flex items-center gap-2 mt-auto pt-2 flex-wrap"
+                animate={isHovered ? { scale: 1.05, x: 5 } : { scale: 1, x: 0 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <span className="text-lg font-bold text-[#C2410C]">
+                  ${formatCLP(product.price)}
+                </span>
+                {hasDiscount && product.originalPrice && (
+                  <motion.span 
+                    className="text-sm text-muted-foreground line-through"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    ${formatCLP(product.originalPrice)}
+                  </motion.span>
+                )}
+              </motion.div>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </motion.div>
   )
 }

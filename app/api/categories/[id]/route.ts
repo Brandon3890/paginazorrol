@@ -34,10 +34,12 @@ export async function GET(
                 '"slug":"', REPLACE(REPLACE(s.slug, '"', '\\\\"'), '\\\\', '\\\\\\\\'), '",',
                 '"category_id":', s.category_id, ',',
                 '"is_active":', IF(s.is_active, 'true', 'false'), ',',
+                '"display_order":', IFNULL(s.display_order, 0), ',',
                 '"created_at":"', s.created_at, '",',
                 '"updated_at":"', s.updated_at, '"',
                 '}'
               )
+              ORDER BY IFNULL(s.display_order, 0) ASC
             ),
             ']'
           )
@@ -65,6 +67,8 @@ export async function GET(
     if (category.subcategories_json && category.subcategories_json !== '[]') {
       try {
         subcategories = JSON.parse(category.subcategories_json);
+        // Asegurar orden por display_order
+        subcategories.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
       } catch (error) {
         subcategories = [];
       }

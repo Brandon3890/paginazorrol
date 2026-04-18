@@ -1,11 +1,10 @@
-// app/api/admin/orders/[id]/route.ts - VERSIÓN CORREGIDA
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -26,8 +25,8 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver esta orden' }, { status: 403 })
     }
 
-    // Obtener el ID de los parámetros
-    const { id } = params
+    // IMPORTANTE: Aquí await params para obtener el id
+    const { id } = await params
     console.log('🔍 Order ID from params:', id)
     
     const orderId = parseInt(id)
@@ -160,7 +159,7 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -181,7 +180,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'No tienes permisos para actualizar pedidos' }, { status: 403 })
     }
 
-    const { id } = params
+    // IMPORTANTE: Aquí await params para obtener el id
+    const { id } = await params
     const orderId = parseInt(id)
 
     if (isNaN(orderId)) {

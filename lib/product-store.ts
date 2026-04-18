@@ -1,7 +1,8 @@
+// lib/product-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-interface Product {
+export interface Product {
   id: number;
   name: string;
   slug: string;
@@ -9,6 +10,7 @@ interface Product {
   price: number;
   originalPrice?: number;
   image: string;
+  youtubeVideoId?: string;
   category: string;
   subcategory: string;
   categoryId: number;
@@ -21,6 +23,7 @@ interface Product {
     isPrimary: boolean;
     displayOrder: number;
   }>;
+  recommendedProducts?: number[];
   ageMin: number;
   age: string;
   playersMin: number;
@@ -47,7 +50,10 @@ interface Product {
   isOnSale: boolean;
   isActive: boolean;
   additionalImages: string[];
-  tags: { id: number; name: string; slug: string }[];
+  tags: string[];
+  tagsRaw?: string;
+  brand: string;
+  genre: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,8 +61,12 @@ interface Product {
 interface ProductStore {
   products: Product[];
   loading: boolean;
+  productsLoaded: boolean;
   error: string | null;
-  fetchProducts: (options?: { includeInactive?: boolean; isAdmin?: boolean }) => Promise<void>;
+  version: number;
+  globalSearchQuery: string;
+  setGlobalSearchQuery: (query: string) => void;
+  fetchProducts: (options?: { includeInactive?: boolean; isAdmin?: boolean; force?: boolean }) => Promise<void>;
   fetchProduct: (id: number) => Promise<Product | null>;
   addProduct: (formData: FormData) => Promise<void>;
   updateProduct: (id: number, formData: FormData) => Promise<void>;
@@ -64,6 +74,7 @@ interface ProductStore {
   reactivateProduct: (id: number) => Promise<void>;
   permanentlyDeleteProduct: (id: number) => Promise<void>;
   clearError: () => void;
+  incrementVersion: () => void;
   getProductCategories: (productId: number) => {
     category: string;
     subcategories: string[];
@@ -71,22 +82,46 @@ interface ProductStore {
   } | null;
   getProductsByCategory: (categoryId: number) => Product[];
   getProductsBySubcategory: (subcategoryId: number) => Product[];
+  getRecommendedProducts: (productId: number) => Product[];  
 }
+
+// Función para normalizar tags desde la DB
+const normalizeTags = (tags: any): string[] => {
+  if (!tags) return [];
+  if (Array.isArray(tags)) {
+    return tags.map(t => {
+      if (typeof t === 'string') return t.toLowerCase();
+      if (t && typeof t === 'object') return (t.name || t.slug || '').toLowerCase();
+      return '';
+    }).filter(Boolean);
+  }
+  if (typeof tags === 'string') {
+    return tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof tags === 'object' && tags !== null) {
+    if (tags.name) return [tags.name.toLowerCase()];
+    if (tags.slug) return [tags.slug.toLowerCase()];
+  }
+  return [];
+};
 
 // Función de migración para limpiar datos corruptos
 const migrateStore = (persistedState: any, version: number) => {
-  console.log('🔄 Migrating store from version:', version);
+  console.log('Migrating store from version:', version);
   
   if (!persistedState || typeof persistedState !== 'object') {
-    console.log('🔄 No persisted state or corrupted, returning initial state');
-    return { products: [] };
+    console.log('No persisted state or corrupted, returning initial state');
+    return { products: [], productsLoaded: false, version: 0, globalSearchQuery: "" };
   }
   
   if (!Array.isArray(persistedState.products)) {
-    console.log('🔄 Products is not an array, cleaning...');
+    console.log('Products is not an array, cleaning...');
     return { 
       ...persistedState,
-      products: [] 
+      products: [],
+      productsLoaded: false,
+      version: persistedState.version || 0,
+      globalSearchQuery: persistedState.globalSearchQuery || ""
     };
   }
   
@@ -95,13 +130,21 @@ const migrateStore = (persistedState: any, version: number) => {
            typeof product === 'object' && 
            product.id && 
            product.name;
-  });
+  }).map((product: any) => ({
+    ...product,
+    tags: normalizeTags(product.tags || product.tagsRaw),
+    brand: product.brand || 'Devir',
+    genre: product.genre || 'Estrategia, Familiar'
+  }));
   
   console.log(`🔄 Cleaned ${cleanedProducts.length} valid products`);
   
   return {
     ...persistedState,
-    products: cleanedProducts
+    products: cleanedProducts,
+    productsLoaded: persistedState.productsLoaded || false,
+    version: persistedState.version || 0,
+    globalSearchQuery: persistedState.globalSearchQuery || ""
   };
 };
 
@@ -110,16 +153,28 @@ export const useProductStore = create<ProductStore>()(
     (set, get) => ({
       products: [],
       loading: false,
+      productsLoaded: false,
       error: null,
-
+      version: 0,
+      globalSearchQuery: "",
+      
+      setGlobalSearchQuery: (query) => {
+        set({ globalSearchQuery: query });
+        console.log('🔍 Búsqueda global actualizada:', query);
+      },
+      
       fetchProducts: async (options = {}) => {
-        const { includeInactive = false, isAdmin = false } = options;
+        const { includeInactive = false, isAdmin = false, force = false } = options;
+        
+        if (get().productsLoaded && !force) {
+          console.log('Products already loaded, skipping fetch');
+          return;
+        }
         
         set({ loading: true, error: null });
         try {
-          console.log('🔄 Fetching products from API...', { includeInactive, isAdmin });
+          console.log('Fetching products from API...', { includeInactive, isAdmin, force });
           
-          // Construir URL con parámetros - FIX: Siempre incluir includeInactive=true para admin
           const params = new URLSearchParams();
           if (isAdmin || includeInactive) {
             params.append('includeInactive', 'true');
@@ -139,27 +194,29 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(`Error fetching products: ${response.status} ${response.statusText}`);
           }
           
-          const products = await response.json();
-          console.log('✅ Products fetched successfully:', products.length, 'products');
+          const productsData = await response.json();
+          console.log('✅ Products fetched successfully:', productsData.length, 'products');
           
-          const validProducts = Array.isArray(products) ? products : [];
-          console.log('✅ Valid products:', validProducts.length);
+          // Normalizar los tags y añadir brand/genre de cada producto
+          const normalizedProducts = productsData.map((product: any) => ({
+            ...product,
+            tags: normalizeTags(product.tags || product.tagsRaw),
+            brand: product.brand || 'Devir',
+            genre: product.genre || 'Estrategia, Familiar'
+          }));
           
-          // Contar productos activos e inactivos para debug
-          const activeProducts = validProducts.filter(p => p.isActive);
-          const inactiveProducts = validProducts.filter(p => !p.isActive);
-          console.log(`📊 Active: ${activeProducts.length}, Inactive: ${inactiveProducts.length}`);
+          console.log('🏷️ Tags normalizados:', normalizedProducts.map((p: any) => ({ name: p.name, tags: p.tags })));
           
-          // Debug: mostrar IDs de productos inactivos
-          if (inactiveProducts.length > 0) {
-            console.log('📋 Inactive product IDs:', inactiveProducts.map(p => p.id));
-          }
+          const validProducts = Array.isArray(normalizedProducts) ? normalizedProducts : [];
           
           set({ 
             products: validProducts, 
+            productsLoaded: true,
             loading: false, 
             error: null 
           });
+          
+          console.log('📦 Store updated with', validProducts.length, 'products');
         } catch (error) {
           console.error('❌ Error in fetchProducts:', error);
           set({ 
@@ -178,16 +235,32 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const product = await response.json();
+          // Normalizar tags del producto individual
+          const normalizedProduct = {
+            ...product,
+            tags: normalizeTags(product.tags || product.tagsRaw),
+            brand: product.brand || 'Devir',
+            genre: product.genre || 'Estrategia, Familiar'
+          };
+          
           console.log(`✅ Product ${id} fetched successfully:`, {
-            name: product.name,
-            categoryId: product.categoryId,
-            subcategoryIds: product.subcategoryIds,
-            mainImage: product.image,
-            additionalImagesCount: product.additionalImages?.length || 0,
-            isActive: product.isActive
+            name: normalizedProduct.name,
+            tags: normalizedProduct.tags,
+            brand: normalizedProduct.brand,
+            genre: normalizedProduct.genre
           });
           
-          return product;
+          set(state => {
+            const existingProductIndex = state.products.findIndex(p => p.id === id);
+            if (existingProductIndex >= 0) {
+              const newProducts = [...state.products];
+              newProducts[existingProductIndex] = normalizedProduct;
+              return { products: newProducts };
+            }
+            return state;
+          });
+          
+          return normalizedProduct;
         } catch (error) {
           console.error('Error fetching product:', error);
           set({ 
@@ -195,6 +268,24 @@ export const useProductStore = create<ProductStore>()(
           });
           return null;
         }
+      },
+
+      incrementVersion: () => {
+        set(state => ({ version: state.version + 1 }));
+        console.log('📢 Versión incrementada:', get().version);
+      },
+
+      getRecommendedProducts: (productId: number) => {
+        const { products } = get();
+        const product = products.find(p => p.id === productId);
+        
+        if (!product || !product.recommendedProducts || product.recommendedProducts.length === 0) {
+          return [];
+        }
+        
+        return products.filter(p => 
+          product.recommendedProducts?.includes(p.id) && p.isActive
+        );
       },
 
       addProduct: async (formData: FormData) => {
@@ -209,8 +300,8 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error creating product');
           }
           
-          // Recargar productos después de crear uno nuevo - FIX: Usar parámetros para admin
-          await get().fetchProducts({ includeInactive: true, isAdmin: true });
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
           set({ error: errorMessage });
@@ -230,9 +321,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error updating product');
           }
           
-          // Recargar TODOS los productos para asegurar consistencia - FIX: Usar parámetros para admin
           console.log('🔄 Recargando productos después de actualizar...');
-          await get().fetchProducts({ includeInactive: true, isAdmin: true });
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
           
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Error al actualizar el producto';
@@ -242,64 +333,62 @@ export const useProductStore = create<ProductStore>()(
       },
 
       deactivateProduct: async (id: number) => {
-      try {
-        console.log(`🗑️ Attempting to deactivate product ${id}...`);
-        const response = await fetch(`/api/products/${id}`, {
-          method: 'DELETE',
-        });
+        try {
+          console.log(`🗑️ Attempting to deactivate product ${id}...`);
+          const response = await fetch(`/api/products/${id}`, {
+            method: 'DELETE',
+          });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Error deactivating product');
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error deactivating product');
+          }
+          
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: false } : p
+            )
+          }));
+          
+          get().incrementVersion();
+          console.log(`✅ Product ${id} deactivated successfully`);
+          
+        } catch (error) {
+          console.error(`❌ Error deactivating product ${id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
+          set({ error: errorMessage });
+          throw error;
         }
-        
-        // Actualizar estado local inmediatamente
-        console.log(`🔄 Updating local state for product ${id}...`);
-        set(state => ({
-          products: state.products.map(p =>
-            p.id === id ? { ...p, isActive: false } : p
-          )
-        }));
-        
-        console.log(`✅ Product ${id} deactivated successfully`);
-        
-      } catch (error) {
-        console.error(`❌ Error deactivating product ${id}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
-        set({ error: errorMessage });
-        throw error;
-      }
-    },
+      },
 
       reactivateProduct: async (id: number) => {
-      try {
-        console.log(`🔄 Attempting to reactivate product ${id}...`);
-        const response = await fetch(`/api/products/${id}/reactivate`, {
-          method: 'PUT',
-        });
+        try {
+          console.log(`🔄 Attempting to reactivate product ${id}...`);
+          const response = await fetch(`/api/products/${id}/reactivate`, {
+            method: 'PUT',
+          });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Error reactivating product');
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error reactivating product');
+          }
+          
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: true } : p
+            )
+          }));
+          
+          get().incrementVersion();
+          console.log(`✅ Product ${id} reactivated successfully`);
+          
+        } catch (error) {
+          console.error(`❌ Error reactivating product ${id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Error al reactivar el producto';
+          set({ error: errorMessage });
+          throw error;
         }
-        
-        // Actualizar estado local inmediatamente
-        console.log(`🔄 Updating local state for product ${id}...`);
-        set(state => ({
-          products: state.products.map(p =>
-            p.id === id ? { ...p, isActive: true } : p
-          )
-        }));
-        
-        console.log(`✅ Product ${id} reactivated successfully`);
-        
-      } catch (error) {
-        console.error(`❌ Error reactivating product ${id}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Error al reactivar el producto';
-        set({ error: errorMessage });
-        throw error;
-      }
-    },
+      },
 
       permanentlyDeleteProduct: async (id: number) => {
         try {
@@ -313,12 +402,11 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deleting product permanently');
           }
           
-          // Eliminar del estado local inmediatamente
-          console.log(`🔄 Removing product ${id} from local state...`);
           set(state => ({
             products: state.products.filter(p => p.id !== id)
           }));
           
+          get().incrementVersion();
           console.log(`✅ Product ${id} permanently deleted from local state`);
           
         } catch (error) {
@@ -341,11 +429,9 @@ export const useProductStore = create<ProductStore>()(
           return null;
         }
 
-        // Obtener todas las subcategorías del producto
         const subcategories = product.subcategoriesData || product.subcategories || [];
         const subcategoryNames = subcategories.map(sub => sub.name);
         
-        // Encontrar la subcategoría principal
         const primarySubcategory = subcategories.find(sub => sub.isPrimary)?.name || 
                                  subcategories[0]?.name || 
                                  product.subcategory;
@@ -372,20 +458,22 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 1,
+      version: 2,
       migrate: migrateStore,
       partialize: (state) => ({ 
         products: state.products,
+        productsLoaded: state.productsLoaded,
+        version: state.version,
+        globalSearchQuery: state.globalSearchQuery
       }),
     }
   )
 );
 
-// Hook personalizado para usar las categorías y subcategorías de productos
+// Hook personalizado para categorías
 export const useProductCategories = () => {
   const { products, getProductCategories, getProductsByCategory, getProductsBySubcategory } = useProductStore();
 
-  // Obtener todas las categorías únicas de los productos ACTIVOS
   const getAllCategories = () => {
     const categories = products
       .filter(product => product.isActive)
@@ -395,13 +483,11 @@ export const useProductCategories = () => {
         productCount: products.filter(p => p.categoryId === product.categoryId && p.isActive).length
       }));
 
-    // Eliminar duplicados
     return categories.filter((category, index, self) => 
       index === self.findIndex(c => c.id === category.id)
     );
   };
 
-  // Obtener todas las subcategorías únicas de los productos ACTIVOS
   const getAllSubcategories = () => {
     const allSubcategories: Array<{
       id: number;
@@ -435,23 +521,19 @@ export const useProductCategories = () => {
     return allSubcategories;
   };
 
-  // Obtener productos con información completa de categorías y subcategorías
   const getProductsWithCategoryInfo = () => {
     return products.map(product => ({
       ...product,
-      // Información completa de categoría
       categoryInfo: {
         id: product.categoryId,
         name: product.category
       },
-      // Información completa de subcategorías
       subcategoriesInfo: (product.subcategoriesData || product.subcategories || []).map(sub => ({
         id: sub.id,
         name: sub.name,
         isPrimary: sub.isPrimary,
         displayOrder: sub.displayOrder
       })),
-      // Subcategoría principal
       primarySubcategory: (product.subcategoriesData || product.subcategories || [])
         .find(sub => sub.isPrimary)?.name || 
         (product.subcategoriesData || product.subcategories || [])[0]?.name || 

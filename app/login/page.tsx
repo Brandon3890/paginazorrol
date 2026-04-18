@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, Eye, EyeOff, LogIn, Mail } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff, LogIn, Mail, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { motion, AnimatePresence } from "framer-motion"
 
 export default function LoginPage() {
   const { login } = useAuthStore()
@@ -96,153 +97,334 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <motion.div 
+      className="container mx-auto px-4 py-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+    >
       <div className="max-w-md mx-auto">
-        <div className="mb-6">
-          <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4 mr-2" />
+        <motion.div 
+          className="mb-6"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground group">
+            <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
             Volver a la tienda
           </Link>
-        </div>
+        </motion.div>
 
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-              <LogIn className="w-6 h-6" />
-              {showForgotPassword ? "Recuperar Contraseña" : "Iniciar Sesión"}
-            </CardTitle>
-            <p className="text-muted-foreground">
-              {showForgotPassword 
-                ? "Ingresa tu email para recibir instrucciones" 
-                : "Accede a tu cuenta para continuar"}
-            </p>
-          </CardHeader>
-          <CardContent>
-            {!showForgotPassword ? (
-              <>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {error && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
+          <Card className="overflow-hidden">
+            <motion.div 
+              className="h-1 bg-gradient-to-r from-orange-500 to-red-500"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="tu@email.com"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        name="password"
-                        type={showPassword ? "text" : "password"}
-                        required
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        placeholder="Tu contraseña"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
-                  </Button>
-                </form>
-
-                <div className="mt-6 text-center space-y-4">
-                  <button
-                    onClick={() => setShowForgotPassword(true)}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    ¿Olvidaste tu contraseña?
-                  </button>
-
-                  <p className="text-sm text-muted-foreground">
-                    ¿No tienes una cuenta?{" "}
-                    <Link href="/register" className="text-primary hover:underline">
-                      Regístrate aquí
-                    </Link>
-                  </p>
-                </div>
-              </>
-            ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
+            <CardHeader className="text-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
+                className="w-12 h-12 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center"
+              >
+                {showForgotPassword ? (
+                  <Mail className="w-6 h-6 text-orange-600" />
+                ) : (
+                  <LogIn className="w-6 h-6 text-orange-600" />
                 )}
+              </motion.div>
 
-                <Alert className="bg-blue-50 border-blue-200">
-                  <AlertDescription>
-                    Ingresa tu dirección de email y te enviaremos un código de verificación para restablecer tu contraseña.
-                  </AlertDescription>
-                </Alert>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                <CardTitle className="flex items-center justify-center gap-2 text-2xl">
+                  <Sparkles className="w-5 h-5 text-orange-500" />
+                  {showForgotPassword ? "Recuperar Contraseña" : "Iniciar Sesión"}
+                  <Sparkles className="w-5 h-5 text-orange-500" />
+                </CardTitle>
+                <p className="text-muted-foreground">
+                  {showForgotPassword 
+                    ? "Ingresa tu email para recibir instrucciones" 
+                    : "Accede a tu cuenta para continuar"}
+                </p>
+              </motion.div>
+            </CardHeader>
 
-                <div className="space-y-2">
-                  <Label htmlFor="forgot-email">Email</Label>
-                  <Input
-                    id="forgot-email"
-                    type="email"
-                    required
-                    value={forgotPasswordEmail}
-                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                    placeholder="tu@email.com"
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setShowForgotPassword(false)
-                      setError("")
-                    }}
+            <CardContent>
+              <AnimatePresence mode="wait">
+                {!showForgotPassword ? (
+                  <motion.div
+                    key="login"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    transition={{ duration: 0.2 }}
                   >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="flex-1" 
-                    disabled={isSendingReset}
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <AnimatePresence>
+                        {error && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10, height: 0 }}
+                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                            exit={{ opacity: 0, y: -10, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <Alert variant="destructive">
+                              <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <motion.div 
+                        className="space-y-2"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 }}
+                      >
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          required
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          placeholder="tu@email.com"
+                          className="transition-all focus:scale-[1.01]"
+                        />
+                      </motion.div>
+
+                      <motion.div 
+                        className="space-y-2"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 }}
+                      >
+                        <Label htmlFor="password">Contraseña</Label>
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            name="password"
+                            type={showPassword ? "text" : "password"}
+                            required
+                            value={formData.password}
+                            onChange={handleInputChange}
+                            placeholder="Tu contraseña"
+                            className="pr-10 transition-all focus:scale-[1.01]"
+                          />
+                          <button
+                            type="button"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-transform hover:scale-110 active:scale-90"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4 }}
+                      >
+                        <Button 
+                          type="submit" 
+                          className="w-full relative overflow-hidden transition-transform hover:scale-[1.02] active:scale-[0.98]" 
+                          disabled={isLoading}
+                        >
+                          <AnimatePresence mode="wait">
+                            {isLoading ? (
+                              <motion.div
+                                key="loading"
+                                className="flex items-center gap-2"
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -5 }}
+                              >
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                                />
+                                <span>Iniciando sesión...</span>
+                              </motion.div>
+                            ) : (
+                              <motion.span
+                                key="normal"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                Iniciar Sesión
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </Button>
+                      </motion.div>
+                    </form>
+
+                    <motion.div 
+                      className="mt-6 text-center space-y-4"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.5 }}
+                    >
+                      <button
+                        onClick={() => setShowForgotPassword(true)}
+                        className="text-sm text-primary hover:underline transition-transform hover:scale-105 active:scale-95"
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </button>
+
+                      <p className="text-sm text-muted-foreground">
+                        ¿No tienes una cuenta?{" "}
+                        <Link href="/register" className="text-primary hover:underline">
+                          Regístrate aquí
+                        </Link>
+                      </p>
+
+                      <motion.div 
+                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        transition={{ type: "spring", stiffness: 300 }}
+                      >
+                        <p className="font-medium mb-1">Cuenta de prueba usuario normal:</p>
+                        <p>Email: demo@example.com</p>
+                        <p>Contraseña: demo123</p>
+                      </motion.div>
+                      
+                      <motion.div 
+                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
+                      >
+                        <p className="font-medium mb-1">Cuenta de prueba admin:</p>
+                        <p>Email: admin@ludicagames.com</p>
+                        <p>Contraseña: admin123</p>
+                      </motion.div>
+                    </motion.div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="forgot"
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    transition={{ duration: 0.2 }}
                   >
-                    {isSendingReset ? (
-                      <>Enviando...</>
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4 mr-2" />
-                        Enviar Instrucciones
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
+                      <AnimatePresence>
+                        {error && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                          >
+                            <Alert variant="destructive">
+                              <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <Alert className="bg-blue-50 border-blue-200">
+                        <AlertDescription>
+                          Ingresa tu dirección de email y te enviaremos instrucciones para restablecer tu contraseña.
+                        </AlertDescription>
+                      </Alert>
+
+                      <motion.div 
+                        className="space-y-2"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1 }}
+                      >
+                        <Label htmlFor="forgot-email">Email</Label>
+                        <Input
+                          id="forgot-email"
+                          type="email"
+                          required
+                          value={forgotPasswordEmail}
+                          onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                          placeholder="tu@email.com"
+                          className="transition-all focus:scale-[1.01]"
+                        />
+                      </motion.div>
+
+                      <motion.div 
+                        className="flex gap-2"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                          onClick={() => {
+                            setShowForgotPassword(false)
+                            setError("")
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        
+                        <Button 
+                          type="submit" 
+                          className="flex-1 relative overflow-hidden transition-transform hover:scale-[1.02] active:scale-[0.98]" 
+                          disabled={isSendingReset}
+                        >
+                          <AnimatePresence mode="wait">
+                            {isSendingReset ? (
+                              <motion.div
+                                key="sending"
+                                className="flex items-center gap-2"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                                />
+                                <span>Enviando...</span>
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="normal"
+                                className="flex items-center gap-2"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                <Mail className="w-4 h-4" />
+                                <span>Enviar Instrucciones</span>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </Button>
+                      </motion.div>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   )
 }

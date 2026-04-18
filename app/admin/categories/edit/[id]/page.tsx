@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, Save, Plus, Trash2, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Save, Pencil, Trash2, AlertTriangle, GripVertical } from "lucide-react" // Cambiado: Plus por Pencil
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
@@ -22,6 +22,126 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+
+// Importaciones para drag and drop
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Componente para subcategoría arrastrable
+function SortableSubcategoryItem({ 
+  subcategory, 
+  categoryId,
+  onEdit, 
+  onDeactivate, 
+  onDelete,
+  isDragging 
+}: { 
+  subcategory: any
+  categoryId: number
+  onEdit: (id: number) => void
+  onDeactivate: (id: number, name: string) => void
+  onDelete: (id: number, name: string) => void
+  isDragging: boolean
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isSortableDragging
+  } = useSortable({ id: subcategory.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isSortableDragging ? 0.5 : 1,
+    zIndex: isSortableDragging ? 999 : 'auto',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between p-3 border rounded-lg ${
+        isSortableDragging ? 'shadow-lg bg-background border-primary' : 'bg-background'
+      }`}
+    >
+      <div className="flex items-center gap-3 flex-1">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded transition-colors"
+          title="Arrastrar para reordenar"
+        >
+          <GripVertical className="w-5 h-5 text-muted-foreground" />
+        </button>
+        <div>
+          <p className="font-medium">{subcategory.name}</p>
+          <p className="text-sm text-muted-foreground font-mono">/{subcategory.slug}</p>
+        </div>
+        <div className="flex gap-2 ml-4">
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+            subcategory.is_active 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-gray-100 text-gray-800'
+          }`}>
+            {subcategory.is_active ? 'Activa' : 'Inactiva'}
+          </span>
+          {subcategory.display_order !== undefined && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+              Orden: {subcategory.display_order + 1}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-1">
+        <Button 
+          variant="outline" 
+          size="icon"
+          onClick={() => onEdit(subcategory.id)}
+          title="Editar subcategoría"
+        >
+          <Pencil className="w-4 h-4" /> {/* Cambiado: Save por Pencil */}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="icon"
+          onClick={() => onDeactivate(subcategory.id, subcategory.name)}
+          className="text-yellow-600 hover:text-yellow-700"
+          title="Desactivar subcategoría"
+        >
+          <AlertTriangle className="w-4 h-4" />
+        </Button>
+        <Button 
+          variant="outline" 
+          size="icon"
+          onClick={() => onDelete(subcategory.id, subcategory.name)}
+          className="text-destructive hover:text-destructive"
+          title="Eliminar permanentemente"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function EditCategoryPage() {
   const router = useRouter()
@@ -37,11 +157,16 @@ export default function EditCategoryPage() {
     addSubcategory,
     deactivateSubcategory,
     deleteSubcategoryPermanently,
-    deleteCategoryPermanently
+    deleteCategoryPermanently,
+    reorderSubcategories
   } = useCategoryStore()
 
   const category = getCategoryById(categoryId)
   const subcategoryToEdit = searchParams.get('subcategory')
+
+  // Estado para las subcategorías ordenadas
+  const [orderedSubcategories, setOrderedSubcategories] = useState<any[]>([])
+  const [isDragging, setIsDragging] = useState(false)
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -77,6 +202,28 @@ export default function EditCategoryPage() {
     categoryName: ""
   })
 
+  // Configurar sensores para drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Actualizar subcategorías ordenadas cuando cambia la categoría
+  useEffect(() => {
+    if (category) {
+      const sorted = [...category.subcategories].sort((a, b) => 
+        (a.display_order || 0) - (b.display_order || 0)
+      )
+      setOrderedSubcategories(sorted)
+    }
+  }, [category])
+
   useEffect(() => {
     if (category) {
       setCategoryForm({
@@ -100,6 +247,27 @@ export default function EditCategoryPage() {
       }
     }
   }, [subcategoryToEdit, category])
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setIsDragging(true)
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setIsDragging(false)
+    
+    const { active, over } = event
+    
+    if (active.id !== over?.id && over) {
+      const oldIndex = orderedSubcategories.findIndex(sub => sub.id === active.id)
+      const newIndex = orderedSubcategories.findIndex(sub => sub.id === over.id)
+      
+      const newOrder = arrayMove(orderedSubcategories, oldIndex, newIndex)
+      setOrderedSubcategories(newOrder)
+      
+      const orderedIds = newOrder.map(sub => sub.id)
+      await reorderSubcategories(categoryId, orderedIds)
+    }
+  }
 
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,7 +341,7 @@ export default function EditCategoryPage() {
     }
   }
 
-  // Diálogo para eliminar permanentemente subcategoría
+  // Diálogo para eliminar permanentemente subcategoría - CORREGIDO
   const openDeleteSubcategoryDialog = (subcategoryId: number, subcategoryName: string) => {
     setDeleteSubcategoryDialog({
       open: true,
@@ -424,63 +592,60 @@ export default function EditCategoryPage() {
                   </CardContent>
                 </Card>
 
-                {/* Lista de subcategorías existentes */}
+                {/* Lista de subcategorías existentes con drag and drop */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Subcategorías Existentes</CardTitle>
                     <CardDescription>
-                      Gestiona las subcategorías de esta categoría
+                      Arrastra las subcategorías para cambiar su orden de visualización
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {category.subcategories.length === 0 ? (
+                    {orderedSubcategories.length === 0 ? (
                       <p className="text-center text-muted-foreground py-4">
                         No hay subcategorías en esta categoría
                       </p>
                     ) : (
-                      <div className="space-y-3">
-                        {category.subcategories.map((subcategory) => (
-                          <div key={subcategory.id} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div>
-                                <p className="font-medium">{subcategory.name}</p>
-                                <p className="text-sm text-muted-foreground font-mono">/{subcategory.slug}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
-                                  subcategory.is_active 
-                                    ? 'bg-green-100 text-green-800' 
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {subcategory.is_active ? 'Activa' : 'Inactiva'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <Link href={`/admin/categories/edit/${categoryId}?subcategory=${subcategory.id}`}>
-                                <Button variant="outline" size="icon">
-                                  <Save className="w-4 h-4" />
-                                </Button>
-                              </Link>
-                              <Button 
-                                variant="outline" 
-                                size="icon"
-                                onClick={() => openDeactivateSubcategoryDialog(subcategory.id, subcategory.name)}
-                                className="text-yellow-600 hover:text-yellow-700"
-                              >
-                                <AlertTriangle className="w-4 h-4" />
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="icon"
-                                onClick={() => openDeleteSubcategoryDialog(subcategory.id, subcategory.name)}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                      >
+                        <SortableContext
+                          items={orderedSubcategories.map(sub => sub.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className={`space-y-3 ${isDragging ? 'cursor-grabbing' : ''}`}>
+                            {orderedSubcategories.map((subcategory) => (
+                              <SortableSubcategoryItem
+                                key={subcategory.id}
+                                subcategory={subcategory}
+                                categoryId={categoryId}
+                                onEdit={(id: number) => {
+                                  router.push(`/admin/categories/edit/${categoryId}?subcategory=${id}`);
+                                }}
+                                onDeactivate={(id: number, name: string) => {
+                                  openDeactivateSubcategoryDialog(id, name);
+                                }}
+                                onDelete={(id: number, name: string) => {
+                                  openDeleteSubcategoryDialog(id, name);
+                                }}
+                                isDragging={isDragging}
+                              />
+                            ))}
                           </div>
-                        ))}
+                        </SortableContext>
+                      </DndContext>
+                    )}
+                    
+                    {/* Instrucciones para drag and drop */}
+                    {orderedSubcategories.length > 1 && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-700 flex items-center gap-2">
+                          <GripVertical className="w-4 h-4" />
+                          Arrastra las subcategorías usando el ícono de 6 puntos para reordenarlas
+                        </p>
                       </div>
                     )}
                   </CardContent>
@@ -522,7 +687,7 @@ export default function EditCategoryPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Diálogo para eliminar permanentemente subcategoría */}
+         {/* Diálogo para eliminar permanentemente subcategoría */}
         <Dialog open={deleteSubcategoryDialog.open} onOpenChange={(open) => setDeleteSubcategoryDialog(prev => ({ ...prev, open }))}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -530,12 +695,16 @@ export default function EditCategoryPage() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
                 <DialogTitle>Eliminar Subcategoría Permanentemente</DialogTitle>
               </div>
-              <DialogDescription className="space-y-2">
-                <p className="font-semibold text-red-600">¡Esta acción no se puede deshacer!</p>
-                <p>La subcategoría "{deleteSubcategoryDialog.subcategoryName}" será eliminada permanentemente de la base de datos.</p>
-                <p>Los productos asociados a esta subcategoría podrían quedar sin categoría.</p>
-              </DialogDescription>
             </DialogHeader>
+            <div className="space-y-2 py-4">
+              <p className="font-semibold text-red-600">¡Esta acción no se puede deshacer!</p>
+              <p className="text-sm text-muted-foreground">
+                La subcategoría "{deleteSubcategoryDialog.subcategoryName}" será eliminada permanentemente de la base de datos.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Los productos asociados a esta subcategoría podrían quedar sin categoría.
+              </p>
+            </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button 
                 variant="outline" 
@@ -563,20 +732,16 @@ export default function EditCategoryPage() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
                 <DialogTitle>Eliminar Categoría Permanentemente</DialogTitle>
               </div>
-
-              <div className="space-y-2 text-sm text-muted-foreground mt-2">
-                <p className="font-semibold text-red-600">
-                  ¡Esta acción no se puede deshacer!
-                </p>
-                <p>
-                  La categoría "{deleteCategoryDialog.categoryName}" y todas sus
-                  subcategorías serán eliminadas permanentemente de la base de datos.
-                </p>
-                <p>
-                  Los productos asociados a esta categoría podrían quedar sin categoría.
-                </p>
-              </div>
             </DialogHeader>
+            <div className="space-y-2 py-4">
+              <p className="font-semibold text-red-600">¡Esta acción no se puede deshacer!</p>
+              <p className="text-sm text-muted-foreground">
+                La categoría "{deleteCategoryDialog.categoryName}" y todas sus subcategorías serán eliminadas permanentemente de la base de datos.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Los productos asociados a esta categoría podrían quedar sin categoría.
+              </p>
+            </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button 
                 variant="outline" 

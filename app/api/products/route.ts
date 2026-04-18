@@ -8,45 +8,31 @@ async function saveImage(file: File, filename: string): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   
-  // Crear directorio si no existe
   const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  // Generar nombre único
   const extension = file.type.split('/')[1] || 'jpg';
   const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
-  // Guardar archivo
   fs.writeFileSync(filepath, buffer);
   
   return `/uploads/products/${uniqueFilename}`;
 }
 
-// Función para corregir URL de imagen
 function correctImageUrl(imagePath: string | null): string {
-  if (!imagePath) {
-    return '/diverse-products-still-life.png';
-  }
-  
-  if (imagePath.startsWith('/')) {
-    return imagePath;
-  }
-  
-  if (imagePath.startsWith('uploads/')) {
-    return `/${imagePath}`;
-  }
-  
+  if (!imagePath) return '/diverse-products-still-life.png';
+  if (imagePath.startsWith('/')) return imagePath;
+  if (imagePath.startsWith('uploads/')) return `/${imagePath}`;
   if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || imagePath.includes('.png')) {
     return `/uploads/products/${imagePath}`;
   }
-  
   return '/diverse-products-still-life.png';
 }
 
-// GET /api/products - Obtener todos los productos
+// GET /api/products - Obtener todos los productos (CON TAGS, BRAND Y GENRE)
 export async function GET(request: Request) {
   const transaction = new Transaction();
   
@@ -55,10 +41,8 @@ export async function GET(request: Request) {
     const includeInactive = searchParams.get('includeInactive') === 'true';
     const isAdmin = searchParams.get('admin') === 'true';
 
-    // Iniciar transacción
     await transaction.begin();
 
-    // Construir WHERE clause
     let whereClause = '';
     if (!isAdmin && !includeInactive) {
       whereClause = 'WHERE p.is_active = true';
@@ -75,6 +59,7 @@ export async function GET(request: Request) {
         p.price,
         p.original_price as originalPrice,
         p.image,
+        p.youtube_video_id as youtubeVideoId,
         c.name as category,
         c.id as categoryId,
         p.age_min as ageMin,
@@ -90,6 +75,9 @@ export async function GET(request: Request) {
         p.is_active as isActive,
         p.created_at as createdAt,
         p.updated_at as updatedAt,
+        p.tags as tagsRaw,
+        p.brand as brand,
+        p.genre as genre,
         GROUP_CONCAT(DISTINCT s.name) as subcategory_names,
         GROUP_CONCAT(DISTINCT s.id) as subcategory_ids
       FROM products p
@@ -101,27 +89,36 @@ export async function GET(request: Request) {
       ORDER BY p.created_at DESC
     `) as any[];
 
-    // Para cada producto, obtener sus imágenes adicionales
     const productsWithAdditionalImages = await Promise.all(
       products.map(async (product) => {
-        // Obtener imágenes adicionales para este producto
         const additionalImagesResult = await transaction.query(
           'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
           [product.id]
         ) as any[];
 
         const additionalImages = additionalImagesResult.map((row: any) => row.image_url);
-
         const imageUrl = correctImageUrl(product.image);
         const correctedAdditionalImages = additionalImages.map(correctImageUrl);
 
-        // Procesar subcategorías
         const subcategoryNames = product.subcategory_names ? product.subcategory_names.split(',') : [];
         const subcategoryIds = product.subcategory_ids ? product.subcategory_ids.split(',').map((id: string) => parseInt(id)) : [];
         
-        // La primera subcategoría es la principal (para compatibilidad)
         const primarySubcategory = subcategoryNames.length > 0 ? subcategoryNames[0] : 'Sin subcategoría';
         const primarySubcategoryId = subcategoryIds.length > 0 ? subcategoryIds[0] : 0;
+
+        // PROCESAR TAGS desde el campo tagsRaw
+        let tagsArray: string[] = [];
+        if (product.tagsRaw) {
+          if (typeof product.tagsRaw === 'string') {
+            tagsArray = product.tagsRaw.split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean);
+          } else if (Array.isArray(product.tagsRaw)) {
+            tagsArray = product.tagsRaw.map((t: any) => {
+              if (typeof t === 'string') return t.toLowerCase();
+              if (t && typeof t === 'object') return (t.name || t.slug || '').toLowerCase();
+              return '';
+            }).filter(Boolean);
+          }
+        }
 
         return {
           id: product.id,
@@ -131,14 +128,18 @@ export async function GET(request: Request) {
           price: parseFloat(product.price),
           originalPrice: product.originalPrice ? parseFloat(product.originalPrice) : undefined,
           image: imageUrl,
+          youtubeVideoId: product.youtubeVideoId || '',
           category: product.category || 'Categoría',
           subcategory: primarySubcategory,
           categoryId: parseInt(product.categoryId),
           subcategoryId: primarySubcategoryId,
-          subcategoryIds: subcategoryIds,
+          subcategoryIds: subcategoryIds.map((id: number) => id.toString()),
           subcategories: subcategoryNames.map((name: string, index: number) => ({
             id: subcategoryIds[index],
-            name: name
+            name: name,
+            slug: '',
+            isPrimary: index === 0,
+            displayOrder: index
           })),
           ageMin: parseInt(product.ageMin) || 8,
           age: product.age || '8+ años',
@@ -152,39 +153,34 @@ export async function GET(request: Request) {
           isOnSale: Boolean(product.isOnSale),
           isActive: Boolean(product.isActive),
           additionalImages: correctedAdditionalImages,
-          tags: [],
+          tags: tagsArray,
+          brand: product.brand || 'Devir',
+          genre: product.genre || 'Estrategia, Familiar',
           createdAt: product.createdAt || new Date().toISOString(),
           updatedAt: product.updatedAt || new Date().toISOString()
         };
       })
     );
 
-    // Confirmar transacción
     await transaction.commit();
-
     return NextResponse.json(productsWithAdditionalImages);
 
   } catch (error) {
     console.error('Error en GET /api/products:', error);
     await transaction.rollback();
     return NextResponse.json(
-      { 
-        error: 'Failed to fetch products',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to fetch products', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-// POST /api/products - Crear un nuevo producto
+// POST /api/products - Crear un nuevo producto (CON TAGS, BRAND Y GENRE)
 export async function POST(request: Request) {
   const transaction = new Transaction();
   
   try {
     const formData = await request.formData();
-    
-    // Iniciar transacción
     await transaction.begin();
     
     const name = formData.get('name') as string;
@@ -204,69 +200,65 @@ export async function POST(request: Request) {
     const inStock = formData.get('inStock') === 'true';
     const isOnSale = formData.get('isOnSale') === 'true';
     const tags = formData.get('tags') as string;
+    const brand = formData.get('brand') as string;
+    const genre = formData.get('genre') as string;
+    const youtubeVideoId = formData.get('youtubeVideoId') as string;
 
-    // Validaciones básicas
     if (!name || !price || !categoryId || subcategoryIds.length === 0) {
       await transaction.rollback();
       return NextResponse.json(
-        { error: 'Faltan campos requeridos: nombre, precio, categoría y al menos una subcategoría son obligatorios' },
+        { error: 'Faltan campos requeridos' },
         { status: 400 }
       );
     }
 
-    // Generar slug
     const slug = name.toLowerCase()
       .replace(/[^a-z0-9 -]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-');
 
-    // Procesar imagen principal
     const mainImageFile = formData.get('mainImage') as File;
     let mainImageUrl = '/diverse-products-still-life.png'; 
 
     if (mainImageFile && mainImageFile.size > 0) {
       mainImageUrl = await saveImage(mainImageFile, slug);
-    } else {
-      const imageUrl = formData.get('image') as string;
-      if (imageUrl && imageUrl !== '/diverse-products-still-life.png') {
-        mainImageUrl = imageUrl;
-      }
     }
 
-    // Insertar producto
     const result: any = await transaction.query(
       `INSERT INTO products (
         name, slug, description, price, original_price, image, 
-        category_id, age_min, age_display, 
+        youtube_video_id, category_id, age_min, age_display, 
         players_min, players_max, players_display, 
-        duration_min, duration_display, stock, in_stock, is_on_sale, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true)`,
+        duration_min, duration_display, stock, in_stock, is_on_sale, is_active, 
+        tags, brand, genre
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?, ?)`,
       [
         name, slug, description, parseFloat(price), 
         originalPrice ? parseFloat(originalPrice) : null,
         mainImageUrl,
+        youtubeVideoId || null,
         parseInt(categoryId),
         parseInt(ageMin), ageDisplay, parseInt(playersMin), 
         parseInt(playersMax), playersDisplay, parseInt(durationMin),
-        durationDisplay, parseInt(stock), inStock, isOnSale
+        durationDisplay, parseInt(stock), inStock, isOnSale,
+        tags || null,
+        brand || 'Devir',
+        genre || 'Estrategia, Familiar'
       ]
     );
 
     const productId = result.insertId;
 
-    // Insertar relaciones con subcategorías
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcategoryId = subcategoryIds[i];
-      const isPrimary = i === 0 ? 1 : 0; // La primera es la principal
+      const isPrimary = i === 0 ? 1 : 0;
       await transaction.query(
         'INSERT INTO product_subcategories (product_id, subcategory_id, is_primary, display_order) VALUES (?, ?, ?, ?)',
         [productId, parseInt(subcategoryId), isPrimary, i + 1]
       );
     }
 
-    // Procesar imágenes adicionales
     const additionalImages = formData.getAll('additionalImages') as File[];
-    
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i];
       if (imageFile && imageFile.size > 0) {
@@ -278,13 +270,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Confirmar transacción
     await transaction.commit();
 
-    return NextResponse.json({ 
-      id: productId,
-      message: 'Producto creado exitosamente' 
-    });
+    return NextResponse.json({ id: productId, message: 'Producto creado exitosamente' });
 
   } catch (error) {
     console.error('Error en POST /api/products:', error);

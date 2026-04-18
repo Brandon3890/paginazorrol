@@ -1,8 +1,124 @@
-// app/api/payment/response/route.ts - VERSIÓN CON ACTUALIZACIÓN DE STOCK SOLO EN PAGO EXITOSO
+// app/api/payment/response/route.ts - VERSIÓN CORREGIDA CON sendBoletaEmail
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
-import { sendOrderConfirmationEmail } from '@/lib/email-service';
+import { sendBoletaEmail } from '@/lib/email-service'; // ← Cambiado a sendBoletaEmail
+
+// Función auxiliar para obtener el PDF de la boleta
+async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
+  try {
+    console.log('📄 Obteniendo PDF de boleta para folio:', folio);
+    
+    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/simplefactura/pdf?folio=${folio}`);
+    
+    if (!response.ok) {
+      throw new Error(`Error al obtener PDF: ${response.status}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+    
+  } catch (error: any) {
+    console.error('❌ Error obteniendo PDF:', error.message);
+    return null;
+  }
+}
+
+// Función auxiliar para emitir boleta
+async function emitirBoleta(orderId: number) {
+  try {
+    console.log('📄 Iniciando emisión de boleta para orden:', orderId);
+    
+    // Obtener datos de la orden
+    const orderData = await query(
+      `SELECT 
+        o.*,
+        u.email as customer_email,
+        u.first_name as customer_first_name,
+        u.last_name as customer_last_name,
+        u.phone as customer_phone,
+        u.rut as customer_rut,
+        ua.street as shipping_street,
+        ua.commune_name as shipping_commune,
+        ua.region_name as shipping_region
+      FROM orders o
+      LEFT JOIN users u ON o.user_id = u.id
+      LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+      WHERE o.id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (orderData.length === 0) {
+      throw new Error('Orden no encontrada');
+    }
+
+    const order = orderData[0];
+
+    // Obtener productos de la orden
+    const orderItems = await query(
+      `SELECT 
+        oi.product_name,
+        oi.product_price,
+        oi.quantity,
+        oi.subtotal
+      FROM order_items oi
+      WHERE oi.order_id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (orderItems.length === 0) {
+      throw new Error('No hay productos en la orden');
+    }
+
+    // Preparar datos del cliente
+    const cliente = {
+      rut: order.customer_rut || '55555555-5',
+      nombre: `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() || 'Consumidor Final',
+      direccion: order.shipping_street || 'Santiago',
+      comuna: order.shipping_commune || 'Santiago',
+      ciudad: order.shipping_region || 'Santiago'
+    };
+
+    // Preparar productos para la boleta
+    const productos = orderItems.map((item: any) => ({
+      nombre: item.product_name,
+      cantidad: item.quantity,
+      precio: parseFloat(item.product_price) // Este precio YA incluye IVA
+    }));
+
+    // Calcular total
+    const total = parseFloat(order.total);
+
+    // Llamar a la API de emisión de boleta
+    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/simplefactura/emitir-boleta`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cliente,
+        productos,
+        total,
+        ordenId: order.id,
+        ordenNumero: order.order_number
+      }),
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('✅ Boleta emitida exitosamente. Folio:', result.folio);
+      return { success: true, folio: result.folio, boletaId: result.boletaId };
+    } else {
+      console.error('❌ Error emitiendo boleta:', result.error);
+      return { success: false, error: result.error };
+    }
+
+  } catch (error: any) {
+    console.error('❌ Error en emitirBoleta:', error.message);
+    return { success: false, error: error.message };
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,11 +131,10 @@ export async function POST(request: NextRequest) {
       TBK_TOKEN: TBK_TOKEN ? `PRESENTE (${TBK_TOKEN.substring(0, 10)}...)` : 'AUSENTE' 
     })
 
-    // CASO 1: Pago cancelado por el usuario (TBK_TOKEN presente)
+    // CASO 1: Pago cancelado por el usuario
     if (TBK_TOKEN && !token_ws) {
       console.log('❌ Pago ABORTADO por el usuario con TBK_TOKEN:', TBK_TOKEN)
       
-      // Buscar la orden por session_id (TBK_TOKEN es el session_id)
       const orders = await query(
         `SELECT * FROM orders WHERE transbank_session_id = ?`,
         [TBK_TOKEN]
@@ -27,14 +142,12 @@ export async function POST(request: NextRequest) {
 
       if (orders.length > 0) {
         const order = orders[0]
-        console.log('📋 Orden encontrada para cancelación:', {
-          orderId: order.id,
-          orderNumber: order.order_number,
-          transbankBuyOrder: order.transbank_buy_order,
-          amount: order.transbank_amount
-        })
         
-        // Actualizar la orden como CANCELADA - NO ACTUALIZAR STOCK
+        await query(
+          'DELETE FROM stock_reservations WHERE user_id = ?',
+          [order.user_id]
+        );
+        
         await query(
           `UPDATE orders SET 
             payment_status = 'failed',
@@ -44,379 +157,255 @@ export async function POST(request: NextRequest) {
           [order.id]
         )
         
-        console.log('✅ Orden marcada como cancelada:', order.id)
-        console.log('📦 Stock NO actualizado - pago cancelado por usuario')
-        
-        // Redirigir a página de cancelación
         return NextResponse.redirect(
           `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=cancelled`
         )
       } else {
-        console.error('❌ Orden no encontrada para session_id:', TBK_TOKEN)
         return NextResponse.redirect(
           `${process.env.NEXTAUTH_URL}/order-success?status=cancelled&message=order_not_found`
         )
       }
     }
 
-    // CASO 2: Pago exitoso (token_ws presente)
+    // CASO 2: Pago exitoso
     if (token_ws && !TBK_TOKEN) {
-      console.log('💰 Procesando pago EXITOSO con token_ws:', token_ws.substring(0, 20) + '...')
+      console.log('💰 Procesando pago EXITOSO con token_ws')
       
       try {
-        // Confirmar transacción con Transbank
         const commitResponse = await transbankService.commitTransaction(token_ws)
-        console.log('📊 Respuesta de commit Transbank:', {
-          status: commitResponse.status,
-          response_code: commitResponse.response_code,
-          buy_order: commitResponse.buy_order,
-          amount: commitResponse.amount,
-          authorization_code: commitResponse.authorization_code
-        })
-
-        // Buscar la orden por buy_order de Transbank
+        
         const orders = await query(
           `SELECT * FROM orders WHERE transbank_buy_order = ?`,
           [commitResponse.buy_order]
         ) as any[]
 
-        if (orders.length > 0) {
-          const order = orders[0]
-          console.log('📋 Orden encontrada para confirmación:', {
-            orderId: order.id,
-            orderNumber: order.order_number,
-            transbankBuyOrder: order.transbank_buy_order,
-            amount: order.transbank_amount,
-            currentStatus: order.status,
-            paymentStatus: order.payment_status
-          })
-                    
-          // VERIFICAR ESTADO CON EL MÉTODO MEJORADO
-          if (transbankService.isTransactionApproved(commitResponse)) {
-            // Pago EXITOSO - APROBADO POR TRANSBANK
-            
-            // VERIFICAR QUE LA ORDEN NO ESTÉ YA MARCADA COMO PAGADA (EVITAR DUPLICADOS)
-            if (order.payment_status === 'paid') {
-              console.log('⚠️ Orden ya estaba marcada como pagada, evitando duplicación')
-            } else {
-              console.log('✅ Procesando pago exitoso por primera vez')
-              
-              // ACTUALIZAR STOCK DE PRODUCTOS
-              try {
-                console.log('📦 Descontando stock por pago exitoso...')
-                
-                // Obtener los items de la orden
-                const orderItems = await query(
-                  `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
-                  [order.id]
-                ) as any[];
-                
-                console.log(`📊 Productos a actualizar stock:`, orderItems)
-                
-                // Actualizar stock para cada producto
-                for (const item of orderItems) {
-                  const result: any = await query(
-                    `UPDATE products 
-                     SET stock = GREATEST(0, stock - ?), 
-                         in_stock = (stock - ?) > 0,
-                         updated_at = CURRENT_TIMESTAMP
-                     WHERE id = ?`,
-                    [item.quantity, item.quantity, item.product_id]
-                  );
-                  
-                  if (result.affectedRows > 0) {
-                    console.log(`✅ Stock actualizado para producto ${item.product_id}: -${item.quantity} unidades`)
-                  } else {
-                    console.warn(`⚠️ No se pudo actualizar stock para producto ${item.product_id}`)
-                  }
-                }
-                
-                console.log('🎯 Stock actualizado exitosamente para todos los productos')
-              } catch (stockError) {
-                console.error('❌ Error actualizando stock:', stockError);
-              }
-
-              // ENVIAR EMAIL DE CONFIRMACIÓN
-              try {
-                  console.log('📧 Preparando envío de email de confirmación...')
-                  
-                  // Obtener información completa de la orden para el email
-                  const orderDetails = await query(
-                    `SELECT 
-                      o.*,
-                      oi.product_name,
-                      oi.product_price,
-                      oi.quantity,
-                      oi.subtotal,
-                      p.category_id,
-                      c.name as category_name,
-                      ua.street as shipping_street,
-                      ua.commune_name as shipping_commune,
-                      ua.region_name as shipping_region,
-                      ua.postal_code as shipping_postal_code,
-                      u.email as customer_email,
-                      u.first_name as customer_first_name,
-                      u.last_name as customer_last_name,
-                      u.phone as customer_phone
-                    FROM orders o
-                    LEFT JOIN order_items oi ON o.id = oi.order_id
-                    LEFT JOIN products p ON oi.product_id = p.id
-                    LEFT JOIN categories c ON p.category_id = c.id
-                    LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
-                    LEFT JOIN users u ON o.user_id = u.id
-                    WHERE o.id = ?`,
-                    [order.id]
-                  ) as any[];
-
-                  if (orderDetails.length > 0) {
-                    const firstItem = orderDetails[0];
-                    
-                    // Preparar datos para el email
-                    const emailData = {
-                      orderNumber: firstItem.order_number,
-                      customerName: `${firstItem.customer_first_name || ''} ${firstItem.customer_last_name || ''}`.trim() || 'Cliente',
-                      customerEmail: firstItem.customer_email,
-                      customerPhone: firstItem.customer_phone || 'No especificado',
-                      orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      }),
-                      paymentMethod: "Transbank Webpay",
-                      items: orderDetails.map((item: any) => ({
-                        product_name: item.product_name,
-                        product_price: parseFloat(item.product_price),
-                        quantity: item.quantity,
-                        category: item.category_name || 'General'
-                      })),
-                      subtotal: parseFloat(firstItem.subtotal),
-                      discount: parseFloat(firstItem.discount || 0),
-                      shipping: parseFloat(firstItem.shipping || 0),
-                      tax: parseFloat(firstItem.tax || 0),
-                      total: parseFloat(firstItem.total),
-                      shippingAddress: {
-                        street: firstItem.shipping_street || 'No especificada',
-                        commune_name: firstItem.shipping_commune || 'No especificada',
-                        region_name: firstItem.shipping_region || 'No especificada',
-                        postal_code: firstItem.shipping_postal_code || '000000'
-                      }
-                    };
-
-                    console.log('📧 Enviando email de confirmación a:', firstItem.customer_email);
-                    
-                    const emailSent = await sendOrderConfirmationEmail(emailData);
-                    
-                    if (emailSent) {
-                      console.log('✅ Email de confirmación enviado exitosamente');
-                    } else {
-                      console.warn('⚠️ No se pudo enviar el email de confirmación');
-                    }
-                  }
-                } catch (emailError) {
-                  console.error('❌ Error enviando email de confirmación:', emailError);
-                  // No bloquear el flujo por error de email
-                }
-            }
-
-            // Actualizar estado de la orden a PAGADO
-            await query(
-              `UPDATE orders SET 
-                payment_status = 'paid',
-                status = 'processing',
-                transbank_token = ?,
-                transbank_authorization_code = ?,
-                transbank_payment_type = ?,
-                transbank_installments_number = ?,
-                transbank_card_number = ?,
-                transbank_accounting_date = ?,
-                transbank_transaction_date = ?,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = ?`,
-              [
-                token_ws,
-                commitResponse.authorization_code,
-                commitResponse.payment_type_code,
-                commitResponse.installments_number,
-                commitResponse.card_detail?.card_number || '',
-                commitResponse.accounting_date,
-                commitResponse.transaction_date,
-                order.id
-              ]
-            )
-
-            console.log('✅ Pago APROBADO por Transbank para orden:', order.id)
-
-            // Redirigir a página de éxito
-            return NextResponse.redirect(
-              `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=success`
-            )
-          } else {
-            // Pago RECHAZADO por Transbank
-            const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
-            console.log('❌ Pago RECHAZADO por Transbank:', {
-              reason: rejectionReason,
-              status: commitResponse.status,
-              response_code: commitResponse.response_code
-            })
-            
-            // NO ACTUALIZAR STOCK - PAGO RECHAZADO
-            await query(
-              `UPDATE orders SET 
-                payment_status = 'failed',
-                status = 'cancelled',
-                transbank_authorization_code = ?,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = ?`,
-              [commitResponse.authorization_code || 'REJECTED', order.id]
-            )
-
-            console.log('📦 Stock NO actualizado - pago rechazado por Transbank')
-
-            return NextResponse.redirect(
-              `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=error&message=payment_rejected&reason=${encodeURIComponent(rejectionReason)}`
-            )
-          }
-        } else {
-          console.error('❌ Orden no encontrada para buy_order:', commitResponse.buy_order)
-          
-          // Intentar buscar por token como fallback
-          const fallbackOrders = await query(
-            `SELECT * FROM orders WHERE transbank_token = ?`,
-            [token_ws]
-          ) as any[]
-          
-          if (fallbackOrders.length > 0) {
-            const fallbackOrder = fallbackOrders[0]
-            console.log('🔍 Orden encontrada por token fallback:', fallbackOrder.id)
-            return NextResponse.redirect(
-              `${process.env.NEXTAUTH_URL}/order-success?orderId=${fallbackOrder.id}&status=error&message=order_mismatch`
-            )
-          }
-          
+        if (orders.length === 0) {
           return NextResponse.redirect(
             `${process.env.NEXTAUTH_URL}/order-success?status=error&message=order_not_found`
           )
         }
 
-      } catch (commitError: any) {
-        console.error('❌ Error confirmando pago con Transbank:', {
-          error: commitError.message,
-          token: token_ws.substring(0, 20) + '...'
-        })
-        
-        // NO ACTUALIZAR STOCK - ERROR EN CONFIRMACIÓN
-        console.log('📦 Stock NO actualizado - error en confirmación de pago')
-        
-        // Intentar encontrar la orden para redirigir con orderId
-        let orderId = null
-        let orderNumber = null
-        try {
-          // Buscar por token primero
-          const ordersByToken = await query(
-            `SELECT * FROM orders WHERE transbank_token = ?`,
-            [token_ws]
-          ) as any[]
+        const order = orders[0]
+
+        if (transbankService.isTransactionApproved(commitResponse)) {
           
-          if (ordersByToken.length > 0) {
-            orderId = ordersByToken[0].id
-            orderNumber = ordersByToken[0].order_number
-          } else {
-            // Buscar por session_id como último recurso
-            const statusResponse = await transbankService.getTransactionStatus(token_ws)
-            if (statusResponse.session_id) {
-              const ordersBySession = await query(
-                `SELECT * FROM orders WHERE transbank_session_id = ?`,
-                [statusResponse.session_id]
-              ) as any[]
-              if (ordersBySession.length > 0) {
-                orderId = ordersBySession[0].id
-                orderNumber = ordersBySession[0].order_number
+          if (order.payment_status !== 'paid') {
+            console.log('✅ Procesando pago exitoso - DESCONTANDO STOCK')
+            
+            // Descontar stock
+            const orderItems = await query(
+              `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
+              [order.id]
+            ) as any[];
+            
+            for (const item of orderItems) {
+              await query(
+                `UPDATE products 
+                 SET stock = stock - ?,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ? AND stock >= ?`,
+                [item.quantity, item.product_id, item.quantity]
+              );
+            }
+            
+            // Eliminar reservas
+            await query(
+              'DELETE FROM stock_reservations WHERE user_id = ?',
+              [order.user_id]
+            );
+
+            // ========== EMITIR BOLETA ==========
+            console.log('📄 Emitiendo boleta electrónica...');
+            const resultadoBoleta = await emitirBoleta(order.id);
+            
+            let pdfBuffer = null;
+            let folio = null;
+            
+            if (resultadoBoleta.success) {
+              folio = resultadoBoleta.folio;
+              console.log('✅ Boleta emitida, folio:', folio);
+              
+              // Obtener el PDF de la boleta
+              pdfBuffer = await obtenerPDFBoleta(folio);
+              if (pdfBuffer) {
+                console.log('✅ PDF de boleta obtenido correctamente');
+              } else {
+                console.warn('⚠️ No se pudo obtener el PDF de la boleta');
               }
+            } else {
+              console.error('⚠️ Error emitiendo boleta:', resultadoBoleta.error);
+            }
+
+            // ========== ENVIAR EMAIL CON BOLETA ==========
+            try {
+              // Obtener datos completos para el email
+              const orderDetails = await query(
+                `SELECT 
+                  o.*,
+                  oi.product_name,
+                  oi.product_price,
+                  oi.quantity,
+                  oi.subtotal,
+                  u.email as customer_email,
+                  u.first_name as customer_first_name,
+                  u.last_name as customer_last_name,
+                  u.phone as customer_phone,
+                  ua.street as shipping_street,
+                  ua.commune_name as shipping_commune,
+                  ua.region_name as shipping_region,
+                  ua.postal_code as shipping_postal_code
+                FROM orders o
+                LEFT JOIN order_items oi ON o.id = oi.order_id
+                LEFT JOIN users u ON o.user_id = u.id
+                LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+                WHERE o.id = ?`,
+                [order.id]
+              ) as any[];
+
+              if (orderDetails.length > 0 && orderDetails[0].customer_email) {
+                const firstItem = orderDetails[0];
+                
+                // Calcular el IVA incluido correctamente
+                const subtotalConIVA = parseFloat(firstItem.subtotal);
+                const subtotalNeto = Math.round(subtotalConIVA / 1.19);
+                const ivaIncluido = subtotalConIVA - subtotalNeto;
+                
+                // Preparar datos para sendBoletaEmail
+                const emailData = {
+                  orderNumber: firstItem.order_number,
+                  customerName: `${firstItem.customer_first_name || ''} ${firstItem.customer_last_name || ''}`.trim() || 'Cliente',
+                  customerEmail: firstItem.customer_email,
+                  customerPhone: firstItem.customer_phone || 'No especificado',
+                  orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  }),
+                  paymentMethod: "Transbank Webpay",
+                  items: orderDetails.map((item: any) => ({
+                    product_name: item.product_name,
+                    product_price: parseFloat(item.product_price),
+                    quantity: item.quantity
+                  })),
+                  subtotal: subtotalConIVA, // Ya incluye IVA
+                  discount: parseFloat(firstItem.discount || 0),
+                  shipping: parseFloat(firstItem.shipping || 0),
+                  tax: ivaIncluido, // IVA incluido (para desglose)
+                  total: parseFloat(firstItem.total),
+                  shippingAddress: {
+                    street: firstItem.shipping_street || 'No especificada',
+                    commune_name: firstItem.shipping_commune || 'No especificada',
+                    region_name: firstItem.shipping_region || 'No especificada',
+                    postal_code: firstItem.shipping_postal_code || '000000'
+                  },
+                  storeInfo: {
+                    name: "Zorro Lúdico",
+                    rut: process.env.SIMPLEFACTURA_RUT_EMISOR || "78181331-1",
+                    giro: "Venta de juegos",
+                    direccion: "Calle 7 numero 3",
+                    comuna: "Santiago",
+                    ciudad: "Santiago"
+                  }
+                };
+
+                // Enviar email con la boleta PDF (si tenemos PDF)
+                if (pdfBuffer && folio) {
+                  await sendBoletaEmail(emailData, pdfBuffer, folio);
+                  console.log('📧 Email con boleta PDF enviado a:', firstItem.customer_email);
+                } else {
+                  // Si no hay PDF, enviar solo confirmación sin boleta
+                  console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
+                  // Podrías tener una función sendOrderConfirmationEmail sin PDF aquí
+                }
+              }
+            } catch (emailError) {
+              console.error('❌ Error enviando email:', emailError);
             }
           }
-        } catch (searchError) {
-          console.error('Error en búsqueda de orden fallback:', searchError)
+
+          // Actualizar estado de la orden
+          await query(
+            `UPDATE orders SET 
+              payment_status = 'paid',
+              status = 'processing',
+              transbank_token = ?,
+              transbank_authorization_code = ?,
+              transbank_payment_type = ?,
+              transbank_installments_number = ?,
+              transbank_card_number = ?,
+              transbank_accounting_date = ?,
+              transbank_transaction_date = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+            [
+              token_ws,
+              commitResponse.authorization_code,
+              commitResponse.payment_type_code,
+              commitResponse.installments_number,
+              commitResponse.card_detail?.card_number || '',
+              commitResponse.accounting_date,
+              commitResponse.transaction_date,
+              order.id
+            ]
+          )
+
+          console.log('✅ Pago APROBADO para orden:', order.id)
+
+          return NextResponse.redirect(
+            `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=success`
+          )
+
+        } else {
+          // Pago rechazado
+          const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
+          
+          await query(
+            'DELETE FROM stock_reservations WHERE user_id = ?',
+            [order.user_id]
+          );
+          
+          await query(
+            `UPDATE orders SET 
+              payment_status = 'failed',
+              status = 'cancelled',
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+            [order.id]
+          )
+
+          return NextResponse.redirect(
+            `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=error&message=payment_rejected&reason=${encodeURIComponent(rejectionReason)}`
+          )
         }
-        
+
+      } catch (commitError: any) {
+        console.error('❌ Error confirmando pago:', commitError)
         return NextResponse.redirect(
-          `${process.env.NEXTAUTH_URL}/order-success?orderId=${orderId || ''}&status=error&message=payment_failed`
+          `${process.env.NEXTAUTH_URL}/order-success?status=error&message=payment_failed`
         )
       }
     }
 
-    // CASO 3: Ambos tokens presentes (situación inesperada)
-    if (token_ws && TBK_TOKEN) {
-      console.error('⚠️ Situación inesperada: Ambos tokens presentes', {
-        token_ws: token_ws.substring(0, 10) + '...',
-        TBK_TOKEN: TBK_TOKEN.substring(0, 10) + '...'
-      })
-      
-      // Priorizar TBK_TOKEN (cancelación del usuario)
-      const orders = await query(
-        `SELECT * FROM orders WHERE transbank_session_id = ?`,
-        [TBK_TOKEN]
-      ) as any[]
-
-      if (orders.length > 0) {
-        // NO ACTUALIZAR STOCK - CANCELACIÓN
-        await query(
-          `UPDATE orders SET 
-            payment_status = 'failed',
-            status = 'cancelled',
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-          [orders[0].id]
-        )
-        
-        console.log('📦 Stock NO actualizado - situación inesperada con ambos tokens')
-        
-        return NextResponse.redirect(
-          `${process.env.NEXTAUTH_URL}/order-success?orderId=${orders[0].id}&status=cancelled&message=unexpected_tokens`
-        )
-      }
-    }
-
-    // CASO 4: Tokens inválidos o ausentes
-    console.error('❌ Tokens inválidos o ausentes:', { 
-      token_ws: token_ws ? 'PRESENTE' : 'AUSENTE', 
-      TBK_TOKEN: TBK_TOKEN ? 'PRESENTE' : 'AUSENTE' 
-    })
-    
-    console.log('📦 Stock NO actualizado - tokens inválidos')
-    
+    // CASO 3: Tokens inválidos
+    console.error('❌ Tokens inválidos o ausentes')
     return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/order-success?status=error&message=invalid_tokens`
     )
 
   } catch (error: any) {
-    console.error('❌ Error CRÍTICO procesando respuesta de Webpay:', {
-      error: error.message,
-      stack: error.stack
-    })
-    
-    console.log('📦 Stock NO actualizado - error crítico')
-    
+    console.error('❌ Error CRÍTICO:', error)
     return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/order-success?status=error&message=processing_error`
     )
   }
 }
 
-// Manejar GET para redirecciones directas
 export async function GET(request: NextRequest) {
-  console.log('📥 GET recibido en /api/payment/response')
-  
   const searchParams = request.nextUrl.searchParams
   const token_ws = searchParams.get('token_ws')
   const TBK_TOKEN = searchParams.get('TBK_TOKEN')
   
   if (token_ws || TBK_TOKEN) {
-    console.log('🔄 Reenviando parámetros GET a POST:', {
-      token_ws: token_ws ? 'PRESENTE' : 'AUSENTE',
-      TBK_TOKEN: TBK_TOKEN ? 'PRESENTE' : 'AUSENTE'
-    })
-    
-    // Reenviar a POST con los parámetros
     const formData = new FormData()
     if (token_ws) formData.append('token_ws', token_ws)
     if (TBK_TOKEN) formData.append('TBK_TOKEN', TBK_TOKEN)
@@ -427,7 +416,5 @@ export async function GET(request: NextRequest) {
     }))
   }
   
-  // Si no hay tokens, redirigir al inicio
-  console.log('🔀 Redirigiendo al inicio - sin tokens')
   return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/`)
 }

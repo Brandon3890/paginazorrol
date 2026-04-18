@@ -1,116 +1,207 @@
-// app/admin/products/new/page.tsx - CORREGIDO Y ACTUALIZADO
+// app/admin/products/new/page.tsx - COMPLETO
 "use client"
 
-import type React from "react"
-import { useEffect, useState } from "react"
+import React, { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { useAuthStore } from "@/lib/auth-store"
 import { useProductStore } from "@/lib/product-store"
 import { useCategories } from "@/hooks/useCategories"
+import { useProducts } from "@/hooks/useProducts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Upload, X, Percent, Loader2 } from "lucide-react"
+import { 
+  ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
+  Rocket, Sparkles, Package, AlertCircle, Tag
+} from "lucide-react"
 import Link from "next/link"
 
-// Función para redimensionar imagen y mantenerla como File
+// Función para redimensionar imagen
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+    const reader = new FileReader();
     reader.onload = (e) => {
-      const img = new Image()
+      const img = document.createElement('img');
       img.onload = () => {
-        const canvas = document.createElement("canvas")
-        let width = img.width
-        let height = img.height
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
 
-        // Calcular nuevas dimensiones manteniendo aspect ratio
         if (width > height) {
           if (width > maxWidth) {
-            height = (height * maxWidth) / width
-            width = maxWidth
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
           }
         } else {
           if (height > maxHeight) {
-            width = (width * maxHeight) / height
-            height = maxHeight
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
           }
         }
 
-        canvas.width = width
-        canvas.height = height
+        canvas.width = width;
+        canvas.height = height;
 
-        const ctx = canvas.getContext("2d")
+        const ctx = canvas.getContext('2d');
         if (!ctx) {
-          reject(new Error("No se pudo obtener el contexto del canvas"))
-          return
+          reject(new Error('No se pudo obtener el contexto del canvas'));
+          return;
         }
 
-        ctx.drawImage(img, 0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height);
         
-        // Convertir de nuevo a File en lugar de Data URL
         canvas.toBlob((blob) => {
           if (blob) {
             const resizedFile = new File([blob], file.name, {
               type: file.type,
               lastModified: Date.now()
-            })
-            resolve(resizedFile)
+            });
+            resolve(resizedFile);
           } else {
-            reject(new Error("Error al crear el blob"))
+            reject(new Error('Error al crear el blob'));
           }
-        }, file.type, 0.8)
-      }
-      img.onerror = () => reject(new Error("Error al cargar la imagen"))
-      img.src = e.target?.result as string
-    }
-    reader.onerror = () => reject(new Error("Error al leer el archivo"))
-    reader.readAsDataURL(file)
-  })
-}
-
-// Función para formatear precio en CLP
-const formatCLP = (price: number): string => {
-  return Math.round(price).toLocaleString('es-CL');
+        }, file.type, 0.8);
+      };
+      img.onerror = () => reject(new Error('Error al cargar la imagen'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Error al leer el archivo'));
+    reader.readAsDataURL(file);
+  });
 };
 
-// Función para calcular precio con descuento
-const calculateDiscountPrice = (price: number, discountPercent: number): number => {
-  return price * (1 - discountPercent / 100);
-};
-
-// Función auxiliar para convertir cualquier valor a string de forma segura
-const safeToString = (value: any): string => {
-  if (value === null || value === undefined) return ""
-  if (typeof value === 'string') return value
-  return String(value)
+// Función mejorada para extraer ID de YouTube
+const extractYoutubeId = (url: string): string | null => {
+  if (!url) return null;
+  
+  if (/^[a-zA-Z0-9_-]{11}$/.test(url)) {
+    return url;
+  }
+  
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([^&]+)/,
+    /(?:youtu\.be\/)([^?]+)/,
+    /(?:youtube\.com\/embed\/)([^?]+)/,
+    /(?:youtube\.com\/v\/)([^?]+)/,
+    /(?:youtube\.com\/shorts\/)([^?]+)/,
+    /(?:youtube\.com\/watch\?.*&v=)([^&]+)/,
+    /(?:m\.youtube\.com\/watch\?v=)([^&]+)/
+  ]
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match) return match[1]
+  }
+  
+  if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
+    return url;
+  }
+  
+  return null
 }
 
-// Función auxiliar para convertir cualquier valor a número de forma segura
+// Funciones auxiliares
+const formatCLP = (price: number): string => Math.round(price).toLocaleString('es-CL');
+const calculateDiscountPrice = (price: number, discountPercent: number): number => price * (1 - discountPercent / 100);
+const safeToString = (value: any): string => value === null || value === undefined ? "" : String(value);
 const safeToNumber = (value: any): number => {
   if (value === null || value === undefined) return 0
-  if (typeof value === 'number') return value
-  const num = parseFloat(value)
+  const num = parseFloat(String(value))
   return isNaN(num) ? 0 : num
 }
+
+// Componente memoizado para subcategorías
+const SubcategoryCheckbox = React.memo(({ 
+  subcat, 
+  isSelected, 
+  onToggle 
+}: { 
+  subcat: any
+  isSelected: boolean
+  onToggle: (id: string) => void
+}) => {
+  const id = safeToString(subcat.id);
+  
+  return (
+    <div className="flex items-center space-x-2">
+      <input
+        type="checkbox"
+        id={`subcat-${id}`}
+        checked={isSelected}
+        onChange={() => onToggle(id)}
+        className="h-4 w-4 rounded border-gray-300 text-[#C2410C] focus:ring-[#C2410C]"
+      />
+      <label 
+        htmlFor={`subcat-${id}`}
+        className="text-sm cursor-pointer select-none"
+      >
+        {subcat.name}
+      </label>
+    </div>
+  );
+});
+
+SubcategoryCheckbox.displayName = 'SubcategoryCheckbox';
+
+// Componente memoizado para productos recomendados
+const RecommendedProductCard = React.memo(({ 
+  product, 
+  isSelected, 
+  onToggle 
+}: { 
+  product: any
+  isSelected: boolean
+  onToggle: (id: number) => void
+}) => {
+  return (
+    <div
+      className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+        isSelected ? 'bg-green-50 border-green-500' : 'hover:bg-muted/50'
+      }`}
+      onClick={() => onToggle(product.id)}
+    >
+      <div className="flex items-start gap-3">
+        <img
+          src={product.image || "/placeholder.svg"}
+          alt={product.name}
+          className="w-16 h-16 object-cover rounded"
+        />
+        <div className="flex-1">
+          <p className="font-medium text-sm line-clamp-2">{product.name}</p>
+          <p className="text-sm text-muted-foreground">
+            ${formatCLP(product.price)} CLP
+          </p>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggle(product.id)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-[#C2410C] focus:ring-[#C2410C]"
+          />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+RecommendedProductCard.displayName = 'RecommendedProductCard';
 
 export default function NewProductPage() {
   const router = useRouter()
   const { user, isAuthenticated } = useAuthStore()
   const { addProduct } = useProductStore()
   const { categories, loading: categoriesLoading } = useCategories()
+  const { products: allProducts, loading: productsLoading } = useProducts({ perPage: 100 })
 
   const [formData, setFormData] = useState({
     name: "",
     price: "",
     originalPrice: "",
     image: "",
+    youtubeVideoId: "",
     categoryId: "",
     subcategoryIds: [] as string[],
     age: "",
@@ -126,26 +217,31 @@ export default function NewProductPage() {
     inStock: true,
     isOnSale: false,
     discountPercent: "0",
+    recommendedProducts: [] as number[],
+    brand: "Devir",
+    genre: "Estrategia, Familiar",
   })
 
   const [selectedCategory, setSelectedCategory] = useState<string>("")
-  const [availableSubcategories, setAvailableSubcategories] = useState<any[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string>("")
   const [isUploading, setIsUploading] = useState(false)
-  const [showDiscount, setShowDiscount] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState("")
+  const [youtubeError, setYoutubeError] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedTag, setSelectedTag] = useState<string>("")
   
-  // Estados para imágenes adicionales
   const [newAdditionalImageFiles, setNewAdditionalImageFiles] = useState<File[]>([])
   const [newAdditionalImagePreviews, setNewAdditionalImagePreviews] = useState<string[]>([])
 
-  // Calcular precios para mostrar
-  const priceCLP = safeToNumber(formData.price)
-  const originalPriceCLP = safeToNumber(formData.originalPrice)
-  const discountPercent = safeToNumber(formData.discountPercent)
-  const finalPriceCLP = discountPercent > 0 
-    ? calculateDiscountPrice(originalPriceCLP, discountPercent)
-    : priceCLP
+  const availableSubcategories = useMemo(() => {
+    if (!selectedCategory || categories.length === 0) return []
+    const category = categories.find((c) => safeToString(c.id) === selectedCategory)
+    return category?.subcategories || []
+  }, [selectedCategory, categories])
+
+  const totalImages = (imageFile ? 1 : 0) + newAdditionalImageFiles.length
+  const MAX_TOTAL_IMAGES = 6
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
@@ -153,57 +249,103 @@ export default function NewProductPage() {
     }
   }, [isAuthenticated, user, router])
 
-  useEffect(() => {
-    if (selectedCategory && categories.length > 0) {
-      const category = categories.find((c) => safeToString(c.id) === selectedCategory)
-      setAvailableSubcategories(category?.subcategories || [])
-    }
-  }, [selectedCategory, categories])
-
-  // Función para manejar selección/deselección de subcategorías
-  const handleSubcategoryToggle = (subcategoryId: string) => {
-    setFormData(prev => {
-      const currentIds = prev.subcategoryIds
-      const isSelected = currentIds.includes(subcategoryId)
+  const handleTagSelect = (tagValue: string) => {
+    if (selectedTag === tagValue) {
+      setSelectedTag("")
+      setFormData(prev => ({ 
+        ...prev, 
+        tags: "",
+        discountPercent: "0",
+        originalPrice: "",
+        isOnSale: false,
+        stock: prev.stock === "0" ? "1" : prev.stock,
+        inStock: prev.stock !== "0"
+      }))
+    } else {
+      setSelectedTag(tagValue)
       
-      if (isSelected) {
-        return {
-          ...prev,
-          subcategoryIds: currentIds.filter(id => id !== subcategoryId)
-        }
+      if (tagValue === "") {
+        // Normal - sin etiqueta
+        setFormData(prev => ({ 
+          ...prev, 
+          tags: "",
+          discountPercent: "0",
+          originalPrice: "",
+          isOnSale: false,
+          stock: prev.stock === "0" ? "1" : prev.stock,
+          inStock: true
+        }))
+      } else if (tagValue === "agotado") {
+        setFormData(prev => ({ 
+          ...prev, 
+          tags: tagValue,
+          stock: "0",
+          inStock: false,
+          discountPercent: "0",
+          originalPrice: "",
+          isOnSale: false
+        }))
+      } else if (tagValue === "descuento") {
+        setFormData(prev => ({ 
+          ...prev, 
+          tags: tagValue,
+          discountPercent: prev.discountPercent !== "0" ? prev.discountPercent : "10",
+          isOnSale: true,
+          stock: prev.stock === "0" ? "1" : prev.stock,
+          inStock: true
+        }))
       } else {
-        return {
-          ...prev,
-          subcategoryIds: [...currentIds, subcategoryId]
-        }
+        setFormData(prev => ({ 
+          ...prev, 
+          tags: tagValue,
+          discountPercent: "0",
+          originalPrice: "",
+          isOnSale: false,
+          stock: prev.stock === "0" ? "1" : prev.stock,
+          inStock: true
+        }))
       }
-    })
+    }
   }
 
-  // Función para verificar si una subcategoría está seleccionada
-  const isSubcategorySelected = (subcategoryId: string) => {
-    return formData.subcategoryIds.includes(subcategoryId)
-  }
+  const handleSubcategoryToggle = useCallback((subcategoryId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subcategoryIds: prev.subcategoryIds.includes(subcategoryId)
+        ? prev.subcategoryIds.filter(id => id !== subcategoryId)
+        : [...prev.subcategoryIds, subcategoryId]
+    }));
+  }, []);
 
-  // Función para manejar cambios en el precio y calcular automáticamente el precio con descuento
-  const handlePriceChange = (field: 'price' | 'originalPrice' | 'discountPercent', value: string) => {
+  const handleDiscountChange = (type: 'originalPrice' | 'discountPercent' | 'price', value: string) => {
+    if (selectedTag !== "descuento") return
+
     setFormData(prev => {
-      const newData = { ...prev, [field]: value }
+      const newData = { ...prev }
       
-      if (field === 'discountPercent' && newData.originalPrice) {
-        const originalPrice = safeToNumber(newData.originalPrice)
-        const discount = safeToNumber(value)
-        if (discount > 0) {
-          newData.price = calculateDiscountPrice(originalPrice, discount).toFixed(0)
+      if (type === 'originalPrice') {
+        newData.originalPrice = value
+        const original = safeToNumber(value)
+        const discount = safeToNumber(prev.discountPercent)
+        if (original > 0 && discount > 0) {
+          newData.price = calculateDiscountPrice(original, discount).toFixed(0)
           newData.isOnSale = true
         }
-      }
-      
-      if (field === 'originalPrice' && newData.discountPercent !== "0") {
-        const originalPrice = safeToNumber(value)
-        const discount = safeToNumber(newData.discountPercent)
-        if (discount > 0) {
-          newData.price = calculateDiscountPrice(originalPrice, discount).toFixed(0)
+      } else if (type === 'discountPercent') {
+        newData.discountPercent = value
+        const original = safeToNumber(prev.originalPrice)
+        const discount = safeToNumber(value)
+        if (original > 0 && discount > 0) {
+          newData.price = calculateDiscountPrice(original, discount).toFixed(0)
+          newData.isOnSale = true
+        }
+      } else if (type === 'price') {
+        newData.price = value
+        const original = safeToNumber(prev.originalPrice)
+        const current = safeToNumber(value)
+        if (original > 0 && current > 0 && original > current) {
+          const discount = Math.round(((original - current) / original) * 100)
+          newData.discountPercent = discount.toString()
           newData.isOnSale = true
         }
       }
@@ -212,26 +354,166 @@ export default function NewProductPage() {
     })
   }
 
-  // Función para activar/desactivar oferta
-  const toggleSale = () => {
-    if (!formData.isOnSale) {
-      // Activar oferta - copiar precio actual a precio original y aplicar descuento
-      setFormData(prev => ({
-        ...prev,
-        isOnSale: true,
-        originalPrice: prev.price || "0",
-        discountPercent: "10"
-      }))
-      setShowDiscount(true)
+  const handleYoutubeUrlChange = useCallback((url: string) => {
+    setYoutubeUrl(url)
+    setYoutubeError(false)
+    const videoId = extractYoutubeId(url)
+    if (videoId) {
+      setFormData(prev => ({ ...prev, youtubeVideoId: videoId }))
     } else {
-      // Desactivar oferta
-      setFormData(prev => ({
-        ...prev,
-        isOnSale: false,
-        originalPrice: "",
-        discountPercent: "0"
-      }))
-      setShowDiscount(false)
+      setFormData(prev => ({ ...prev, youtubeVideoId: url }))
+    }
+  }, [])
+
+  const handleRecommendedProductToggle = useCallback((productId: number) => {
+    setFormData(prev => ({
+      ...prev,
+      recommendedProducts: prev.recommendedProducts.includes(productId)
+        ? prev.recommendedProducts.filter(id => id !== productId)
+        : [...prev.recommendedProducts, productId]
+    }))
+  }, [])
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (totalImages >= MAX_TOTAL_IMAGES) {
+      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
+      return
+    }
+    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
+      setIsUploading(true)
+      try {
+        const resizedFile = await resizeImage(file, 1024, 1024)
+        const previewUrl = URL.createObjectURL(resizedFile)
+        setImageFile(resizedFile)
+        setImagePreview(previewUrl)
+      } catch (error) {
+        console.error("Error procesando imagen:", error)
+        alert("Error al procesar la imagen")
+      } finally {
+        setIsUploading(false)
+      }
+    } else {
+      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
+    }
+  }
+
+  const removeMainImage = useCallback(() => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setImagePreview("")
+    setFormData(prev => ({ ...prev, image: "" }))
+  }, [imagePreview])
+
+  const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (totalImages >= MAX_TOTAL_IMAGES) {
+      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
+      return
+    }
+    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
+      setIsUploading(true)
+      try {
+        const resizedFile = await resizeImage(file, 1024, 1024)
+        const previewUrl = URL.createObjectURL(resizedFile)
+        setNewAdditionalImageFiles(prev => [...prev, resizedFile])
+        setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
+      } catch (error) {
+        console.error("Error procesando imagen adicional:", error)
+        alert("Error al procesar la imagen")
+      } finally {
+        setIsUploading(false)
+      }
+    } else {
+      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
+    }
+  }
+
+  const removeAdditionalImage = useCallback((index: number) => {
+    URL.revokeObjectURL(newAdditionalImagePreviews[index])
+    setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
+    setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }, [newAdditionalImagePreviews])
+
+  const filteredProducts = useMemo(() => {
+    return allProducts.filter((product: any) => 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [allProducts, searchTerm])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.name || !formData.price || !formData.categoryId) {
+      alert("Por favor completa todos los campos obligatorios")
+      return
+    }
+
+    if (formData.subcategoryIds.length === 0) {
+      alert("Por favor selecciona al menos una subcategoria")
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const formDataToSend = new FormData()
+      
+      formDataToSend.append('name', formData.name)
+      formDataToSend.append('description', formData.description)
+      formDataToSend.append('price', formData.price)
+      formDataToSend.append('categoryId', formData.categoryId)
+      formDataToSend.append('youtubeVideoId', formData.youtubeVideoId)
+      formDataToSend.append('brand', formData.brand)
+      formDataToSend.append('genre', formData.genre)
+      
+      if (selectedTag && selectedTag !== "") {
+        formDataToSend.append('tags', selectedTag)
+      } else {
+        formDataToSend.append('tags', '') 
+      }
+      
+      if (selectedTag === "descuento" && formData.originalPrice) {
+        formDataToSend.append('originalPrice', formData.originalPrice)
+        formDataToSend.append('isOnSale', 'true')
+      } else {
+        formDataToSend.append('isOnSale', 'false')
+      }
+      
+      formData.subcategoryIds.forEach(id => formDataToSend.append('subcategoryIds', id))
+      formData.recommendedProducts.forEach(id => formDataToSend.append('recommendedProducts', id.toString()))
+      
+      formDataToSend.append('ageDisplay', formData.age)
+      formDataToSend.append('ageMin', formData.ageMin)
+      formDataToSend.append('playersDisplay', formData.players)
+      formDataToSend.append('playersMin', formData.playersMin)
+      formDataToSend.append('playersMax', formData.playersMax)
+      formDataToSend.append('durationDisplay', formData.duration)
+      formDataToSend.append('durationMin', formData.durationMin)
+      formDataToSend.append('stock', formData.stock)
+      formDataToSend.append('inStock', String(formData.inStock))
+      formDataToSend.append('tags', selectedTag)
+
+      if (imageFile) {
+        formDataToSend.append('mainImage', imageFile)
+      } else if (formData.image) {
+        formDataToSend.append('image', formData.image)
+      } else {
+        formDataToSend.append('image', '/diverse-products-still-life.png')
+      }
+
+      newAdditionalImageFiles.forEach(file => formDataToSend.append('additionalImages', file))
+
+      await addProduct(formDataToSend)
+      
+      if (imageFile) URL.revokeObjectURL(imagePreview)
+      newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
+      
+      router.push("/admin/products")
+    } catch (error) {
+      console.error("Error creating product:", error)
+      alert("Error al crear el producto")
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -247,130 +529,6 @@ export default function NewProductPage() {
     )
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        
-        setImageFile(resizedFile)
-        setImagePreview(previewUrl)
-        
-      } catch (error) {
-        console.error("Error procesando imagen:", error)
-        alert("Error al procesar la imagen. Por favor intenta con otra imagen.")
-      } finally {
-        setIsUploading(false)
-      }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
-    }
-  }
-
-  const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      if (newAdditionalImageFiles.length >= 3) {
-        alert("Máximo 3 imágenes adicionales permitidas")
-        return
-      }
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        
-        setNewAdditionalImageFiles([...newAdditionalImageFiles, resizedFile])
-        setNewAdditionalImagePreviews([...newAdditionalImagePreviews, previewUrl])
-      } catch (error) {
-        console.error("Error procesando imagen adicional:", error)
-        alert("Error al procesar la imagen. Por favor intenta con otra imagen.")
-      } finally {
-        setIsUploading(false)
-      }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
-    }
-  }
-
-  const removeAdditionalImage = (index: number) => {
-    URL.revokeObjectURL(newAdditionalImagePreviews[index])
-    setNewAdditionalImageFiles(newAdditionalImageFiles.filter((_, i) => i !== index))
-    setNewAdditionalImagePreviews(newAdditionalImagePreviews.filter((_, i) => i !== index))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsUploading(true)
-
-    // Validar que se haya seleccionado al menos una subcategoría
-    if (formData.subcategoryIds.length === 0) {
-      alert("Por favor selecciona al menos una subcategoría")
-      setIsUploading(false)
-      return
-    }
-
-    try {
-      const formDataToSend = new FormData()
-      
-      // Agregar campos básicos
-      formDataToSend.append('name', formData.name)
-      formDataToSend.append('description', formData.description)
-      formDataToSend.append('price', formData.price)
-      if (formData.originalPrice) {
-        formDataToSend.append('originalPrice', formData.originalPrice)
-      }
-      formDataToSend.append('categoryId', formData.categoryId)
-      
-      // Enviar TODAS las subcategorías seleccionadas
-      formData.subcategoryIds.forEach(id => {
-        formDataToSend.append('subcategoryIds', id)
-      })
-      
-      formDataToSend.append('ageDisplay', formData.age)
-      formDataToSend.append('ageMin', formData.ageMin)
-      formDataToSend.append('playersDisplay', formData.players)
-      formDataToSend.append('playersMin', formData.playersMin)
-      formDataToSend.append('playersMax', formData.playersMax)
-      formDataToSend.append('durationDisplay', formData.duration)
-      formDataToSend.append('durationMin', formData.durationMin)
-      formDataToSend.append('stock', formData.stock)
-      formDataToSend.append('inStock', formData.inStock.toString())
-      formDataToSend.append('isOnSale', formData.isOnSale.toString())
-      formDataToSend.append('tags', formData.tags)
-
-      // Agregar imagen principal
-      if (imageFile) {
-        formDataToSend.append('mainImage', imageFile)
-      } else if (formData.image) {
-        formDataToSend.append('image', formData.image)
-      } else {
-        formDataToSend.append('image', '/diverse-products-still-life.png')
-      }
-
-      // Agregar imágenes adicionales
-      newAdditionalImageFiles.forEach((file) => {
-        formDataToSend.append('additionalImages', file)
-      })
-
-      await addProduct(formDataToSend)
-      
-      // Limpiar URLs de objeto
-      if (imageFile) {
-        URL.revokeObjectURL(imagePreview)
-      }
-      newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
-      
-      router.push("/admin/products")
-    } catch (error) {
-      console.error("Error creating product:", error)
-      alert("Error al crear el producto")
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
   if (categoriesLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -378,7 +536,7 @@ export default function NewProductPage() {
         <main className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Cargando categorías...</span>
+            <span>Cargando categorias...</span>
           </div>
         </main>
         <Footer />
@@ -400,11 +558,12 @@ export default function NewProductPage() {
         <Card>
           <CardHeader>
             <CardTitle>Añadir Nuevo Producto</CardTitle>
-            <CardDescription>Completa la información del producto</CardDescription>
+            <CardDescription>Completa la informacion del producto</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Nombre */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="name">Nombre del Producto *</Label>
                   <Input
@@ -415,91 +574,134 @@ export default function NewProductPage() {
                   />
                 </div>
 
+                {/* Video YouTube */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Imagen Principal del Producto</Label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="imageFile" className="text-sm text-muted-foreground">
-                        Subir Archivo (PNG, JPG o JPEG - se redimensionará a 1024x1024)
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="imageFile"
-                          type="file"
-                          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-                          onChange={handleImageUpload}
-                          className="cursor-pointer"
-                          disabled={isUploading}
-                        />
-                        <Upload className="w-4 h-4 text-muted-foreground" />
+                  <Label>Video de YouTube (opcional)</Label>
+                  <div className="flex items-center gap-2">
+                    <Youtube className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <Input
+                      value={youtubeUrl}
+                      onChange={(e) => handleYoutubeUrlChange(e.target.value)}
+                      placeholder="https://youtube.com/watch?v=... o ID del video"
+                      className="flex-1"
+                    />
+                  </div>
+                  {formData.youtubeVideoId && (
+                    <div className="mt-4 p-4 border rounded-lg bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-green-600 font-medium">
+                          Video ID: {formData.youtubeVideoId}
+                        </p>
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          size="sm"
+                          className="h-8 px-3 text-xs gap-1"
+                          onClick={() => window.open(`https://www.youtube.com/watch?v=${formData.youtubeVideoId}`, '_blank')}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Ver en YouTube
+                        </Button>
                       </div>
-                      {isUploading && <p className="text-sm text-muted-foreground">Procesando imagen...</p>}
-                      {imageFile && (
-                        <p className="text-sm text-green-600">
-                          ✅ Imagen lista: {imageFile.name} ({(imageFile.size / 1024).toFixed(0)} KB)
+                      <div className="aspect-video max-w-2xl bg-black rounded-lg overflow-hidden shadow-lg mb-2">
+                        <iframe
+                          width="100%"
+                          height="100%"
+                          src={`https://www.youtube.com/embed/${formData.youtubeVideoId}`}
+                          title="YouTube video player"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                          allowFullScreen
+                          className="w-full h-full"
+                          onError={() => setYoutubeError(true)}
+                        />
+                      </div>
+                      {youtubeError && (
+                        <p className="text-sm text-red-500 mt-2">
+                          El video no se pudo cargar, pero puedes verlo usando el enlace.
                         </p>
                       )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="imageUrl" className="text-sm text-muted-foreground">
-                        O ingresar URL de imagen web
-                      </Label>
-                      <Input
-                        id="imageUrl"
-                        value={formData.image}
-                        onChange={(e) => {
-                          setFormData({ ...formData, image: e.target.value })
-                          setImagePreview(e.target.value)
-                          setImageFile(null)
-                        }}
-                        placeholder="https://ejemplo.com/imagen.jpg"
-                      />
-                    </div>
-                  </div>
-                  {imagePreview && (
-                    <div className="mt-2">
-                      <img
-                        src={imagePreview || "/placeholder.svg"}
-                        alt="Preview"
-                        className="w-full md:w-48 h-48 object-cover rounded-lg border"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg"
-                        }}
-                      />
                     </div>
                   )}
                 </div>
 
+                {/* Imagenes */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Imágenes Adicionales (Máximo 3)</Label>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="additionalImageFile" className="text-sm text-muted-foreground">
-                        Agregar más imágenes (PNG, JPG o JPEG)
-                      </Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Imagenes del Producto</Label>
+                    <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      {totalImages}/{MAX_TOTAL_IMAGES} imagenes
+                    </span>
+                  </div>
+
+                  <div className="border rounded-lg p-4">
+                    <Label className="text-sm font-medium">Imagen Principal</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="file"
+                            accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                            onChange={handleImageUpload}
+                            className="cursor-pointer"
+                            disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
+                          />
+                          <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Input
+                          value={formData.image}
+                          onChange={(e) => {
+                            setFormData({ ...formData, image: e.target.value })
+                            setImagePreview(e.target.value)
+                            setImageFile(null)
+                          }}
+                          placeholder="URL de imagen web"
+                        />
+                      </div>
+                    </div>
+                    {imagePreview && (
+                      <div className="mt-4 relative inline-block">
+                        <img
+                          src={imagePreview || "/placeholder.svg"}
+                          alt="Preview"
+                          className="w-48 h-48 object-cover rounded-lg border"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2 h-6 w-6"
+                          onClick={removeMainImage}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border rounded-lg p-4">
+                    <Label className="text-sm font-medium">Imagenes Adicionales</Label>
+                    <div className="mt-2">
                       <div className="flex items-center gap-2">
                         <Input
-                          id="additionalImageFile"
                           type="file"
                           accept=".png,.jpg,.jpeg,image/png,image/jpeg"
                           onChange={handleAdditionalImageUpload}
                           className="cursor-pointer"
-                          disabled={isUploading || newAdditionalImageFiles.length >= 3}
+                          disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
                         />
-                        <Upload className="w-4 h-4 text-muted-foreground" />
+                        <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       </div>
-                      {isUploading && <p className="text-sm text-muted-foreground">Procesando imagen...</p>}
-                      <p className="text-xs text-muted-foreground">
-                        {newAdditionalImageFiles.length}/3 imágenes adicionales
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Espacios disponibles: {MAX_TOTAL_IMAGES - totalImages}
                       </p>
                     </div>
                     
                     {newAdditionalImagePreviews.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">
-                          Imágenes adicionales ({newAdditionalImagePreviews.length}):
-                        </p>
+                      <div className="mt-4">
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {newAdditionalImagePreviews.map((url, index) => (
                             <div key={index} className="relative group">
@@ -512,7 +714,7 @@ export default function NewProductPage() {
                                 type="button"
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100"
                                 onClick={() => removeAdditionalImage(index)}
                               >
                                 <X className="w-3 h-3" />
@@ -525,145 +727,354 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
+                {/* Categoria */}
                 <div className="space-y-2">
-                  <Label htmlFor="category">Categoría *</Label>
-                  <Select
-                    required
+                  <Label htmlFor="category-select">Categoria *</Label>
+                  <select
+                    id="category-select"
                     value={formData.categoryId}
-                    onValueChange={(value) => {
-                      setFormData({ ...formData, categoryId: value, subcategoryIds: [] })
-                      setSelectedCategory(value)
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        categoryId: newValue, 
+                        subcategoryIds: [] 
+                      }));
+                      setSelectedCategory(newValue);
                     }}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    required
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={safeToString(cat.id)}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <option value="">Selecciona una categoria</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={safeToString(cat.id)}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
+                {/* Subcategorias */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Subcategorías *</Label>
+                  <Label>Subcategorias *</Label>
                   <div className="border rounded-lg p-4 bg-muted/20">
                     {!selectedCategory ? (
-                      <p className="text-sm text-muted-foreground">
-                        Primero selecciona una categoría
-                      </p>
+                      <p className="text-sm text-muted-foreground">Primero selecciona una categoria</p>
                     ) : availableSubcategories.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No hay subcategorías disponibles para esta categoría
-                      </p>
+                      <p className="text-sm text-muted-foreground">No hay subcategorias disponibles</p>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         {availableSubcategories.map((subcat) => (
-                          <div key={subcat.id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`subcat-${subcat.id}`}
-                              checked={isSubcategorySelected(safeToString(subcat.id))}
-                              onCheckedChange={() => handleSubcategoryToggle(safeToString(subcat.id))}
-                            />
-                            <Label 
-                              htmlFor={`subcat-${subcat.id}`}
-                              className="text-sm cursor-pointer flex-1"
-                            >
-                              {subcat.name}
-                            </Label>
-                          </div>
+                          <SubcategoryCheckbox
+                            key={subcat.id}
+                            subcat={subcat}
+                            isSelected={formData.subcategoryIds.includes(safeToString(subcat.id))}
+                            onToggle={handleSubcategoryToggle}
+                          />
                         ))}
                       </div>
                     )}
                   </div>
                   {formData.subcategoryIds.length > 0 && (
                     <p className="text-sm text-green-600 mt-2">
-                      ✅ {formData.subcategoryIds.length} subcategoría(s) seleccionada(s)
+                      {formData.subcategoryIds.length} subcategoria(s) seleccionada(s)
                     </p>
                   )}
                 </div>
 
-                {/* Sección de Precios y Ofertas */}
-                <div className="space-y-4 md:col-span-2 border rounded-lg p-4 bg-muted/10">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-lg font-semibold">Precios (CLP)</Label>
-                    <Button
-                      type="button"
-                      variant={formData.isOnSale ? "default" : "outline"}
-                      onClick={toggleSale}
-                      className="flex items-center gap-2"
-                    >
-                      <Percent className="w-4 h-4" />
-                      {formData.isOnSale ? "Oferta Activa" : "Agregar Oferta"}
-                    </Button>
+                {/* Marca y Género */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="brand">Marca *</Label>
+                    <Input
+                      id="brand"
+                      required
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      placeholder="Ej: Devir"
+                    />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="genre">Género *</Label>
+                    <Input
+                      id="genre"
+                      required
+                      value={formData.genre}
+                      onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
+                      placeholder="Ej: Estrategia, Familiar"
+                    />
+                  </div>
+                </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="originalPrice">
-                        {formData.isOnSale ? "Precio Original (CLP) *" : "Precio (CLP) *"}
-                      </Label>
-                      <Input
-                        id="originalPrice"
-                        type="number"
-                        required
-                        value={formData.originalPrice || formData.price}
-                        onChange={(e) => handlePriceChange(formData.isOnSale ? 'originalPrice' : 'price', e.target.value)}
-                        placeholder="20000"
-                      />
-                      {formData.originalPrice && (
-                        <p className="text-sm text-muted-foreground">
-                          Precio original: ${formatCLP(safeToNumber(formData.originalPrice))} CLP
-                        </p>
+                {/* Etiquetas del Producto */}
+                <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
+                  <Label className="text-lg font-semibold flex items-center gap-2">
+                    <Tag className="w-4 h-4" />
+                    Etiqueta del Producto
+                  </Label>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
+                  </p>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {/* Agregar opción "Normal" al principio */}
+                    {[
+                      { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
+                      { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
+                      { value: "descuento", label: "DESCUENTO", icon: Percent, description: "Activar oferta especial", color: "bg-orange-500", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
+                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recien llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
+                      { value: "agotado", label: "AGOTADO", icon: AlertCircle, description: "Sin stock (stock = 0)", color: "bg-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
+                    ].map((tag) => {
+                      const IconComponent = tag.icon;
+                      const isSelected = selectedTag === tag.value;
+                      
+                      return (
+                        <div
+                          key={tag.value || "normal"}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                            isSelected
+                              ? `${tag.bgColor} ${tag.borderColor} border-2`
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          onClick={() => handleTagSelect(tag.value)}
+                        >
+                          <div className={`p-2 rounded-full ${isSelected ? tag.color : 'bg-gray-100'}`}>
+                            <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
+                          </div>
+                          <div>
+                            <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                              {tag.label}
+                            </span>
+                            <p className="text-xs text-muted-foreground">{tag.description}</p>
+                          </div>
+                          <input
+                            type="radio"
+                            name="productTag"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            className="ml-auto h-4 w-4 text-[#C2410C] focus:ring-[#C2410C]"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Panel para NORMAL (sin etiqueta) */}
+                  {selectedTag === "" && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                        <Package className="w-4 h-4" />
+                        Producto Normal
+                      </h4>
+                      <p className="text-sm text-green-700 mb-3">
+                        Este producto se mostrará sin etiqueta especial.
+                      </p>
+                      <div className="p-3 bg-white rounded-lg">
+                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Input
+                          type="number"
+                          value={formData.price}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                          className="mt-1"
+                          placeholder="Ej: 25000"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Panel para DESCUENTO */}
+                  {selectedTag === "descuento" && (
+                    <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                      <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
+                        <Percent className="w-4 h-4" />
+                        Configurar Descuento
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm">Precio Original (CLP) *</Label>
+                          <Input
+                            type="number"
+                            placeholder="Ej: 50000"
+                            value={formData.originalPrice}
+                            onChange={(e) => handleDiscountChange('originalPrice', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Porcentaje de Descuento (1-99%) *</Label>
+                          <div className="flex items-center gap-4">
+                            <input
+                              type="range"
+                              min="1"
+                              max="99"
+                              value={formData.discountPercent}
+                              onChange={(e) => handleDiscountChange('discountPercent', e.target.value)}
+                              className="flex-1"
+                            />
+                            <span className="text-sm font-bold text-orange-600 min-w-[45px]">
+                              {formData.discountPercent}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 p-3 bg-white rounded-lg">
+                        <Label className="text-sm">Precio Final (calculado automáticamente)</Label>
+                        <Input
+                          type="number"
+                          value={formData.price}
+                          onChange={(e) => handleDiscountChange('price', e.target.value)}
+                          className="mt-1 bg-gray-50"
+                        />
+                      </div>
+                      {formData.originalPrice && safeToNumber(formData.originalPrice) > 0 && (
+                        <div className="mt-3 p-3 bg-white rounded-lg">
+                          <p className="text-sm">
+                            <span className="font-semibold">Resumen:</span>{' '}
+                            <span className="line-through text-gray-500">${formatCLP(safeToNumber(formData.originalPrice))} CLP</span>{' '}
+                            → <span className="text-orange-600 font-bold">${formatCLP(safeToNumber(formData.price))} CLP</span>
+                          </p>
+                        </div>
                       )}
                     </div>
-
-                    {showDiscount && (
-                      <div className="space-y-2">
-                        <Label htmlFor="discountPercent">Porcentaje de Descuento *</Label>
+                  )}
+                  
+                  {/* Panel para PREVENTA */}
+                  {selectedTag === "preventa" && (
+                    <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                        <Rocket className="w-4 h-4" />
+                        Producto en Preventa
+                      </h4>
+                      <p className="text-sm text-amber-700 mb-3">
+                        Este producto se mostrará con la etiqueta "PREVENTA".
+                      </p>
+                      <div className="p-3 bg-white rounded-lg">
+                        <Label className="text-sm">Precio de Preventa (CLP)</Label>
                         <Input
-                          id="discountPercent"
                           type="number"
-                          min="1"
-                          max="99"
-                          value={formData.discountPercent}
-                          onChange={(e) => handlePriceChange('discountPercent', e.target.value)}
-                          placeholder="20"
+                          value={formData.price}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                          className="mt-1"
+                          placeholder="Ej: 45000"
                         />
-                        <p className="text-sm text-muted-foreground">
-                          Descuento: {formData.discountPercent}%
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Panel para NOVEDAD */}
+                  {selectedTag === "novedad" && (
+                    <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" />
+                        Producto Nuevo
+                      </h4>
+                      <p className="text-sm text-gray-700 mb-3">
+                        Este producto se mostrará con la etiqueta "NOVEDAD".
+                      </p>
+                      <div className="p-3 bg-white rounded-lg">
+                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Input
+                          type="number"
+                          value={formData.price}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Panel para AGOTADO */}
+                  {selectedTag === "agotado" && (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4" />
+                        Producto Agotado
+                      </h4>
+                      <p className="text-sm text-red-700">
+                        Este producto se mostrará con la etiqueta "AGOTADO". El stock se ha establecido automáticamente a 0.
+                      </p>
+                      <div className="mt-3 p-3 bg-white rounded-lg">
+                        <p className="text-sm">
+                          <span className="font-semibold">Stock actual:</span> 0 unidades
                         </p>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Resumen de precios */}
-                  {formData.isOnSale && formData.originalPrice && formData.discountPercent !== "0" && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
-                      <h4 className="font-semibold text-green-800 mb-2">Resumen de Oferta</h4>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span>Precio Original:</span>
-                          <span className="line-through text-gray-500">
-                            ${formatCLP(safeToNumber(formData.originalPrice))} CLP
+                    </div>
+                  )}
+                  
+                  {/* Vista previa del badge */}
+                   {selectedTag && selectedTag !== "" && (
+                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTag === "preventa" && (
+                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgb(251,176,59)" }}>
+                            PREVENTA
                           </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Descuento:</span>
-                          <span className="text-red-600">-{formData.discountPercent}%</span>
-                        </div>
-                        <div className="flex justify-between font-bold text-green-800">
-                          <span>Precio Final:</span>
-                          <span>${formatCLP(finalPriceCLP)} CLP</span>
-                        </div>
+                        )}
+                        {selectedTag === "descuento" && formData.discountPercent !== "0" && (
+                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(241,90,36)" }}>
+                            {formData.discountPercent}% OFF
+                          </span>
+                        )}
+                        {selectedTag === "novedad" && (
+                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(26,26,26)" }}>
+                            NOVEDAD
+                          </span>
+                        )}
+                        {selectedTag === "agotado" && (
+                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(237,28,36)" }}>
+                            AGOTADO
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
 
+                {/* Productos Recomendados */}
+                <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
+                  <Label className="text-lg font-semibold flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Productos Recomendados
+                  </Label>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Selecciona los productos que se mostraran como "Tambien te podria gustar"
+                  </p>
+                  
+                  <div className="flex items-center gap-2 mb-4">
+                    <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <Input
+                      placeholder="Buscar productos..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  </div>
+
+                  {productsLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      <span>Cargando productos...</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
+                      {filteredProducts.map((product: any) => (
+                        <RecommendedProductCard
+                          key={product.id}
+                          product={product}
+                          isSelected={formData.recommendedProducts.includes(product.id)}
+                          onToggle={handleRecommendedProductToggle}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {formData.recommendedProducts.length > 0 && (
+                    <p className="text-sm text-green-600 mt-2">
+                      {formData.recommendedProducts.length} producto(s) recomendado(s) seleccionado(s)
+                    </p>
+                  )}
+                </div>
+
+                {/* Stock y Especificaciones */}
                 <div className="space-y-2">
                   <Label htmlFor="stock">Stock *</Label>
                   <Input
@@ -672,7 +1083,12 @@ export default function NewProductPage() {
                     required
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    disabled={selectedTag === "agotado"}
+                    className={selectedTag === "agotado" ? "bg-gray-100" : ""}
                   />
+                  {selectedTag === "agotado" && (
+                    <p className="text-xs text-red-500">El stock esta fijado en 0 porque el producto esta agotado</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -686,7 +1102,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ageMin">Edad Mínima (número) *</Label>
+                  <Label htmlFor="ageMin">Edad Minima *</Label>
                   <Input
                     id="ageMin"
                     type="number"
@@ -707,7 +1123,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMin">Jugadores Mínimo *</Label>
+                  <Label htmlFor="playersMin">Jugadores Minimo *</Label>
                   <Input
                     id="playersMin"
                     type="number"
@@ -718,7 +1134,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMax">Jugadores Máximo *</Label>
+                  <Label htmlFor="playersMax">Jugadores Maximo *</Label>
                   <Input
                     id="playersMax"
                     type="number"
@@ -729,7 +1145,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duración (ej: 15 min) *</Label>
+                  <Label htmlFor="duration">Duracion (ej: 15 min) *</Label>
                   <Input
                     id="duration"
                     required
@@ -739,7 +1155,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="durationMin">Duración Mínima (minutos) *</Label>
+                  <Label htmlFor="durationMin">Duracion Minima (min) *</Label>
                   <Input
                     id="durationMin"
                     type="number"
@@ -750,7 +1166,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Descripción *</Label>
+                  <Label htmlFor="description">Descripcion *</Label>
                   <Textarea
                     id="description"
                     required
@@ -759,18 +1175,14 @@ export default function NewProductPage() {
                     rows={4}
                   />
                 </div>
-
-                
-
-                
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button type="submit" className="w-full sm:w-auto" disabled={isUploading}>
+              <div className="flex gap-4">
+                <Button type="submit" disabled={isUploading} className="bg-[#C2410C] hover:bg-[#9A3412]">
                   {isUploading ? "Creando..." : "Crear Producto"}
                 </Button>
-                <Link href="/admin/products" className="w-full sm:w-auto">
-                  <Button type="button" variant="outline" className="w-full bg-transparent">
+                <Link href="/admin/products">
+                  <Button type="button" variant="outline">
                     Cancelar
                   </Button>
                 </Link>

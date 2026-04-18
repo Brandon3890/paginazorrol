@@ -1,4 +1,5 @@
- "use client"
+"use client"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -9,6 +10,7 @@ import { X } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
 import { useCategoryStore } from "@/lib/category-store"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { motion, AnimatePresence } from "framer-motion"
 
 // Define el tipo compatible para Product
 interface Product {
@@ -22,6 +24,7 @@ interface Product {
   playersMax: number
   tags: string[]
   inStock: boolean
+  stock: number
 }
 
 interface Filters {
@@ -70,6 +73,9 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
   const maxAge = products.length > 0 ? Math.max(...products.map((p) => p.ageMin)) : 18
   const maxPlayers = products.length > 0 ? Math.max(...products.map((p) => p.playersMax)) : 8
 
+  // Calcular productos con stock disponible
+  const productsWithStock = products.filter(p => p.stock > 0).length
+
   // Inicializar con filtros vacíos
   const [pendingFilters, setPendingFilters] = useState<Filters>(() => ({
     priceRange: [0, maxPrice],
@@ -109,7 +115,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     }
   }, [filters, maxPrice, maxAge, maxPlayers])
 
-  // Función para aplicar filtros solo cuando el usuario interactúa
+  // Función para aplicar filtros
   const applyFilters = useCallback((newFilters: Filters) => {
     onFiltersChange(newFilters)
   }, [onFiltersChange])
@@ -169,160 +175,396 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     pendingFilters.ageRange[0] > 0 ||
     pendingFilters.ageRange[1] < maxAge ||
     pendingFilters.playersRange[0] > 1 ||
-    pendingFilters.playersRange[1] < maxPlayers
+    pendingFilters.playersRange[1] < maxPlayers ||
+    pendingFilters.inStock
 
   return (
-    <Card className="sticky top-4">
-      
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Filtros</CardTitle>
-          {/* 
-          {hasActiveFilters && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={clearAllFilters}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-3 h-3 mr-1" />
-              Limpiar
-            </Button>
-          )}*/}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Price Range */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Rango de Precio (CLP)</Label>
-          <div className="px-2">
-            <Slider
-              value={pendingFilters.priceRange}
-              onValueChange={(value) => updatePendingFilters("priceRange", value)}
-              max={maxPrice}
-              step={1}
-              className="w-full"
-            />
-          </div>
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>${pendingFilters.priceRange[0].toLocaleString('es-CL')}</span>
-            <span>${pendingFilters.priceRange[1].toLocaleString('es-CL')}</span>
-          </div>
-        </div>
-
-        {/* Categories - Con checkboxes */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Categorías</Label>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {activeCategories.map((category) => (
-              <div key={category.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`category-${category.id}`}
-                  checked={pendingFilters.categories.includes(category.name)}
-                  onCheckedChange={() => toggleArrayFilter("categories", category.name)}
-                />
-                <Label htmlFor={`category-${category.id}`} className="text-sm">
-                  {category.name}
-                </Label>
-              </div>
-            ))}
-            {activeCategories.length === 0 && (
-              <p className="text-sm text-muted-foreground">No hay categorías disponibles</p>
-            )}
-          </div>
-        </div>
-
-        {/* Subcategorías - Como etiquetas clickeables */}
-        <div className="space-y-3">
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.4, type: "spring", stiffness: 100 }}
+    >
+      <Card className="sticky top-4 overflow-hidden">
+        <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Etiquetas y Subcategorías</Label>
-            {pendingFilters.subcategories.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {pendingFilters.subcategories.length} seleccionadas
-              </span>
-            )}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              <CardTitle className="text-lg">Filtros</CardTitle>
+            </motion.div>
+            <AnimatePresence>
+              {hasActiveFilters && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearAllFilters}
+                    className="text-xs text-muted-foreground hover:text-foreground relative overflow-hidden group"
+                  >
+                    <motion.div
+                      whileHover={{ rotate: 90 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                    </motion.div>
+                    Limpiar
+                    <motion.div
+                      className="absolute inset-0 bg-primary/10"
+                      initial={{ scale: 0, opacity: 0 }}
+                      whileHover={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.2 }}
+                    />
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          <div className="flex flex-wrap gap-2 max">
-            {allActiveSubcategories.map((subcategory) => (
-              <Badge
-                key={subcategory.id}
-                variant={pendingFilters.subcategories.includes(subcategory.name) ? "default" : "secondary"}
-                className={`
-                  cursor-pointer hover:bg-primary/80
-                  ${pendingFilters.subcategories.includes(subcategory.name) 
-                    ? 'bg-[#C2410C] text-white hover:bg-[#9A3412]' 
-                    : 'bg-[#FEF3F2] text-[#991B1B] border border-[#FEE2E2] hover:bg-[#FEE2E2]'
-                  }
-                `}
-                onClick={() => toggleSubcategoryFilter(subcategory.name)}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Price Range */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Label className="text-sm font-medium">Rango de Precio (CLP)</Label>
+<div className="px-2">
+  <Slider
+    value={pendingFilters.priceRange}
+    onValueChange={(value) => updatePendingFilters("priceRange", value)}
+    min={0}
+    max={maxPrice}
+    step={1}
+    className="w-full"
+  />
+</div>
+            <motion.div 
+              className="flex justify-between text-sm text-muted-foreground"
+              animate={{ scale: [1, 1.02, 1] }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.span 
+                key={`price-min-${pendingFilters.priceRange[0]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
               >
-                {subcategory.name}
-                {pendingFilters.subcategories.includes(subcategory.name) && (
-                  <X className="w-3 h-3 ml-1" />
+                ${pendingFilters.priceRange[0].toLocaleString('es-CL')}
+              </motion.span>
+              <motion.span 
+                key={`price-max-${pendingFilters.priceRange[1]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              >
+                ${pendingFilters.priceRange[1].toLocaleString('es-CL')}
+              </motion.span>
+            </motion.div>
+          </motion.div>
+
+          {/* Categories - Con checkboxes */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <Label className="text-sm font-medium">Categorías</Label>
+            <motion.div 
+              className="space-y-2 max-h-40 overflow-y-auto pr-2"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.05 }
+                }
+              }}
+              initial="hidden"
+              animate="visible"
+            >
+              {activeCategories.map((category) => (
+                <motion.div
+                  key={category.id}
+                  variants={{
+                    hidden: { opacity: 0, x: -10 },
+                    visible: { opacity: 1, x: 0 }
+                  }}
+                  whileHover={{ x: 5 }}
+                  className="flex items-center space-x-2"
+                >
+                  <Checkbox
+                    id={`category-${category.id}`}
+                    checked={pendingFilters.categories.includes(category.name)}
+                    onCheckedChange={() => toggleArrayFilter("categories", category.name)}
+                  />
+                  <Label htmlFor={`category-${category.id}`} className="text-sm cursor-pointer">
+                    {category.name}
+                  </Label>
+                  <AnimatePresence>
+                    {pendingFilters.categories.includes(category.name) && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        className="w-1 h-1 rounded-full bg-[#C2410C]"
+                      />
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+              {activeCategories.length === 0 && (
+                <motion.p 
+                  className="text-sm text-muted-foreground"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  No hay categorías disponibles
+                </motion.p>
+              )}
+            </motion.div>
+          </motion.div>
+
+          {/* Subcategorías - Como etiquetas clickeables */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Etiquetas y Subcategorías</Label>
+              <AnimatePresence>
+                {pendingFilters.subcategories.length > 0 && (
+                  <motion.span 
+                    className="text-xs text-muted-foreground"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                  >
+                    {pendingFilters.subcategories.length} seleccionadas
+                  </motion.span>
                 )}
-              </Badge>
-            ))}
-            {allActiveSubcategories.length === 0 && (
-              <p className="text-sm text-muted-foreground">No hay subcategorías disponibles</p>
+              </AnimatePresence>
+            </div>
+            <motion.div 
+              className="flex flex-wrap gap-2"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.03 }
+                }
+              }}
+              initial="hidden"
+              animate="visible"
+            >
+              {allActiveSubcategories.map((subcategory) => (
+                <motion.div
+                  key={subcategory.id}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.8 },
+                    visible: { opacity: 1, scale: 1 }
+                  }}
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Badge
+                    variant={pendingFilters.subcategories.includes(subcategory.name) ? "default" : "secondary"}
+                    className={`
+                      cursor-pointer transition-all duration-200
+                      ${pendingFilters.subcategories.includes(subcategory.name) 
+                        ? 'bg-[#C2410C] text-white hover:bg-[#9A3412]' 
+                        : 'bg-[#FEF3F2] text-[#991B1B] border border-[#FEE2E2] hover:bg-[#FEE2E2]'
+                      }
+                    `}
+                    onClick={() => toggleSubcategoryFilter(subcategory.name)}
+                  >
+                    {subcategory.name}
+                    <AnimatePresence>
+                      {pendingFilters.subcategories.includes(subcategory.name) && (
+                        <motion.div
+                          initial={{ rotate: -90, opacity: 0 }}
+                          animate={{ rotate: 0, opacity: 1 }}
+                          exit={{ rotate: 90, opacity: 0 }}
+                          className="inline-flex ml-1"
+                        >
+                          <X className="w-3 h-3" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Badge>
+                </motion.div>
+              ))}
+              {allActiveSubcategories.length === 0 && (
+                <motion.p 
+                  className="text-sm text-muted-foreground"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  No hay subcategorías disponibles
+                </motion.p>
+              )}
+            </motion.div>
+          </motion.div>
+
+          {/* Age Range */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <Label className="text-sm font-medium">Edad Mínima</Label>
+<div className="px-2">
+  <Slider
+    value={pendingFilters.ageRange}
+    onValueChange={(value) => updatePendingFilters("ageRange", value)}
+    min={0}
+    max={maxAge}
+    step={1}
+    className="w-full"
+  />
+</div>
+            <motion.div 
+              className="flex justify-between text-sm text-muted-foreground"
+              animate={{ scale: [1, 1.02, 1] }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.span 
+                key={`age-min-${pendingFilters.ageRange[0]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              >
+                {pendingFilters.ageRange[0]}+ años
+              </motion.span>
+              <motion.span 
+                key={`age-max-${pendingFilters.ageRange[1]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              >
+                {pendingFilters.ageRange[1]}+ años
+              </motion.span>
+            </motion.div>
+          </motion.div>
+
+          {/* Players Range */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+          >
+            <Label className="text-sm font-medium">Número de Jugadores</Label>
+<div className="px-2">
+  <Slider
+    value={pendingFilters.playersRange}
+    onValueChange={(value) => updatePendingFilters("playersRange", value)}
+    min={1}
+    max={maxPlayers}
+    step={1}
+    className="w-full"
+  />
+</div>
+            <motion.div 
+              className="flex justify-between text-sm text-muted-foreground"
+              animate={{ scale: [1, 1.02, 1] }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.span 
+                key={`players-min-${pendingFilters.playersRange[0]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              >
+                {pendingFilters.playersRange[0]} jugador{pendingFilters.playersRange[0] > 1 ? "es" : ""}
+              </motion.span>
+              <motion.span 
+                key={`players-max-${pendingFilters.playersRange[1]}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              >
+                {pendingFilters.playersRange[1]} jugador{pendingFilters.playersRange[1] > 1 ? "es" : ""}
+              </motion.span>
+            </motion.div>
+          </motion.div>
+
+          {/* Stock Filter */}
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+          >
+            <motion.div 
+              className="flex items-center space-x-2"
+              whileHover={{ x: 5 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <Checkbox
+                id="inStock"
+                checked={pendingFilters.inStock}
+                onCheckedChange={(checked) => {
+                  // Verificar si hay productos con stock > 0
+                  const productsInStock = products.filter(p => p.stock > 0).length;
+                  
+                  if (checked && productsInStock === 0) {
+                    alert("No hay productos disponibles en stock en este momento.");
+                    return; // No aplicar el filtro si no hay productos en stock
+                  }
+                  
+                  // Si el filtro se está desactivando o hay productos en stock, actualizar
+                  updatePendingFilters("inStock", checked);
+                }}
+              />
+              <Label htmlFor="inStock" className="text-sm font-medium cursor-pointer">
+                Solo productos en stock
+              </Label>
+              <AnimatePresence>
+                {pendingFilters.inStock && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="w-2 h-2 rounded-full bg-green-500"
+                  />
+                )}
+              </AnimatePresence>
+            </motion.div>
+            
+            {/* Mostrar cuántos productos tienen stock disponible */}
+            <motion.p 
+              className="text-xs text-muted-foreground ml-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              {productsWithStock} productos con stock disponible
+            </motion.p>
+
+            {/* Mensaje de advertencia si no hay stock */}
+            {productsWithStock === 0 && (
+              <motion.p 
+                className="text-xs text-amber-600 ml-6"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                ⚠️ No hay productos con stock disponible
+              </motion.p>
             )}
-          </div>
-        </div>
-
-        {/* Age Range */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Edad Mínima</Label>
-          <div className="px-2">
-            <Slider
-              value={pendingFilters.ageRange}
-              onValueChange={(value) => updatePendingFilters("ageRange", value)}
-              max={maxAge}
-              step={1}
-              className="w-full"
-            />
-          </div>
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>{pendingFilters.ageRange[0]}+ años</span>
-            <span>{pendingFilters.ageRange[1]}+ años</span>
-          </div>
-        </div>
-
-        {/* Players Range */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Número de Jugadores</Label>
-          <div className="px-2">
-            <Slider
-              value={pendingFilters.playersRange}
-              onValueChange={(value) => updatePendingFilters("playersRange", value)}
-              min={1}
-              max={maxPlayers}
-              step={1}
-              className="w-full"
-            />
-          </div>
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>
-              {pendingFilters.playersRange[0]} jugador{pendingFilters.playersRange[0] > 1 ? "es" : ""}
-            </span>
-            <span>
-              {pendingFilters.playersRange[1]} jugador{pendingFilters.playersRange[1] > 1 ? "es" : ""}
-            </span>
-          </div>
-        </div>
-
-        {/* Stock Filter */}
-        <div className="space-y-3">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="inStock"
-              checked={pendingFilters.inStock}
-              onCheckedChange={(checked) => updatePendingFilters("inStock", checked)}
-            />
-            <Label htmlFor="inStock" className="text-sm font-medium">
-              Solo productos en stock
-            </Label>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+          </motion.div>
+        </CardContent>
+      </Card>
+    </motion.div>
   )
 }

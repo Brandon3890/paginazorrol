@@ -1,3 +1,4 @@
+// app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -61,7 +62,7 @@ export async function PATCH(
   }
 }
 
-// Mantener el GET existente para obtener detalles de orden individual
+// GET actualizado con datos de cliente para boleta
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -80,9 +81,9 @@ export async function GET(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // Obtener información del usuario
+    // Obtener información del usuario (incluyendo RUT)
     const users = await query(
-      `SELECT email, first_name, last_name, phone FROM users WHERE id = ?`,
+      `SELECT id, email, first_name, last_name, phone, rut FROM users WHERE id = ?`,
       [userId]
     ) as any[]
 
@@ -106,7 +107,7 @@ export async function GET(
       [orderId]
     ) as any[]
 
-    // Obtener las imágenes de los productos desde la tabla products
+    // Obtener las imágenes de los productos
     const itemsWithImages = await Promise.all(
       orderItems.map(async (item: any) => {
         try {
@@ -150,7 +151,20 @@ export async function GET(
       }
     }
 
-    // Combinar datos en formato compatible con el frontend
+    // Obtener información de la boleta si existe
+    let boletaInfo = null
+    if (order.boleta_id) {
+      const boletas = await query(
+        `SELECT folio, monto_total, fecha_emision, estado_sii FROM boletas WHERE id = ?`,
+        [order.boleta_id]
+      ) as any[]
+      
+      if (boletas.length > 0) {
+        boletaInfo = boletas[0]
+      }
+    }
+
+    // Combinar datos
     const orderWithItems = {
       id: order.id,
       order_number: order.order_number,
@@ -168,6 +182,10 @@ export async function GET(
       customer_first_name: user?.first_name || '',
       customer_last_name: user?.last_name || '',
       customer_phone: user?.phone || '',
+      customer_rut: user?.rut || '55555555-5', // RUT por defecto para consumidor final
+      boleta_id: order.boleta_id,
+      boleta_emitida: order.boleta_emitida || 0,
+      boleta_info: boletaInfo,
       created_at: order.created_at,
       updated_at: order.updated_at,
       items: itemsWithImages.map((item: any) => ({
@@ -177,8 +195,7 @@ export async function GET(
         product_price: parseFloat(item.product_price),
         quantity: item.quantity,
         subtotal: parseFloat(item.subtotal),
-        image_url: item.image_url,
-        category: item.category || 'General'
+        image_url: item.image_url
       })),
       shipping_address: shippingAddress
     }

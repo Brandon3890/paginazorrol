@@ -1,4 +1,3 @@
-// lib/auth-store.ts - ACTUALIZADO CON MÉTODO REGISTER
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -24,6 +23,7 @@ interface User {
   firstName: string
   lastName: string
   phone: string
+  rut?: string // AGREGADO
   role: 'user' | 'admin'
   addresses?: UserAddress[]
   createdAt: string
@@ -36,6 +36,7 @@ interface RegisterData {
   firstName: string
   lastName: string
   phone?: string
+  rut: string // AGREGADO
 }
 
 interface AuthState {
@@ -44,7 +45,7 @@ interface AuthState {
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<boolean>
-  register: (userData: RegisterData) => Promise<boolean> // NUEVO MÉTODO
+  register: (userData: RegisterData) => Promise<boolean>
   logout: () => void
   verifyToken: () => Promise<boolean>
   updateUser: (userData: Partial<User>) => void
@@ -113,7 +114,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // NUEVO MÉTODO: Registro de usuario
       register: async (userData: RegisterData) => {
         try {
           set({ isLoading: true })
@@ -129,7 +129,7 @@ export const useAuthStore = create<AuthState>()(
           const data = await response.json()
           
           if (data.success && data.user) {
-            // Para el registro, también podemos hacer login automáticamente
+            // Login automático después del registro
             const loginResponse = await fetch('/api/auth/login', {
               method: 'POST',
               headers: {
@@ -144,8 +144,25 @@ export const useAuthStore = create<AuthState>()(
             const loginData = await loginResponse.json()
             
             if (loginData.success && loginData.user) {
+              // Cargar direcciones después del login
+              const addressesResponse = await fetch('/api/user/addresses', {
+                headers: {
+                  'Authorization': `Bearer ${loginData.token}`,
+                },
+              })
+
+              let addresses = []
+              if (addressesResponse.ok) {
+                addresses = await addressesResponse.json()
+              }
+
+              const userWithAddresses = {
+                ...loginData.user,
+                addresses: addresses || []
+              }
+
               set({
-                user: loginData.user,
+                user: userWithAddresses,
                 token: loginData.token,
                 isAuthenticated: true,
                 isLoading: false,

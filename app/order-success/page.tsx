@@ -1,4 +1,4 @@
-// app/order-success/page.tsx - CON LIMPIEZA DE CARRITO
+// app/order-success/page.tsx - CON EMISIÓN DE BOLETA EN TIEMPO REAL Y DESCARGA PDF
 "use client"
 
 import { useEffect, useState } from 'react'
@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Eye, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
@@ -18,6 +18,32 @@ interface Order {
   total: number
   created_at: string
   payment_status: string
+  customer_email?: string
+  customer_first_name?: string
+  customer_last_name?: string
+  customer_phone?: string
+  customer_rut?: string
+  boleta_folio?: string
+  boleta_emitida?: number
+  shipping_address?: {
+    street: string
+    commune_name: string
+    region_name: string
+  }
+  items?: Array<{
+    id: number
+    product_name: string
+    product_price: number
+    quantity: number
+    subtotal: number
+  }>
+}
+
+interface BoletaInfo {
+  success: boolean
+  folio?: string
+  data?: any
+  pdfUrl?: string
 }
 
 export default function OrderSuccessPage() {
@@ -26,16 +52,20 @@ export default function OrderSuccessPage() {
   const status = searchParams.get('status')
   const orderId = searchParams.get('orderId')
   const message = searchParams.get('message')
-  const cartCleared = searchParams.get('cartCleared')
   const router = useRouter()
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cartClearedLocal, setCartClearedLocal] = useState(false)
+  
+  // Estados para la boleta
+  const [boletaInfo, setBoletaInfo] = useState<BoletaInfo | null>(null)
+  const [emitiendoBoleta, setEmitiendoBoleta] = useState(false)
+  const [boletaError, setBoletaError] = useState<string | null>(null)
+  const [descargandoPDF, setDescargandoPDF] = useState(false)
 
   useEffect(() => {
-    // Si no hay parámetros, redirigir al inicio
     if (!status && !orderId) {
       router.push('/')
       return
@@ -46,20 +76,113 @@ export default function OrderSuccessPage() {
     }
   }, [orderId, status, router])
 
-// EFECTO PARA LIMPIAR CARRITO CUANDO EL PAGO ES EXITOSO
-useEffect(() => {
-  // Solo limpiar el carrito si:
-  // 1. El pago fue exitoso (status === 'success')
-  // 2. El carrito no ha sido limpiado aún localmente
-  // 3. Hay items en el carrito
-  if (status === 'success' && !cartClearedLocal && items.length > 0) {
-    console.log('🛒 Limpiando carrito local - pago exitoso confirmado')
-    clearCart()
-    setCartClearedLocal(true)
-    
-    console.log('✅ Carrito limpiado automáticamente después de pago exitoso confirmado')
-  }
-}, [status, items.length, clearCart, cartClearedLocal])
+  // EFECTO PARA LIMPIAR CARRITO
+  useEffect(() => {
+    if (status === 'success' && !cartClearedLocal && items.length > 0) {
+      console.log('🛒 Limpiando carrito local - pago exitoso confirmado')
+      clearCart()
+      setCartClearedLocal(true)
+      
+      window.dispatchEvent(new CustomEvent('payment-complete'))
+      window.dispatchEvent(new CustomEvent('stock-update'))
+    }
+  }, [status, items.length, clearCart, cartClearedLocal])
+
+  // EFECTO PARA EMITIR BOLETA AUTOMÁTICAMENTE
+  useEffect(() => {
+    const emitirBoleta = async () => {
+      // Solo emitir si:
+      // 1. El pago fue exitoso
+      // 2. Tenemos la orden cargada
+      // 3. No hemos emitido la boleta aún
+      // 4. No estamos en proceso de emisión
+      // 5. La orden no tiene boleta ya emitida
+      if (status !== 'success' || !order || boletaInfo || emitiendoBoleta || order.boleta_emitida === 1) {
+        return
+      }
+
+      // Verificar si ya se emitió para esta orden (evitar duplicados)
+      const emittedKey = `boleta_${order.id}`
+      if (sessionStorage.getItem(emittedKey)) {
+        console.log('⏭️ Boleta ya emitida para esta orden')
+        return
+      }
+
+      setEmitiendoBoleta(true)
+      setBoletaError(null)
+
+      try {
+        console.log('📄 Emitiendo boleta para orden:', order.id)
+        
+        // Limpiar RUT - si es inválido, usar consumidor final
+        let rutCliente = order.customer_rut || '55555555-5'
+        let nombreCliente = order.customer_first_name || 'Consumidor'
+        let apellidoCliente = order.customer_last_name || 'Final'
+        
+        // Si el RUT no es válido, usar consumidor final
+        if (rutCliente === '11111111-2' || !rutCliente.match(/^[0-9]+-[0-9Kk]$/)) {
+          console.log('⚠️ RUT inválido, usando consumidor final')
+          rutCliente = '55555555-5'
+          nombreCliente = 'Consumidor'
+          apellidoCliente = 'Final'
+        }
+        
+        const datosBoleta = {
+          cliente: {
+            rut: rutCliente,
+            nombre: `${nombreCliente} ${apellidoCliente}`.trim(),
+            direccion: order.shipping_address?.street || 'Santiago',
+            comuna: order.shipping_address?.commune_name || 'Santiago',
+            ciudad: 'Santiago'
+          },
+          productos: order.items?.map(item => ({
+            nombre: item.product_name,
+            cantidad: item.quantity,
+            precio: item.product_price
+          })) || [],
+          total: order.total,
+          ordenId: order.id,
+          ordenNumero: order.order_number
+        }
+
+        const respuesta = await fetch('/api/simplefactura/emitir-boleta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datosBoleta)
+        })
+
+        const resultado = await respuesta.json()
+
+        if (resultado.success) {
+          setBoletaInfo({
+            success: true,
+            folio: resultado.folio,
+            data: resultado.data
+          })
+          
+          // Marcar como emitida
+          sessionStorage.setItem(`boleta_${order.id}`, 'true')
+          
+          console.log('✅ Boleta emitida con folio:', resultado.folio)
+        } else {
+          setBoletaError(resultado.error || 'Error al emitir boleta')
+          console.error('Error emitiendo boleta:', resultado)
+        }
+      } catch (error: any) {
+        setBoletaError('Error de conexión al emitir boleta')
+        console.error('Error:', error)
+      } finally {
+        setEmitiendoBoleta(false)
+      }
+    }
+
+    // Pequeño delay para evitar rate limit
+    const timer = setTimeout(() => {
+      emitirBoleta()
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [status, order, boletaInfo, emitiendoBoleta])
 
   const fetchOrderFromMySQL = async (id: string) => {
     try {
@@ -70,6 +193,21 @@ useEffect(() => {
       
       if (response.ok) {
         const orderData = await response.json()
+        console.log('📦 Orden cargada:', {
+          id: orderData.id,
+          boleta_emitida: orderData.boleta_emitida,
+          boleta_folio: orderData.boleta_info?.folio
+        })
+        
+        // Si ya tiene boleta, mostrarla
+        if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
+          setBoletaInfo({
+            success: true,
+            folio: orderData.boleta_info.folio,
+            data: orderData.boleta_info
+          })
+        }
+        
         setOrder(orderData)
       } else {
         const errorData = await response.json()
@@ -81,6 +219,42 @@ useEffect(() => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const descargarPDF = async () => {
+    const folio = boletaInfo?.folio || order?.boleta_folio
+    if (!folio) return
+    
+    setDescargandoPDF(true)
+    try {
+      const response = await fetch(`/api/simplefactura/pdf?folio=${folio}`)
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `boleta-${folio}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || 'Error al descargar PDF')
+      }
+    } catch (error) {
+      console.error('Error descargando PDF:', error)
+      alert('Error al descargar el PDF')
+    } finally {
+      setDescargandoPDF(false)
+    }
+  }
+
+  const verPDF = () => {
+    const folio = boletaInfo?.folio || order?.boleta_folio
+    if (!folio) return
+    window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
   }
 
   const getStatusConfig = () => {
@@ -131,7 +305,6 @@ useEffect(() => {
   const statusConfig = getStatusConfig()
   const StatusIcon = statusConfig.icon
 
-  // Si no hay estado, mostrar carga
   if (!status) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -142,6 +315,8 @@ useEffect(() => {
       </div>
     )
   }
+
+  const boletaFolio = boletaInfo?.folio || order?.boleta_folio
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -155,7 +330,6 @@ useEffect(() => {
             <p className="text-muted-foreground mt-2">{statusConfig.description}</p>
             {statusConfig.badge}
             
-            {/* Indicador de carrito limpiado (solo para debugging) */}
             {status === 'success' && cartClearedLocal && (
               <div className="mt-2 flex items-center justify-center gap-2 text-sm text-green-600">
                 <ShoppingCart className="w-4 h-4" />
@@ -180,20 +354,124 @@ useEffect(() => {
                     <span className="text-muted-foreground">Total:</span>
                     <span>${order.total.toLocaleString('es-CL')}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Estado:</span>
-                    <span className="capitalize">{order.status}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Pago:</span>
-                    <span className="capitalize">
-                      {order.payment_status === 'paid' ? 'Pagado' : 
-                       order.payment_status === 'pending' ? 'Pendiente' : 
-                       order.payment_status === 'failed' ? 'Fallido' : 
-                       order.payment_status}
-                    </span>
-                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* SECCIÓN DE BOLETA ELECTRÓNICA */}
+            {status === 'success' && (
+              <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-blue-800">
+                  <FileText className="w-4 h-4" />
+                  Boleta Electrónica SII
+                </h3>
+                
+                {emitiendoBoleta && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                    <span className="text-sm text-blue-700">Generando boleta electrónica...</span>
+                  </div>
+                )}
+
+                {boletaError && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                    <p className="text-xs text-yellow-800 mb-2">
+                      ⚠️ {boletaError}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setBoletaInfo(null)
+                          setBoletaError(null)
+                        }}
+                      >
+                        Reintentar
+                      </Button>
+                      {order && (
+                        <Button 
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            window.location.href = `/orders/${order.id}`
+                          }}
+                        >
+                          <Mail className="w-4 h-4 mr-2" />
+                          Reenviar Email
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {boletaFolio && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-blue-700 font-medium">Folio:</span>
+                      <span className="font-mono font-bold text-blue-800 text-lg">
+                        {boletaFolio}
+                      </span>
+                    </div>
+
+                    {boletaInfo?.data && (
+                      <div className="text-sm text-blue-700 border-t border-blue-200 pt-2">
+                        <p>📅 Fecha: {boletaInfo.data.fechaEmision}</p>
+                        <p>💰 Total: ${boletaInfo.data.total?.toLocaleString('es-CL')}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={verPDF}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Ver
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={descargarPDF}
+                        disabled={descargandoPDF}
+                      >
+                        {descargandoPDF ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-2" />
+                        )}
+                        Descargar PDF
+                      </Button>
+                      {order && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            window.location.href = `/orders/${order.id}`
+                          }}
+                        >
+                          <Mail className="w-4 h-4 mr-2" />
+                          Reenviar
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <p className="text-xs text-blue-600 text-center mt-2">
+                      ✅ También recibirás este PDF por correo electrónico
+                    </p>
+                  </div>
+                )}
+
+                {!boletaFolio && !emitiendoBoleta && !boletaError && (
+                  <p className="text-sm text-blue-700">
+                    Generando boleta electrónica automáticamente...
+                  </p>
+                )}
               </div>
             )}
 
@@ -206,20 +484,7 @@ useEffect(() => {
 
             {error && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800 text-center">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            {/* BOTÓN CORREGIDO - usa Link en lugar de redirección directa */}
-            {orderId && !error && (
-              <div className="text-center">
-                <Link href={`/orders/${orderId}`}>
-                  <Button variant="outline" className="mr-2">
-                    Ver Detalles del Pedido
-                  </Button>
-                </Link>
+                <p className="text-sm text-yellow-800 text-center">{error}</p>
               </div>
             )}
 
@@ -233,33 +498,16 @@ useEffect(() => {
               
               {status === 'cancelled' && (
                 <Link href="/checkout">
-                  <Button variant="outline">
-                    Reintentar Pago
-                  </Button>
+                  <Button variant="outline">Reintentar Pago</Button>
                 </Link>
               )}
 
               {status === 'error' && (
                 <Link href="/checkout">
-                  <Button variant="outline">
-                    Intentar Nuevamente
-                  </Button>
+                  <Button variant="outline">Intentar Nuevamente</Button>
                 </Link>
               )}
             </div>
-
-            {status === 'success' && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
-                <p className="text-sm text-green-800 text-center">
-                  Recibirás un email de confirmación con los detalles de tu pedido.
-                  {cartClearedLocal && (
-                    <span className="block mt-1">
-                      Tu carrito ha sido limpiado automáticamente.
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>

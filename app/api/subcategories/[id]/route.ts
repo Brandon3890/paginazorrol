@@ -1,30 +1,36 @@
 import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { Transaction } from '@/lib/db-transaction';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const transaction = new Transaction();
+  
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { name, slug, is_active } = body;
+    const { name, slug, is_active } = await request.json();
 
-    // Validar que los parámetros no sean undefined
-    if (!id || name === undefined || slug === undefined || is_active === undefined) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing subcategory ID' },
         { status: 400 }
       );
     }
 
-    await query(
-      'UPDATE subcategories SET name = ?, slug = ?, is_active = ? WHERE id = ?',
+    await transaction.begin();
+
+    await transaction.query(
+      'UPDATE subcategories SET name = ?, slug = ?, is_active = ?, updated_at = NOW() WHERE id = ?',
       [name, slug, is_active, parseInt(id)]
     );
 
+    await transaction.commit();
+
     return NextResponse.json({ message: 'Subcategory updated successfully' });
+    
   } catch (error) {
+    await transaction.rollback();
     console.error('Error updating subcategory:', error);
     return NextResponse.json(
       { error: 'Error updating subcategory' },
@@ -35,12 +41,13 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const transaction = new Transaction();
+  
   try {
     const { id } = await params;
     
-    // Validar que el id no sea undefined
     if (!id) {
       return NextResponse.json(
         { error: 'Missing subcategory ID' },
@@ -48,13 +55,19 @@ export async function DELETE(
       );
     }
 
-    await query(
-      'UPDATE subcategories SET is_active = FALSE WHERE id = ?',
+    await transaction.begin();
+
+    await transaction.query(
+      'UPDATE subcategories SET is_active = FALSE, updated_at = NOW() WHERE id = ?',
       [parseInt(id)]
     );
 
+    await transaction.commit();
+
     return NextResponse.json({ message: 'Subcategory deactivated successfully' });
+    
   } catch (error) {
+    await transaction.rollback();
     console.error('Error deactivating subcategory:', error);
     return NextResponse.json(
       { error: 'Error deactivating subcategory' },

@@ -56,7 +56,26 @@ function correctImageUrl(imagePath: string | null): string {
   return '/diverse-products-still-life.png'
 }
 
-// GET /api/products/[id] - Obtener un producto específico
+// Función para normalizar tags
+function normalizeTags(tagsRaw: any): string[] {
+  if (!tagsRaw) return [];
+  
+  if (typeof tagsRaw === 'string') {
+    return tagsRaw.split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean);
+  }
+  
+  if (Array.isArray(tagsRaw)) {
+    return tagsRaw.map((t: any) => {
+      if (typeof t === 'string') return t.toLowerCase();
+      if (t && typeof t === 'object') return (t.name || t.slug || '').toLowerCase();
+      return '';
+    }).filter(Boolean);
+  }
+  
+  return [];
+}
+
+// GET /api/products/[id] - Obtener un producto específico (CON TAGS, BRAND Y GENRE)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -74,15 +93,16 @@ export async function GET(
       )
     }
 
-    // Iniciar transacción
     await transaction.begin()
 
-    // Consulta PRINCIPAL del producto
     const productQuery = `
       SELECT 
         p.*,
         c.name as category_name,
         c.id as category_id,
+        p.tags as tagsRaw,
+        p.brand as brand,
+        p.genre as genre,
         GROUP_CONCAT(DISTINCT ps.subcategory_id) as subcategory_ids,
         GROUP_CONCAT(DISTINCT ps.is_primary) as is_primary_flags,
         GROUP_CONCAT(DISTINCT ps.display_order) as display_orders,
@@ -108,11 +128,17 @@ export async function GET(
 
     const product = products[0]
 
-    // Obtener imágenes adicionales
     const additionalImagesResult = await transaction.query(
       'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
       [productId]
     ) as QueryResult[]
+
+    const recommendedResult = await transaction.query(
+      'SELECT recommended_product_id FROM product_recommendations WHERE product_id = ?',
+      [productId]
+    ) as QueryResult[]
+
+    const recommendedProducts = recommendedResult.map((row: QueryResult) => row.recommended_product_id)
 
     // Procesar las subcategorías
     const subcategoryIds = product.subcategory_ids 
@@ -135,7 +161,6 @@ export async function GET(
       ? product.display_orders.split(',').map((order: string) => parseInt(order))
       : []
 
-    // Crear array de subcategorías
     const subcategories: SubcategoryRow[] = subcategoryIds.map((id: number, index: number) => ({
       id,
       name: subcategoryNames[index] || '',
@@ -144,15 +169,14 @@ export async function GET(
       displayOrder: displayOrders[index] || 0
     }))
 
-    // Ordenar por display order
     subcategories.sort((a: SubcategoryRow, b: SubcategoryRow) => a.displayOrder - b.displayOrder)
 
-    // Procesar imágenes adicionales
     const additionalImages = additionalImagesResult
       .filter((row: QueryResult) => row.image_url !== null && row.image_url !== 'null')
       .map((row: QueryResult) => correctImageUrl(row.image_url))
 
-    // Procesar el producto con TODOS los campos necesarios
+    const tagsArray = normalizeTags(product.tagsRaw);
+
     const productData = {
       id: product.id,
       name: product.name,
@@ -161,12 +185,14 @@ export async function GET(
       price: parseFloat(product.price),
       originalPrice: product.original_price ? parseFloat(product.original_price) : null,
       image: correctImageUrl(product.image),
+      youtubeVideoId: product.youtube_video_id || '',
       category: product.category_name || 'Sin categoría',
       subcategory: subcategoryNames.length > 0 ? subcategoryNames[0] : 'Sin subcategoría',
       categoryId: parseInt(product.category_id),
       subcategoryId: subcategoryIds.length > 0 ? subcategoryIds[0] : null,
       subcategoryIds: subcategoryIds.map((id: number) => id.toString()),
       subcategories: subcategories,
+      recommendedProducts: recommendedProducts,
       ageMin: parseInt(product.age_min) || 0,
       age: product.age_display || '',
       playersMin: parseInt(product.players_min) || 0,
@@ -179,14 +205,14 @@ export async function GET(
       isOnSale: Boolean(product.is_on_sale),
       isActive: Boolean(product.is_active),
       additionalImages: additionalImages,
-      tags: [],
+      tags: tagsArray,
+      brand: product.brand || 'Devir',
+      genre: product.genre || 'Estrategia, Familiar',
       createdAt: product.created_at || new Date().toISOString(),
       updatedAt: product.updated_at || new Date().toISOString()
     }
 
-    // Confirmar transacción
     await transaction.commit()
-
     return NextResponse.json(productData)
 
   } catch (error) {
@@ -199,7 +225,7 @@ export async function GET(
   }
 }
 
-// PUT /api/products/[id] - Actualizar un producto
+// PUT /api/products/[id] - Actualizar un producto (CON TAGS, BRAND Y GENRE)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -212,18 +238,21 @@ export async function PUT(
     
     const formData = await request.formData()
     
-    // Iniciar transacción
     await transaction.begin()
     
-    // Obtener datos del formulario
     const name = formData.get('name') as string
     const description = formData.get('description') as string
     const price = parseFloat(formData.get('price') as string)
     const originalPrice = formData.get('originalPrice') ? parseFloat(formData.get('originalPrice') as string) : null
     const image = formData.get('image') as string
+    const youtubeVideoId = formData.get('youtubeVideoId') as string || ''
     const categoryId = parseInt(formData.get('categoryId') as string)
     const subcategoryIds = formData.getAll('subcategoryIds') as string[]
     const deletedImages = formData.getAll('deletedImages') as string[]
+    const recommendedProducts = formData.getAll('recommendedProducts') as string[]
+    const tags = formData.get('tags') as string
+    const brand = formData.get('brand') as string
+    const genre = formData.get('genre') as string
     
     const ageMin = parseInt(formData.get('ageMin') as string)
     const ageDisplay = formData.get('ageDisplay') as string
@@ -236,7 +265,6 @@ export async function PUT(
     const inStock = formData.get('inStock') === 'true'
     const isOnSale = formData.get('isOnSale') === 'true'
 
-    // Validaciones básicas
     if (!name || !price || !categoryId || subcategoryIds.length === 0) {
       await transaction.rollback()
       return NextResponse.json(
@@ -245,7 +273,6 @@ export async function PUT(
       )
     }
 
-    // Validar que todas las subcategorías pertenezcan a la categoría seleccionada
     const subcategoryCheckQuery = `
       SELECT COUNT(*) as count FROM subcategories 
       WHERE id IN (${subcategoryIds.map(() => '?').join(',')}) 
@@ -263,62 +290,66 @@ export async function PUT(
       )
     }
 
-    // Generar slug desde el nombre
     const slug = name.toLowerCase()
       .replace(/[^a-z0-9 -]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
 
-    // 1. Actualizar el producto principal
     const updateProductQuery = `
       UPDATE products SET 
-        name = ?, slug = ?, description = ?, price = ?, original_price = ?, image = ?, 
-        category_id = ?, age_min = ?, age_display = ?, 
+        name = ?, slug = ?, description = ?, price = ?, original_price = ?, 
+        image = ?, youtube_video_id = ?, category_id = ?, age_min = ?, age_display = ?, 
         players_min = ?, players_max = ?, players_display = ?, 
         duration_min = ?, duration_display = ?, stock = ?, in_stock = ?, is_on_sale = ?,
+        tags = ?, brand = ?, genre = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `
 
     await transaction.query(updateProductQuery, [
-      name, slug, description, price, originalPrice, image,
-      categoryId, ageMin, ageDisplay,
+      name, slug, description, price, originalPrice, 
+      image, youtubeVideoId, categoryId, ageMin, ageDisplay,
       playersMin, playersMax, playersDisplay,
       durationMin, durationDisplay, stock, inStock, isOnSale,
+      tags || null,
+      brand || 'Devir',
+      genre || 'Estrategia, Familiar',
       productId
     ])
 
-    // 2. Actualizar las relaciones con subcategorías
-    // Primero eliminar todas las relaciones existentes
     await transaction.query('DELETE FROM product_subcategories WHERE product_id = ?', [productId])
     
-    // Luego insertar todas las subcategorías seleccionadas
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcatId = subcategoryIds[i]
-      const isPrimary = i === 0 ? 1 : 0 // La primera es la principal
+      const isPrimary = i === 0 ? 1 : 0
       await transaction.query(
         'INSERT INTO product_subcategories (product_id, subcategory_id, is_primary, display_order) VALUES (?, ?, ?, ?)',
         [productId, parseInt(subcatId), isPrimary, i + 1]
       )
     }
 
-    // 3. Procesar imagen principal si se proporciona una nueva
+    await transaction.query('DELETE FROM product_recommendations WHERE product_id = ?', [productId])
+    
+    for (const recProductId of recommendedProducts) {
+      await transaction.query(
+        'INSERT INTO product_recommendations (product_id, recommended_product_id) VALUES (?, ?)',
+        [productId, parseInt(recProductId)]
+      )
+    }
+
     const mainImageFile = formData.get('mainImage') as File
     if (mainImageFile && mainImageFile.size > 0) {
       const mainImageUrl = await saveImage(mainImageFile, slug)
       await transaction.query('UPDATE products SET image = ? WHERE id = ?', [mainImageUrl, productId])
     }
 
-    // 4. Manejar eliminación de imágenes existentes
     if (deletedImages.length > 0) {
       for (const imageUrl of deletedImages) {
-        // Eliminar de la base de datos
         await transaction.query(
           'DELETE FROM product_images WHERE product_id = ? AND image_url = ?', 
           [productId, imageUrl]
         )
         
-        // Eliminar archivo físico
         const filename = imageUrl.split('/').pop()
         if (filename) {
           const filePath = path.join(process.cwd(), 'public', 'uploads', 'products', filename)
@@ -329,7 +360,6 @@ export async function PUT(
       }
     }
 
-    // 5. Procesar nuevas imágenes adicionales
     const additionalImages = formData.getAll('additionalImages') as File[]
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
@@ -342,13 +372,13 @@ export async function PUT(
       }
     }
 
-    // Confirmar transacción
     await transaction.commit()
 
     return NextResponse.json({ 
       success: true, 
       message: 'Producto actualizado correctamente',
-      subcategories: subcategoryIds 
+      subcategories: subcategoryIds,
+      recommendedProducts: recommendedProducts
     })
 
   } catch (error) {
@@ -379,10 +409,8 @@ export async function DELETE(
       )
     }
 
-    // Iniciar transacción
     await transaction.begin()
 
-    // Verificar si el producto existe
     const existingProduct = await transaction.query(
       'SELECT * FROM products WHERE id = ?',
       [productId]
@@ -396,13 +424,11 @@ export async function DELETE(
       )
     }
 
-    // Desactivar el producto (soft delete)
     await transaction.query(
       'UPDATE products SET is_active = 0 WHERE id = ?',
       [productId]
     )
 
-    // Confirmar transacción
     await transaction.commit()
 
     return NextResponse.json({ 

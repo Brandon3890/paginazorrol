@@ -23,6 +23,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const userRut = await query(
+      'SELECT rut FROM users WHERE id = ?',
+      [userId]
+    ) as any[]
+
+    const customerRut = userRut.length > 0 ? userRut[0].rut : null
+
     // Verificar que la orden existe y pertenece al usuario
     const orders = await query(
       `SELECT * FROM orders WHERE id = ? AND user_id = ?`,
@@ -71,9 +78,10 @@ export async function POST(request: NextRequest) {
         transbank_amount = ?,
         transbank_return_url = ?,
         payment_status = 'pending',
+        customer_rut = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, orderId]
+      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, customerRut, orderId]
     ) as any
 
     console.log('✅ Orden actualizada en BD:', {

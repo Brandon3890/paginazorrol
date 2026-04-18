@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Package, Ticket, ShoppingCart, Tags, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { Image as ImageIcon } from "lucide-react"
 
 interface DashboardStats {
   products: {
@@ -279,7 +280,33 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </Link>
+
+          {/* Baner */}
+        <Link href="/admin/banners">
+          <Card className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer h-full">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <ImageIcon className="w-8 h-8 text-[#C2410C]" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Banners</CardTitle>
+                  <CardDescription className="text-sm">Gestión visual</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+        Administra los banners del home
+              </p>
+              <p className="text-xs text-muted-foreground pt-2">
+                Crea, edita y reordena los banners
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
         </div>
+
 
         {/* Resumen General */}
         <div className="mt-12">

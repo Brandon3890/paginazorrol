@@ -1,4 +1,4 @@
-// app/admin/products/page.tsx - COMPLETO Y CORREGIDO
+// app/admin/products/page.tsx - COMPLETO CON DIÁLOGOS CORREGIDOS
 "use client"
 
 import { useState, useEffect } from "react"
@@ -9,7 +9,7 @@ import { useProductStore } from "@/lib/product-store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent } from "lucide-react"
+import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import {
   Dialog,
@@ -45,7 +45,7 @@ interface Product {
   isOnSale: boolean;
   isActive: boolean;
   additionalImages: string[];
-  tags: { id: number; name: string; slug: string }[];
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -76,16 +76,11 @@ const ProductImage = ({ src, alt, className }: { src: string; alt: string; class
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
-  // Corregir la URL de la imagen
   const getCorrectedImageUrl = (url: string) => {
     if (!url) return '/diverse-products-still-life.png';
-    
-    // Si ya es una URL correcta
     if (url.startsWith('/') || url.startsWith('http')) {
       return url;
     }
-    
-    // Si es una ruta relativa, hacerla absoluta
     return `/${url}`;
   };
 
@@ -147,9 +142,10 @@ export default function AdminProductsPage() {
   const [productToDelete, setProductToDelete] = useState<number | null>(null)
   const [productToPermanentlyDelete, setProductToPermanentlyDelete] = useState<number | null>(null)
   const [productToReactivate, setProductToReactivate] = useState<number | null>(null)
+  const [productNameForDelete, setProductNameForDelete] = useState<string>("")
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Cargar productos al montar el componente - FIX: Usar parámetros para admin
+  // Cargar productos al montar el componente
   useEffect(() => {
     console.log('🔄 AdminProductsPage mounted, fetching products with admin parameters...');
     fetchProducts({ includeInactive: true, isAdmin: true });
@@ -162,18 +158,13 @@ export default function AdminProductsPage() {
         total: products.length,
         active: products.filter(p => p.isActive).length,
         inactive: products.filter(p => !p.isActive).length,
-        inactiveIds: products.filter(p => !p.isActive).map(p => p.id),
-        products: products.map(p => ({ 
-          id: p.id, 
-          name: p.name, 
-          isActive: p.isActive 
-        }))
       });
     }
   }, [products]);
 
-  const handleDeactivate = (id: number) => {
+  const handleDeactivate = (id: number, productName: string) => {
     setProductToDelete(id)
+    setProductNameForDelete(productName)
     setDeleteDialogOpen(true)
   }
 
@@ -185,6 +176,7 @@ export default function AdminProductsPage() {
         await deactivateProduct(productToDelete)
         setDeleteDialogOpen(false)
         setProductToDelete(null)
+        setProductNameForDelete("")
       } catch (error) {
         console.error('Error deactivating product:', error)
       } finally {
@@ -193,29 +185,9 @@ export default function AdminProductsPage() {
     }
   }
 
-  const handleReactivate = (id: number) => {
-    setProductToReactivate(id)
-    setReactivateDialogOpen(true)
-  }
-
-  const confirmReactivate = async () => {
-    if (productToReactivate) {
-      setActionLoading(true);
-      try {
-        console.log(`🔄 Confirming reactivation for product ${productToReactivate}`);
-        await reactivateProduct(productToReactivate)
-        setReactivateDialogOpen(false)
-        setProductToReactivate(null)
-      } catch (error) {
-        console.error('Error reactivating product:', error)
-      } finally {
-        setActionLoading(false);
-      }
-    }
-  }
-
-  const handlePermanentDelete = (id: number) => {
+  const handlePermanentDelete = (id: number, productName: string) => {
     setProductToPermanentlyDelete(id)
+    setProductNameForDelete(productName)
     setPermanentDeleteDialogOpen(true)
   }
 
@@ -227,8 +199,32 @@ export default function AdminProductsPage() {
         await permanentlyDeleteProduct(productToPermanentlyDelete)
         setPermanentDeleteDialogOpen(false)
         setProductToPermanentlyDelete(null)
+        setProductNameForDelete("")
       } catch (error) {
         console.error('Error permanently deleting product:', error)
+      } finally {
+        setActionLoading(false);
+      }
+    }
+  }
+
+  const handleReactivate = (id: number, productName: string) => {
+    setProductToReactivate(id)
+    setProductNameForDelete(productName)
+    setReactivateDialogOpen(true)
+  }
+
+  const confirmReactivate = async () => {
+    if (productToReactivate) {
+      setActionLoading(true);
+      try {
+        console.log(`🔄 Confirming reactivation for product ${productToReactivate}`);
+        await reactivateProduct(productToReactivate)
+        setReactivateDialogOpen(false)
+        setProductToReactivate(null)
+        setProductNameForDelete("")
+      } catch (error) {
+        console.error('Error reactivating product:', error)
       } finally {
         setActionLoading(false);
       }
@@ -246,7 +242,6 @@ export default function AdminProductsPage() {
   }
 
   const ProductCard = ({ product, isInactive = false }: { product: Product; isInactive?: boolean }) => {
-    // Asegurar que los precios sean números
     const price = ensureNumber(product.price);
     const originalPrice = product.originalPrice ? ensureNumber(product.originalPrice) : undefined;
     const discountPercent = originalPrice ? calculateDiscountPercent(originalPrice, price) : 0;
@@ -290,48 +285,42 @@ export default function AdminProductsPage() {
               </div>
             </div>
             <div className="flex gap-2 justify-end">
+              <Link href={`/admin/products/${product.id}`}>
+                <Button variant="outline" size="icon" disabled={actionLoading} title="Editar">
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </Link>
+              
               {!isInactive ? (
-                <>
-                  <Link href={`/admin/products/${product.id}`}>
-                    <Button variant="outline" size="icon" disabled={actionLoading}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                  </Link>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => handleDeactivate(product.id)}
-                    disabled={actionLoading}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={() => handleDeactivate(product.id, product.name)}
+                  disabled={actionLoading}
+                  title="Desactivar producto"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               ) : (
                 <>
-                  <Link href={`/admin/products/${product.id}`}>
-                    <Button variant="outline" size="icon" title="Editar" disabled={actionLoading}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                  </Link>
                   <Button 
                     variant="outline" 
                     size="icon" 
-                    onClick={() => handleReactivate(product.id)} 
-                    title="Reactivar"
+                    onClick={() => handleReactivate(product.id, product.name)} 
+                    title="Reactivar producto"
                     disabled={actionLoading}
                   >
                     <RotateCcw className="w-4 h-4" />
                   </Button>
-                  {/* Boton de elimnar permanente 
                   <Button
                     variant="destructive"
                     size="icon"
-                    onClick={() => handlePermanentDelete(product.id)}
+                    onClick={() => handlePermanentDelete(product.id, product.name)}
                     title="Eliminar permanentemente"
                     disabled={actionLoading}
                   >
                     <Trash className="w-4 h-4" />
-                  </Button>*/}
+                  </Button>
                 </>
               )}
             </div>
@@ -407,15 +396,6 @@ export default function AdminProductsPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={handleRefresh}
-                disabled={actionLoading || loading}
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Actualizar
-              </Button>
               <Link href="/admin/products/new">
                 <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412]" disabled={actionLoading}>
                   <Plus className="w-4 h-4" />
@@ -472,10 +452,19 @@ export default function AdminProductsPage() {
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Desactivar Producto</DialogTitle>
-              <DialogDescription>
-                ¿Estás seguro de que quieres desactivar este producto? El producto no aparecerá en la tienda pero podrás
-                reactivarlo más tarde desde la pestaña de productos inactivos.
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-orange-500" />
+                Desactivar Producto
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div>
+                  <p>
+                    ¿Estás seguro de que quieres desactivar <strong className="text-foreground">{productNameForDelete}</strong>?
+                  </p>
+                  <p className="mt-2">
+                    El producto no aparecerá en la tienda pero podrás reactivarlo más tarde desde la pestaña de productos inactivos.
+                  </p>
+                </div>
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -503,9 +492,19 @@ export default function AdminProductsPage() {
         <Dialog open={reactivateDialogOpen} onOpenChange={setReactivateDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Reactivar Producto</DialogTitle>
-              <DialogDescription>
-                ¿Estás seguro de que quieres reactivar este producto? El producto volverá a aparecer en la tienda.
+              <DialogTitle className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-green-500" />
+                Reactivar Producto
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div>
+                  <p>
+                    ¿Estás seguro de que quieres reactivar <strong className="text-foreground">{productNameForDelete}</strong>?
+                  </p>
+                  <p className="mt-2">
+                    El producto volverá a aparecer en la tienda.
+                  </p>
+                </div>
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -520,7 +519,7 @@ export default function AdminProductsPage() {
               <Button 
                 onClick={confirmReactivate} 
                 disabled={actionLoading}
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
               >
                 {actionLoading ? 'Reactivando...' : 'Reactivar'}
               </Button>
@@ -532,16 +531,35 @@ export default function AdminProductsPage() {
         <Dialog open={permanentDeleteDialogOpen} onOpenChange={setPermanentDeleteDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Eliminar Producto Permanentemente</DialogTitle>
-              <DialogDescription>
-                ¿Estás seguro de que quieres eliminar este producto PERMANENTEMENTE? Esta acción no se puede deshacer y
-                el producto será eliminado completamente de la base de datos.
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="w-5 h-5" />
+                ¡Eliminar Permanentemente!
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-3">
+                  <p>
+                    ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar <strong className="text-red-600 font-bold">{productNameForDelete}</strong>?
+                  </p>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-800">
+                      ⚠️ <strong>Esta acción NO se puede deshacer.</strong>
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      El producto será eliminado completamente de la base de datos, incluyendo:
+                    </p>
+                    <ul className="text-xs text-red-600 mt-1 list-disc list-inside">
+                      <li>Información del producto</li>
+                      <li>Imágenes asociadas</li>
+                      <li>Historial de pedidos (referencias)</li>
+                    </ul>
+                  </div>
+                </div>
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setPermanentDeleteDialogOpen(false)}
+              <Button 
+                variant="outline" 
+                onClick={() => setPermanentDeleteDialogOpen(false)} 
                 disabled={actionLoading}
                 className="w-full sm:w-auto"
               >
@@ -553,7 +571,7 @@ export default function AdminProductsPage() {
                 disabled={actionLoading}
                 className="w-full sm:w-auto"
               >
-                {actionLoading ? 'Eliminando...' : 'Eliminar Permanentemente'}
+                {actionLoading ? 'Eliminando...' : 'Sí, Eliminar Permanentemente'}
               </Button>
             </DialogFooter>
           </DialogContent>

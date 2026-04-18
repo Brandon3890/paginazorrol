@@ -1,4 +1,4 @@
-// lib/db.ts - CONFIGURACIÓN CORREGIDA
+// lib/db.ts - CONFIGURACIÓN CORREGIDA CON SOPORTE PARA TRANSACCIONES
 import mysql from 'mysql2/promise'
 
 const dbConfig = {
@@ -10,8 +10,8 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 20,
   queueLimit: 0,
-  connectTimeout: 60000, // 60 segundos para conexión inicial
-  idleTimeout: 60000, // 60 segundos antes de cerrar conexiones inactivas
+  connectTimeout: 60000,
+  idleTimeout: 60000,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0
 };
@@ -47,10 +47,7 @@ function isOkPacket(result: any): result is mysql.OkPacket {
   return result && typeof result === 'object' && 'affectedRows' in result;
 }
 
-// Exportar el pool como default
-export default pool;
-
-// También exportar las funciones utilitarias
+// FUNCIÓN PRINCIPAL: Usa execute para consultas preparadas (seguro contra SQL injection)
 export async function query(sql: string, params: any[] = []) {
   const startTime = Date.now();
   let connection;
@@ -60,7 +57,33 @@ export async function query(sql: string, params: any[] = []) {
     const [rows] = await connection.execute(sql, params);
     const duration = Date.now() - startTime;
     
-    // Log solo para consultas lentas (opcional)
+    if (duration > 1000) {
+      console.log(`⚠️ Slow query (${duration}ms):`, sql.substring(0, 100));
+    }
+    
+    return rows;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`❌ Query error after ${duration}ms:`, error);
+    throw error;
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
+
+// NUEVA FUNCIÓN: Para comandos que no soporta execute (START TRANSACTION, COMMIT, etc.)
+export async function querySimple(sql: string, params: any[] = []) {
+  const startTime = Date.now();
+  let connection;
+  
+  try {    
+    connection = await pool.getConnection();
+    // Usamos query() en lugar de execute() para comandos especiales
+    const [rows] = await connection.query(sql, params);
+    const duration = Date.now() - startTime;
+    
     if (duration > 1000) {
       console.log(`⚠️ Slow query (${duration}ms):`, sql.substring(0, 100));
     }
@@ -98,3 +121,6 @@ export async function closePool() {
     console.error('❌ Error closing database pool:', error);
   }
 }
+
+// Exportar el pool como default
+export default pool;

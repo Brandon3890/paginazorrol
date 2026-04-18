@@ -20,6 +20,9 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { useCheckoutTimer } from '@/hooks/use-checkout-timer'
+import { CheckoutTimer } from '@/components/checkout-timer'
+import { motion, AnimatePresence } from "framer-motion"
 
 // Función para manejar rate limit
 const handleRateLimit = async (response: Response) => {
@@ -79,12 +82,20 @@ export default function CheckoutPage() {
     applyCoupon,
     removeCoupon,
     isLoading: cartLoading,
+    startCheckout,
+    endCheckout,
+    hasActiveCheckout,
+    checkoutExpiresAt
   } = useCartStore()
+  
   const { user, isAuthenticated, loadUserAddresses } = useAuthStore()
   const { addOrder } = useOrderStore()
   const { validateCoupon } = useCouponStore()
   const router = useRouter()
   const { toast } = useToast()
+
+  // Usar el hook del temporizador
+  const { formattedTime, isExpired, progress, isReserving } = useCheckoutTimer()
 
   const [formData, setFormData] = useState({
     email: "",
@@ -101,27 +112,43 @@ export default function CheckoutPage() {
   const [couponError, setCouponError] = useState("")
   const [loadingAddresses, setLoadingAddresses] = useState(false)
   const [addressLoadAttempts, setAddressLoadAttempts] = useState(0)
+  const [hasInitializedCheckout, setHasInitializedCheckout] = useState(false)
 
-  // CÁLCULOS ACTUALIZADOS - USANDO EL STORE CORREGIDO Y REDONDEADOS
+  // CÁLCULOS (los precios de productos ya incluyen IVA)
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
   const totalAfterDiscount = roundToInteger(getTotalPrice())
   const shipping = roundToInteger(getShippingCost())
-  const tax = roundToInteger(totalAfterDiscount * 0.19)
-  const finalTotal = roundToInteger(totalAfterDiscount + shipping + tax)
+  const calculateIncludedIVA = (amount: number): number => {
+    return roundToInteger(amount - (amount / 1.19))
+  }
+  const includedIVA = calculateIncludedIVA(totalAfterDiscount)
+  const finalTotal = roundToInteger(totalAfterDiscount + shipping)
 
-  /*console.log('💰 Resumen de precios:', {
-    subtotalBeforeDiscount,
-    discountAmount,
-    totalAfterDiscount,
-    shipping,
-    tax,
-    finalTotal,
-    appliedCoupon,
-    couponDetails
-  })*/
+  // Verificar si hay checkout activo al cargar la página
+  useEffect(() => {
+    if (!hasActiveCheckout() && items.length > 0 && !hasInitializedCheckout) {
+      setHasInitializedCheckout(true)
+    }
+  }, [items, hasActiveCheckout, hasInitializedCheckout])
 
-  // Cargar datos del usuario y direcciones si está autenticado
+  // Liberar stock al salir de la página (solo si no se completó la compra)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (items.length > 0 && !isExpired && !isProcessing) {
+        e.preventDefault()
+        e.returnValue = '¿Estás seguro de que quieres salir? Tu reserva de stock se perderá.'
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [items, isExpired, isProcessing])
+
+  // Cargar datos del usuario
   useEffect(() => {
     const loadUserData = async () => {
       if (isAuthenticated && user) {
@@ -159,7 +186,7 @@ export default function CheckoutPage() {
     loadUserData()
   }, [isAuthenticated, user, loadUserAddresses, addressLoadAttempts, toast])
 
-  // Seleccionar dirección predeterminada cuando las direcciones estén disponibles
+  // Seleccionar dirección predeterminada
   useEffect(() => {
     if (user?.addresses && user.addresses.length > 0 && !selectedAddress) {
       const defaultAddress = user.addresses.find(addr => addr.isDefault) || user.addresses[0]
@@ -170,29 +197,45 @@ export default function CheckoutPage() {
   // Mostrar loading mientras se hidrata el carrito
   if (cartLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <motion.div 
+        className="container mx-auto px-4 py-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">Cargando carrito...</p>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
+  // Si el carrito está vacío
   if (items.length === 0) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <motion.div 
+        className="container mx-auto px-4 py-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Tu carrito está vacío</h1>
           <p className="text-muted-foreground mb-6">Agrega algunos productos antes de proceder al checkout.</p>
           <Link href="/">
-            <Button>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Continuar Comprando
-            </Button>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Continuar Comprando
+              </Button>
+            </motion.div>
           </Link>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -204,175 +247,120 @@ export default function CheckoutPage() {
     }))
   }
 
-const handleApplyCoupon = async () => {
-  if (!couponCode.trim()) {
-    toast({
-      title: "Error",
-      description: "Por favor ingresa un código de cupón",
-      variant: "destructive",
-    })
-    return
-  }
-
-  setIsValidatingCoupon(true)
-  setCouponError("")
-
-  try {
-    /* LOG DETALLADO DE LOS ITEMS DEL CARRITO
-    console.log('🛒 Items en carrito para validación:', items.map(item => ({
-      id: item.id,
-      name: item.name,
-      categoryId: item.categoryId,
-      subcategoryId: item.subcategoryId,
-      category: item.category,
-      price: item.price,
-      quantity: item.quantity
-    })))*/
-
-    const response = await fetch('/api/coupons/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        code: couponCode.trim().toUpperCase(),
-        items: items.map(item => ({
-          id: item.id,
-          categoryId: item.categoryId,
-          subcategoryId: item.subcategoryId,
-          price: item.price,
-          quantity: item.quantity
-        }))
-      }),
-    })
-
-    // Manejar rate limit
-    if (await handleRateLimit(response)) {
-      return handleApplyCoupon() // Reintentar
-    }
-
-    const result = await response.json()
-
-    /*console.log('🎯 Respuesta de validación de cupón:', result)*/
-
-    if (result.valid && result.coupon) {
-      // CALCULAR EL DESCUENTO REAL - VERSIÓN CORREGIDA
-      let discountAmount = 0
-      const coupon = result.coupon
-      
-      /*console.log('🎯 Calculando descuento para cupón:', {
-        type: coupon.type,
-        categoryIds: coupon.categoryIds,
-        subcategoryIds: coupon.subcategoryIds,
-        productIds: coupon.productIds,
-        items: items
-      })*/
-
-      if (coupon.type === 'global') {
-        // Descuento global - aplicar a todo el carrito
-        discountAmount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
-        /*console.log(' Descuento global calculado:', discountAmount)*/
-      } else {
-        // Para cupones específicos, calcular descuento solo para items aplicables
-        let itemsWithDiscount = 0
-        
-        items.forEach(item => {
-          let appliesToItem = false
-          let reason = ""
-          
-          // Verificar si el cupón aplica a este item específico
-          switch (coupon.type) {
-            case 'category':
-              appliesToItem = item.categoryId && coupon.categoryIds.includes(item.categoryId)
-              reason = appliesToItem ? 
-                `Categoría ${item.categoryId} coincide con ${coupon.categoryIds}` :
-                `Categoría ${item.categoryId} NO coincide con ${coupon.categoryIds}`
-              break
-              
-            case 'subcategory':
-              appliesToItem = item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)
-              reason = appliesToItem ? 
-                `Subcategoría ${item.subcategoryId} coincide con ${coupon.subcategoryIds}` :
-                `Subcategoría ${item.subcategoryId} NO coincide con ${coupon.subcategoryIds}`
-              break
-              
-            case 'product':
-              appliesToItem = coupon.productIds.includes(item.id)
-              reason = appliesToItem ? 
-                `Producto ${item.id} coincide con ${coupon.productIds}` :
-                `Producto ${item.id} NO coincide con ${coupon.productIds}`
-              break
-              
-            case 'multiple':
-              appliesToItem = (
-                (item.categoryId && coupon.categoryIds.includes(item.categoryId)) ||
-                (item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)) ||
-                coupon.productIds.includes(item.id)
-              )
-              reason = appliesToItem ? 
-                `Múltiple: categoría ${item.categoryId}, subcategoría ${item.subcategoryId} o producto ${item.id} coincide` :
-                `Múltiple: NO coincide categoría ${item.categoryId}, subcategoría ${item.subcategoryId} o producto ${item.id}`
-              break
-          }
-          
-         /* console.log(`🔍 ${item.name}: ${reason}`)*/
-          
-          if (appliesToItem) {
-            const itemTotal = item.price * item.quantity
-            const itemDiscount = (itemTotal * coupon.discountPercentage) / 100
-            discountAmount += itemDiscount
-            itemsWithDiscount++
-            /*console.log(`📦 Descuento aplicado a ${item.name}: $${itemDiscount}`)*/
-          }
-        })
-
-        /*console.log(`📊 Resumen: ${itemsWithDiscount} productos aplican de ${items.length} total`)*/
-      }
-
-      // REDONDEAR EL DESCUENTO A NÚMERO ENTERO
-      discountAmount = roundToInteger(discountAmount)
-      /*console.log('💰 Descuento total redondeado:', discountAmount)*/
-
-      // Validar que se haya calculado algún descuento
-      if (discountAmount === 0 && coupon.type !== 'global') {
-        setCouponError("El cupón no aplica a ningún producto en tu carrito")
-        toast({
-          title: "Cupón no aplicable",
-          description: "Este cupón no aplica a ningún producto en tu carrito",
-          variant: "destructive",
-        })
-        setIsValidatingCoupon(false)
-        return
-      }
-
-      // APLICAR CUPÓN CON EL DESCUENTO CALCULADO Y REDONDEADO
-      applyCoupon(couponCode.trim().toUpperCase(), discountAmount, coupon)
-      
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
       toast({
-        title: "¡Cupón aplicado!",
-        description: `${coupon.discountPercentage}% de descuento aplicado ($${formatCLP(discountAmount)})`,
-      })
-      setCouponCode("")
-    } else {
-      setCouponError(result.error || "Cupón inválido")
-      toast({
-        title: "Cupón inválido",
-        description: result.error || "No se pudo aplicar el cupón",
+        title: "Error",
+        description: "Por favor ingresa un código de cupón",
         variant: "destructive",
       })
+      return
     }
-  } catch (error) {
-    console.error('Error validating coupon:', error)
-    setCouponError("Error al validar el cupón")
-    toast({
-      title: "Error",
-      description: "No se pudo validar el cupón",
-      variant: "destructive",
-    })
-  } finally {
-    setIsValidatingCoupon(false)
+
+    setIsValidatingCoupon(true)
+    setCouponError("")
+
+    try {
+      const response = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: couponCode.trim().toUpperCase(),
+          items: items.map(item => ({
+            id: item.id,
+            categoryId: item.categoryId,
+            subcategoryId: item.subcategoryId,
+            price: item.price,
+            quantity: item.quantity
+          }))
+        }),
+      })
+
+      if (await handleRateLimit(response)) {
+        return handleApplyCoupon()
+      }
+
+      const result = await response.json()
+
+      if (result.valid && result.coupon) {
+        let discountAmount = 0
+        const coupon = result.coupon
+
+        if (coupon.type === 'global') {
+          discountAmount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
+        } else {
+          items.forEach(item => {
+            let appliesToItem = false
+            
+            switch (coupon.type) {
+              case 'category':
+                appliesToItem = item.categoryId && coupon.categoryIds.includes(item.categoryId)
+                break
+              case 'subcategory':
+                appliesToItem = item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)
+                break
+              case 'product':
+                appliesToItem = coupon.productIds.includes(item.id)
+                break
+              case 'multiple':
+                appliesToItem = (
+                  (item.categoryId && coupon.categoryIds.includes(item.categoryId)) ||
+                  (item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)) ||
+                  coupon.productIds.includes(item.id)
+                )
+                break
+            }
+            
+            if (appliesToItem) {
+              const itemTotal = item.price * item.quantity
+              const itemDiscount = (itemTotal * coupon.discountPercentage) / 100
+              discountAmount += itemDiscount
+            }
+          })
+        }
+
+        discountAmount = roundToInteger(discountAmount)
+
+        if (discountAmount === 0 && coupon.type !== 'global') {
+          setCouponError("El cupón no aplica a ningún producto en tu carrito")
+          toast({
+            title: "Cupón no aplicable",
+            description: "Este cupón no aplica a ningún producto en tu carrito",
+            variant: "destructive",
+          })
+          setIsValidatingCoupon(false)
+          return
+        }
+
+        applyCoupon(couponCode.trim().toUpperCase(), discountAmount, coupon)
+        
+        toast({
+          title: "¡Cupón aplicado!",
+          description: `${coupon.discountPercentage}% de descuento aplicado ($${formatCLP(discountAmount)})`,
+        })
+        setCouponCode("")
+      } else {
+        setCouponError(result.error || "Cupón inválido")
+        toast({
+          title: "Cupón inválido",
+          description: result.error || "No se pudo aplicar el cupón",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error validating coupon:', error)
+      setCouponError("Error al validar el cupón")
+      toast({
+        title: "Error",
+        description: "No se pudo validar el cupón",
+        variant: "destructive",
+      })
+    } finally {
+      setIsValidatingCoupon(false)
+    }
   }
-}
 
   const handleRemoveCoupon = () => {
     removeCoupon()
@@ -382,60 +370,140 @@ const handleApplyCoupon = async () => {
     })
   }
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  
-  if (!selectedAddress) {
-    toast({
-      title: "Error",
-      description: "Por favor selecciona una dirección de envío",
-      variant: "destructive",
-    })
-    return
-  }
-
-  const requiredFields = ['email', 'firstName', 'lastName', 'phone']
-  const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData].trim())
-
-  if (missingFields.length > 0) {
-    toast({
-      title: "Error",
-      description: `Por favor completa todos los campos requeridos`,
-      variant: "destructive",
-    })
-    return
-  }
-
-  setIsProcessing(true)
-
-  let couponId = null
-  let couponCodeUsed = null
-
-  if (appliedCoupon && couponDetails) {
-    couponId = couponDetails.id
-    couponCodeUsed = couponDetails.code
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     
-    if (couponDetails.currentUses >= couponDetails.maxUses) {
+    // Verificar si el tiempo expiró
+    if (isExpired) {
       toast({
-        title: "Cupón agotado",
-        description: "Este cupón ya ha sido utilizado el máximo de veces permitido",
+        title: "⏰ Tiempo agotado",
+        description: "El tiempo para completar la compra ha expirado",
         variant: "destructive",
       })
-      setIsProcessing(false)
+      router.push('/')
       return
     }
-  }
+    
+    if (!selectedAddress) {
+      toast({
+        title: "Error",
+        description: "Por favor selecciona una dirección de envío",
+        variant: "destructive",
+      })
+      return
+    }
 
-  try {
-    // 1. Crear la orden en MySQL
-    const orderResponse = await fetch('/api/orders/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const requiredFields = ['email', 'firstName', 'lastName', 'phone']
+    const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData].trim())
+
+    if (missingFields.length > 0) {
+      toast({
+        title: "Error",
+        description: `Por favor completa todos los campos requeridos`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsProcessing(true)
+
+    let couponId = null
+    let couponCodeUsed = null
+
+    if (appliedCoupon && couponDetails) {
+      couponId = couponDetails.id
+      couponCodeUsed = couponDetails.code
+      
+      if (couponDetails.currentUses >= couponDetails.maxUses) {
+        toast({
+          title: "Cupón agotado",
+          description: "Este cupón ya ha sido utilizado el máximo de veces permitido",
+          variant: "destructive",
+        })
+        setIsProcessing(false)
+        return
+      }
+    }
+
+    try {
+      // 1. Crear la orden en MySQL
+      const orderResponse = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+            category: item.category,
+            categoryId: item.categoryId,
+            subcategoryId: item.subcategoryId,
+          })),
+          customerInfo: {
+            email: formData.email,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            phone: formData.phone,
+            address: selectedAddress.street,
+            city: selectedAddress.communeName,
+            region: selectedAddress.regionName,
+            postalCode: selectedAddress.postalCode,
+            department: selectedAddress.department,
+            deliveryInstructions: selectedAddress.deliveryInstructions,
+          },
+          shippingAddress: selectedAddress,
+          totals: {
+            subtotal: subtotalBeforeDiscount,
+            discount: discountAmount,
+            shipping,
+            total: finalTotal,
+          },
+          notes: formData.notes,
+          couponId: couponId,
+          couponCode: couponCodeUsed,
+          shippingMethod: shippingMethod,
+        }),
+      })
+
+      if (await handleRateLimit(orderResponse)) {
+        return handleSubmit(e)
+      }
+
+      const orderData = await orderResponse.json()
+
+      if (!orderResponse.ok) {
+        throw new Error(orderData.error || 'Error al crear la orden')
+      }
+
+      // 2. MARCAR CUPÓN COMO USADO
+      if (couponId) {
+        try {
+          const couponUseResponse = await fetch(`/api/coupons/${couponId}/use`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+
+          if (couponUseResponse.ok) {
+            console.log(`✅ Cupón ${couponId} marcado como usado exitosamente`)
+          } else {
+            console.warn(`⚠️ No se pudo marcar el cupón como usado: ${couponUseResponse.status}`)
+          }
+        } catch (couponError) {
+          console.error('❌ Error al marcar cupón como usado:', couponError)
+        }
+      }
+
+      // 3. Guardar en el store local
+      addOrder({
+        userId: user?.id,
         items: items.map((item) => ({
-          id: item.id,
+          id: item.id.toString(),
           name: item.name,
           price: item.price,
           quantity: item.quantity,
@@ -457,143 +525,68 @@ const handleSubmit = async (e: React.FormEvent) => {
           deliveryInstructions: selectedAddress.deliveryInstructions,
         },
         shippingAddress: selectedAddress,
+        paymentInfo: {
+          method: "transbank",
+          status: "pending",
+        },
         totals: {
           subtotal: subtotalBeforeDiscount,
           discount: discountAmount,
           shipping,
-          tax,
+          tax: includedIVA,  
           total: finalTotal,
         },
+        status: "pending",
         notes: formData.notes,
         couponId: couponId,
         couponCode: couponCodeUsed,
         shippingMethod: shippingMethod,
-      }),
-    })
+      })
 
-    if (await handleRateLimit(orderResponse)) {
-      return handleSubmit(e)
-    }
+      // 4. Crear transacción en Transbank
+      const paymentResponse = await fetch('/api/payment/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: orderData.orderId,
+          amount: finalTotal
+        }),
+      })
 
-    const orderData = await orderResponse.json()
-
-    if (!orderResponse.ok) {
-      throw new Error(orderData.error || 'Error al crear la orden')
-    }
-
-    /*console.log('✅ Orden creada en MySQL:', orderData)*/
-
-    // 2. MARCAR CUPÓN COMO USADO
-    if (couponId) {
-      try {
-        /*console.log(`🎫 Marcando cupón ${couponId} como usado...`)*/
-        const couponUseResponse = await fetch(`/api/coupons/${couponId}/use`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-
-        if (couponUseResponse.ok) {
-          console.log(`✅ Cupón ${couponId} marcado como usado exitosamente`)
-        } else {
-          console.warn(`⚠️ No se pudo marcar el cupón como usado: ${couponUseResponse.status}`)
-        }
-      } catch (couponError) {
-        console.error('❌ Error al marcar cupón como usado:', couponError)
+      if (await handleRateLimit(paymentResponse)) {
+        return handleSubmit(e)
       }
+
+      const paymentData = await paymentResponse.json()
+
+      if (!paymentResponse.ok) {
+        throw new Error(paymentData.error || 'Error al crear transacción de pago')
+      }
+
+      if (paymentData.success && paymentData.token && paymentData.url) {
+        console.log('🔄 Redirigiendo a Transbank...')
+        
+        // ✅ NO confirmar la compra aquí - eso se hace en payment/response
+        // ✅ NO finalizar checkout aquí - eso se hace en payment/response
+        
+        window.location.href = `${paymentData.url}?token_ws=${paymentData.token}`
+      } else {
+        throw new Error('No se pudo crear la transacción de pago')
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error procesando pedido:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Hubo un problema al procesar tu pedido. Por favor intenta nuevamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
     }
-
-    // 4. Guardar en el store local (pero NO limpiar carrito todavía)
-    const localOrderId = addOrder({
-      userId: user?.id,
-      items: items.map((item) => ({
-        id: item.id.toString(),
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        image: item.image,
-        category: item.category,
-        categoryId: item.categoryId,
-        subcategoryId: item.subcategoryId,
-      })),
-      customerInfo: {
-        email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone,
-        address: selectedAddress.street,
-        city: selectedAddress.communeName,
-        region: selectedAddress.regionName,
-        postalCode: selectedAddress.postalCode,
-        department: selectedAddress.department,
-        deliveryInstructions: selectedAddress.deliveryInstructions,
-      },
-      shippingAddress: selectedAddress,
-      paymentInfo: {
-        method: "transbank",
-        status: "pending",
-      },
-      totals: {
-        subtotal: subtotalBeforeDiscount,
-        discount: discountAmount,
-        shipping,
-        tax,
-        total: finalTotal,
-      },
-      status: "pending",
-      notes: formData.notes,
-      couponId: couponId,
-      couponCode: couponCodeUsed,
-      shippingMethod: shippingMethod,
-    })
-
-    /*console.log('✅ Orden creada en store local:', localOrderId)*/
-
-    // 5. Crear transacción en Transbank
-    const paymentResponse = await fetch('/api/payment/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        orderId: orderData.orderId,
-        amount: finalTotal
-      }),
-    })
-
-    if (await handleRateLimit(paymentResponse)) {
-      return handleSubmit(e)
-    }
-
-    const paymentData = await paymentResponse.json()
-
-    if (!paymentResponse.ok) {
-      throw new Error(paymentData.error || 'Error al crear transacción de pago')
-    }
-
-    if (paymentData.success && paymentData.token && paymentData.url) {
-      // IMPORTANTE: NO LIMPIAR EL CARRITO AQUÍ
-      // Solo redirigir a Transbank
-      console.log('🔄 Redirigiendo a Transbank...')
-      console.log('🛒 Carrito MANTENIDO hasta confirmación de pago')
-      window.location.href = `${paymentData.url}?token_ws=${paymentData.token}`
-      
-    } else {
-      throw new Error('No se pudo crear la transacción de pago')
-    }
-
-  } catch (error: any) {
-    console.error('❌ Error procesando pedido:', error)
-    toast({
-      title: "Error",
-      description: error.message || "Hubo un problema al procesar tu pedido. Por favor intenta nuevamente.",
-      variant: "destructive",
-    })
-  } finally {
-    setIsProcessing(false)
   }
-}
 
   // Función para recargar direcciones manualmente
   const handleReloadAddresses = async () => {
@@ -615,8 +608,36 @@ const handleSubmit = async (e: React.FormEvent) => {
     }
   }
 
+  // Si el tiempo expiró, mostrar mensaje
+  if (isExpired) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center py-12 space-y-4"
+        >
+          <h1 className="text-3xl font-bold">⏰ Tiempo agotado</h1>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            El tiempo para completar la compra ha expirado. Los productos han sido liberados y serás redirigido al inicio.
+          </p>
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mt-4"
+          />
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8">
+    <motion.div 
+      className="container mx-auto px-4 py-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
       <div className="mb-6">
         <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -624,38 +645,58 @@ const handleSubmit = async (e: React.FormEvent) => {
         </Link>
       </div>
 
-      {!isAuthenticated && (
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <LogIn className="w-5 h-5 text-primary" />
-                <div>
-                  <h3 className="font-medium">¿Ya tienes una cuenta?</h3>
-                  <p className="text-sm text-muted-foreground">Inicia sesión para usar tus direcciones guardadas</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Link href="/login">
-                  <Button variant="outline" size="sm">
-                    Iniciar Sesión
-                  </Button>
-                </Link>
+      {/* TEMPORIZADOR DE CHECKOUT */}
+      <CheckoutTimer 
+        timeLeft={formattedTime} 
+        progress={progress} 
+        isExpired={isExpired} 
+      />
 
-                <Link href="/register">
-                  <Button size="sm">
-                    Crear Cuenta
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <AnimatePresence>
+        {!isAuthenticated && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <LogIn className="w-5 h-5 text-primary" />
+                    <div>
+                      <h3 className="font-medium">¿Ya tienes una cuenta?</h3>
+                      <p className="text-sm text-muted-foreground">Inicia sesión para usar tus direcciones guardadas</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link href="/login">
+                      <Button variant="outline" size="sm">
+                        Iniciar Sesión
+                      </Button>
+                    </Link>
+                    <Link href="/register">
+                      <Button size="sm">
+                        Crear Cuenta
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Checkout Form */}
-        <div className="space-y-6">
+        <motion.div 
+          className="space-y-6"
+          initial={{ opacity: 0, x: -30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
           <div>
             <h1 className="text-3xl font-bold">Checkout</h1>
             <p className="text-muted-foreground">Completa tu información para finalizar la compra</p>
@@ -938,10 +979,15 @@ const handleSubmit = async (e: React.FormEvent) => {
               </CardContent>
             </Card>
           </form>
-        </div>
+        </motion.div>
 
         {/* Order Summary */}
-        <div className="space-y-6">
+        <motion.div 
+          className="space-y-6"
+          initial={{ opacity: 0, x: 30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
           <Card>
             <CardHeader>
               <CardTitle>Resumen del Pedido</CardTitle>
@@ -1042,14 +1088,13 @@ const handleSubmit = async (e: React.FormEvent) => {
 
               <Separator />
 
-              {/* Totals - VERSIÓN CORREGIDA SIN DECIMALES */}
+              {/* Totals */}
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span>${formatCLP(subtotalBeforeDiscount)}</span>
                 </div>
                 
-                {/* DESCUENTO APLICADO */}
                 {discountAmount > 0 && (
                   <>
                     <div className="flex justify-between text-green-600">
@@ -1060,7 +1105,6 @@ const handleSubmit = async (e: React.FormEvent) => {
                       <span>-${formatCLP(discountAmount)}</span>
                     </div>
                     
-                    {/* SUBTOTAL DESPUÉS DEL DESCUENTO */}
                     <div className="flex justify-between border-t pt-2">
                       <span className="font-medium">Subtotal con descuento</span>
                       <span className="font-medium">${formatCLP(totalAfterDiscount)}</span>
@@ -1072,17 +1116,21 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <span>Envío</span>
                   <span>{shipping === 0 ? "Gratis" : `$${formatCLP(shipping)}`}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>IVA (19%)</span>
-                  <span>${formatCLP(tax)}</span>
+                
+                {/* Mostrar IVA incluido (opcional, para transparencia) */}
+                <div className="flex justify-between text-muted-foreground text-sm">
+                  <span>Todos los valores incluyen IVA</span>
+                  {/* 
+                  <span>${formatCLP(includedIVA)}</span>*/}
                 </div>
+                
                 <Separator />
+                
                 <div className="flex justify-between text-lg font-bold">
-                  <span>Total</span>
+                  <span>Total a pagar</span>
                   <span>${formatCLP(finalTotal)}</span>
                 </div>
                 
-                {/* AHORRO TOTAL */}
                 {discountAmount > 0 && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
                     <div className="flex justify-between items-center text-green-800">
@@ -1091,7 +1139,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     </div>
                     {couponDetails && (
                       <p className="text-xs text-green-600 mt-1">
-                        {couponDetails.discountPercentage}% de descuento {couponDetails.type !== 'global' ? `aplicado a productos seleccionados` : 'aplicado a toda tu compra'}
+                        {couponDetails.discountPercentage}% de descuento {couponDetails.type !== 'global' ? 'aplicado a productos seleccionados' : 'aplicado a toda tu compra'}
                       </p>
                     )}
                   </div>
@@ -1102,13 +1150,18 @@ const handleSubmit = async (e: React.FormEvent) => {
                 type="submit" 
                 className="w-full" 
                 size="lg" 
-                disabled={isProcessing || !selectedAddress}
+                disabled={isProcessing || !selectedAddress || isReserving}
                 onClick={handleSubmit}
               >
                 {isProcessing ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Procesando...
+                  </>
+                ) : isReserving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verificando stock...
                   </>
                 ) : (
                   `Pagar con Transbank $${formatCLP(finalTotal)}`
@@ -1127,8 +1180,8 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   )
 }

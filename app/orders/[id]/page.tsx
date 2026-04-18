@@ -1,4 +1,4 @@
-// app/orders/[id]/page.tsx - VERSIÓN COMPLETA CON REENVÍO DE EMAIL
+// app/orders/[id]/page.tsx - CON DESCARGA DE BOLETA PDF
 "use client"
 
 import { useEffect, useState } from "react"
@@ -19,7 +19,9 @@ import {
   FileText, 
   Shield, 
   Loader2,
-  Mail
+  Mail,
+  Download,
+  Eye
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -57,6 +59,14 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  boleta_id?: number
+  boleta_emitida?: number
+  boleta_info?: {
+    folio: string
+    monto_total: number
+    fecha_emision: string
+    estado_sii: string
+  }
   shipping_address?: {
     street: string
     commune_name: string
@@ -75,7 +85,6 @@ const statusConfig = {
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800" },
 }
 
-// Función para formatear precios en CLP
 const formatCLP = (amount: number): string => {
   return new Intl.NumberFormat('es-CL', {
     style: 'currency',
@@ -96,14 +105,12 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [resendingEmail, setResendingEmail] = useState(false)
+  const [descargandoPDF, setDescargandoPDF] = useState(false)
 
   useEffect(() => {
-    if (authLoading) {
-      return
-    }
+    if (authLoading) return
 
     if (!isAuthenticated) {
-      console.log('🔐 Usuario no autenticado, redirigiendo a login')
       router.push("/login?from=" + encodeURIComponent(`/orders/${orderId}`))
       return
     }
@@ -116,32 +123,22 @@ export default function OrderDetailPage() {
       setLoading(true)
       setError(null)
       
-      console.log('📦 Fetching order from MySQL:', orderId)
       const response = await fetch(`/api/orders/${orderId}`)
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('✅ Order data received:', {
-          id: orderData.id,
-          order_number: orderData.order_number,
-          items_count: orderData.items?.length || 0,
-          status: orderData.status,
-          payment_status: orderData.payment_status
-        })
         setOrder(orderData)
       } else if (response.status === 404) {
         setError('Orden no encontrada')
       } else if (response.status === 401) {
         setError('No tienes permisos para ver esta orden')
-      } else if (response.status === 403) {
-        setError('No tienes acceso a esta orden')
       } else {
         const errorData = await response.json()
         setError(errorData.error || 'Error al cargar la orden')
       }
     } catch (error) {
-      console.error('❌ Error fetching order:', error)
-      setError('No se pudo cargar la información del pedido. Por favor intenta nuevamente.')
+      console.error('Error fetching order:', error)
+      setError('No se pudo cargar la información del pedido')
     } finally {
       setLoading(false)
     }
@@ -182,30 +179,86 @@ export default function OrderDetailPage() {
     }
   }
 
-  // Función para construir URLs completas de imágenes
-  const getImageUrl = (imagePath: string | undefined) => {
-    if (!imagePath) return "/placeholder.svg"
-    
-    // Si ya es una URL completa, usarla tal cual
-    if (imagePath.startsWith('http')) {
-      return imagePath
+  const descargarBoleta = async () => {
+    const folio = order?.boleta_info?.folio
+    if (!folio) {
+      toast({
+        title: "⚠️ Boleta no disponible",
+        description: "Aún no se ha generado la boleta electrónica para este pedido",
+        variant: "destructive",
+        duration: 5000,
+      })
+      return
     }
     
-    // Si es una ruta relativa que empieza con /uploads/, construir la URL completa
+    setDescargandoPDF(true)
+    try {
+      const response = await fetch(`/api/simplefactura/pdf?folio=${folio}`)
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `boleta-${folio}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        
+        toast({
+          title: "✅ PDF descargado",
+          description: `Boleta N° ${folio} descargada exitosamente`,
+          duration: 3000,
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "❌ Error",
+          description: errorData.error || "Error al descargar PDF",
+          variant: "destructive",
+          duration: 5000,
+        })
+      }
+    } catch (error) {
+      console.error('Error descargando PDF:', error)
+      toast({
+        title: "❌ Error",
+        description: "No se pudo descargar el PDF. Inténtalo nuevamente.",
+        variant: "destructive",
+        duration: 5000,
+      })
+    } finally {
+      setDescargandoPDF(false)
+    }
+  }
+
+  const verBoleta = async () => {
+    const folio = order?.boleta_info?.folio
+    if (!folio) {
+      toast({
+        title: "⚠️ Boleta no disponible",
+        description: "Aún no se ha generado la boleta electrónica para este pedido",
+        variant: "destructive",
+        duration: 5000,
+      })
+      return
+    }
+    window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
+  }
+
+  const getImageUrl = (imagePath: string | undefined) => {
+    if (!imagePath) return "/placeholder.svg"
+    if (imagePath.startsWith('http')) return imagePath
     if (imagePath.startsWith('/uploads/')) {
       return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
     }
-    
-    // Si es una ruta relativa sin /uploads/, agregar /uploads/
     if (imagePath.startsWith('/')) {
       return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
     }
-    
-    // Para cualquier otro caso, usar placeholder
     return "/placeholder.svg"
   }
 
-  // Mostrar loading mientras verifica autenticación
   if (authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -267,8 +320,6 @@ export default function OrderDetailPage() {
 
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
-
-  // Preparar datos para mostrar
   const addressInfo = order.shipping_address || {
     street: "Dirección no especificada",
     commune_name: "Ciudad no especificada", 
@@ -277,6 +328,7 @@ export default function OrderDetailPage() {
     department: "",
     delivery_instructions: ""
   }
+  const tieneBoleta = order.boleta_emitida === 1 && order.boleta_info?.folio
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -289,7 +341,7 @@ export default function OrderDetailPage() {
         </div>
 
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold">Pedido #{order.order_number}</h1>
               <p className="text-muted-foreground">
@@ -331,7 +383,6 @@ export default function OrderDetailPage() {
                           fill
                           className="object-cover rounded"
                           onError={(e) => {
-                            // Fallback si la imagen no carga
                             const target = e.target as HTMLImageElement
                             target.src = "/placeholder.svg"
                           }}
@@ -479,20 +530,6 @@ export default function OrderDetailPage() {
                     </p>
                   </div>
                 )}
-                {order.payment_status === 'pending' && (
-                  <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2">
-                    <p className="text-xs text-yellow-800 text-center">
-                      ⏳ Pago pendiente de confirmación
-                    </p>
-                  </div>
-                )}
-                {order.payment_status === 'failed' && (
-                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
-                    <p className="text-xs text-red-800 text-center">
-                      ❌ Pago fallido o cancelado
-                    </p>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -506,7 +543,6 @@ export default function OrderDetailPage() {
                 </Link>
               )}
               
-              {/* Botón para reenviar email */}
               <Button 
                 variant="outline" 
                 className="w-full bg-transparent"
@@ -526,10 +562,21 @@ export default function OrderDetailPage() {
                 )}
               </Button>
               
-              <Button variant="outline" className="w-full bg-transparent">
-                <FileText className="w-4 h-4 mr-2" />
-                Descargar Factura
-              </Button>
+              {tieneBoleta && (
+                <Button 
+                  variant="outline" 
+                  className="w-full bg-transparent"
+                  onClick={descargarBoleta}
+                  disabled={descargandoPDF}
+                >
+                  {descargandoPDF ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Descargar Boleta PDF
+                </Button>
+              )}
               
               <Link href="/orders">
                 <Button variant="outline" className="w-full">
