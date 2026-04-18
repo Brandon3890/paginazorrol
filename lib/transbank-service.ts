@@ -40,7 +40,7 @@ class TransbankService {
     this.commerceCode = process.env.TRANSBANK_COMMERCE_CODE || '597055555532'
     this.apiKey = process.env.TRANSBANK_API_KEY || '579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C'
     
-    if (process.env.NODE_ENV === 'production' || process.env.TRANSBANK_ENVIRONMENT === 'production') {
+    if (process.env.TRANSBANK_ENVIRONMENT === 'production') {
       this.baseURL = 'https://webpay3g.transbank.cl'
       console.log('🚀 Transbank en modo PRODUCCIÓN')
     } else {
