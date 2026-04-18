@@ -18,31 +18,29 @@ export async function GET(request: NextRequest) {
 
     let folioNumero: number | null = folio ? parseInt(folio) : null;
 
-    if (orderId && !folio) {
+    if (orderId && !folioNumero) {
       const boletas = await query(
         `SELECT folio FROM boletas WHERE order_id = ?`,
         [orderId]
       ) as any[];
-      
+
       if (boletas.length === 0) {
         return NextResponse.json(
           { error: 'No se encontró boleta para esta orden' },
           { status: 404 }
         );
       }
-      folioNumero = boletas[0].folio;
+
+      folioNumero = parseInt(boletas[0].folio);
     }
 
-    if (!folioNumero) {
+    if (!folioNumero || isNaN(folioNumero)) {
       return NextResponse.json(
-        { error: 'No se pudo determinar el folio' },
+        { error: 'Folio inválido' },
         { status: 400 }
       );
     }
 
-    console.log('📄 Descargando PDF para folio:', folioNumero);
-
-    // Obtener PDF como Buffer
     const pdfBuffer = await obtenerPDFSimpleFactura(folioNumero);
 
     // CORRECCIÓN: Convertir Buffer a Uint8Array que es compatible con BodyInit
