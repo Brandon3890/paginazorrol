@@ -91,6 +91,22 @@ const hexToRgba = (hex: string, opacity: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`
 }
 
+// Función para obtener la URL correcta de la imagen
+const getImageUrl = (imagePath: string) => {
+  if (!imagePath) return '/diverse-products-still-life.png';
+  
+  if (imagePath.startsWith('/api/banners/image/')) return imagePath;
+  
+  if (imagePath.startsWith('/banners/')) {
+    const filename = imagePath.replace('/banners/', '');
+    return `/api/banners/image/${filename}`;
+  }
+  
+  if (imagePath.startsWith('http')) return imagePath;
+  
+  return imagePath;
+};
+
 export default function AdminBannersPage() {
   const router = useRouter()
   const { user, isAuthenticated } = useAuthStore()
@@ -143,24 +159,6 @@ export default function AdminBannersPage() {
     }
   }
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/api/banners/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Error al subir la imagen');
-    }
-
-    const data = await response.json();
-    return data.imagePath; 
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -178,7 +176,6 @@ export default function AdminBannersPage() {
     setIsUploading(true);
     
     try {
-      // Subir la imagen al servidor usando FormData
       const formData = new FormData();
       formData.append('file', file);
       
@@ -194,7 +191,6 @@ export default function AdminBannersPage() {
 
       const data = await response.json();
       
-      // data.imagePath es la ruta como /banners/banner_1234567890.jpg
       setImagePreview(data.imagePath);
       setImageFile(file);
     } catch (error) {
@@ -239,7 +235,7 @@ export default function AdminBannersPage() {
       overlayOpacity: formData.overlayOpacity,
       textPosition: formData.textPosition,
       textSize: formData.textSize
-};
+    };
 
     try {
       let response
@@ -316,15 +312,12 @@ export default function AdminBannersPage() {
 
   const handleDelete = async (id: number, imagePath?: string) => {
     try {
-      // Eliminar el banner de la base de datos
       const response = await fetch(`/api/banners/admin?id=${id}`, { 
         method: 'DELETE' 
       });
       
       if (response.ok) {
-        // Solo intentar eliminar el archivo si es una ruta válida (no base64)
         if (imagePath && imagePath.startsWith('/banners/') && !imagePath.includes('data:image')) {
-          // Verificar que no sea imagen por defecto
           const defaultImages = ['/banners/witcher.jpg', '/banners/banner2.jpg'];
           if (!defaultImages.includes(imagePath)) {
             await fetch(`/api/banners/delete-image?path=${encodeURIComponent(imagePath)}`, {
@@ -387,9 +380,7 @@ export default function AdminBannersPage() {
     }
   }
 
-  const resetToDefault = async () => {
-    // Función vacía o puedes implementarla después
-  }
+  const resetToDefault = async () => {}
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -429,7 +420,6 @@ export default function AdminBannersPage() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-8">
-        {/* Botón para volver al dashboard */}
         <Link href="/admin">
           <Button variant="ghost" className="mb-4">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -569,7 +559,7 @@ export default function AdminBannersPage() {
                           <div className="relative inline-block">
                             <div className="relative w-48 h-32 rounded-lg overflow-hidden border">
                               <Image
-                                src={imagePreview}
+                                src={getImageUrl(imagePreview)}
                                 alt="Preview"
                                 fill
                                 className="object-cover"
@@ -825,7 +815,7 @@ export default function AdminBannersPage() {
                     {imagePreview ? (
                       <>
                         <Image
-                          src={imagePreview}
+                          src={getImageUrl(imagePreview)}
                           alt="Preview"
                           fill
                           className="object-cover"
@@ -924,7 +914,7 @@ export default function AdminBannersPage() {
                         <div className="flex gap-3">
                           <div className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
                             <Image
-                              src={banner.image}
+                              src={getImageUrl(banner.image)}
                               alt={banner.title || "Banner"}
                               fill
                               className="object-cover"

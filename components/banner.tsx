@@ -65,6 +65,25 @@ const getTextSizeClasses = (size: string) => {
   }
 }
 
+// Función para obtener la URL correcta de la imagen
+const getImageUrl = (imagePath: string) => {
+  if (!imagePath) return '/diverse-products-still-life.png';
+  
+  // Si ya es una URL de la API, devolverla
+  if (imagePath.startsWith('/api/banners/image/')) return imagePath;
+  
+  // Si es una ruta de banners, convertir a API
+  if (imagePath.startsWith('/banners/')) {
+    const filename = imagePath.replace('/banners/', '');
+    return `/api/banners/image/${filename}`;
+  }
+  
+  // Si es una URL externa o ya tiene http
+  if (imagePath.startsWith('http')) return imagePath;
+  
+  return imagePath;
+};
+
 export function Banner() {
   const [banners, setBanners] = useState<Banner[]>([])
   const [index, setIndex] = useState(0)
@@ -73,7 +92,6 @@ export function Banner() {
 
   const fetchBanners = useCallback(async () => {
     try {
-      // Agregar timestamp para evitar caché del navegador
       const response = await fetch(`/api/banners?t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
@@ -94,7 +112,6 @@ export function Banner() {
   useEffect(() => {
     fetchBanners()
     
-    // Actualizar cada 10 segundos para detectar cambios
     const interval = setInterval(fetchBanners, 10000)
     
     return () => clearInterval(interval)
@@ -138,7 +155,7 @@ export function Banner() {
   const BannerContent = () => (
     <div className="relative w-full h-[250px] md:h-[345px] lg:h-[400px] overflow-hidden bg-gray-100">
       <Image
-        src={currentBanner.image}
+        src={getImageUrl(currentBanner.image)}
         alt={currentBanner.title || "Banner"}
         fill
         className="object-cover"

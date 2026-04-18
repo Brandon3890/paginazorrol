@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      imagePath: relativePath,
+      imagePath: relativePath, 
       fileName: fileName
     });
   } catch (error) {
