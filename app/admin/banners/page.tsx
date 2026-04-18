@@ -1,3 +1,4 @@
+// app/admin/banners/page.tsx
 "use client"
 
 import { useEffect, useState, useRef } from "react"
@@ -16,10 +17,31 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import {
-  ImagePlus, Trash2, X, Eye, EyeOff, ArrowUp, ArrowDown,
-  Loader2, RefreshCw, Pencil, Plus, Type, Image as ImageIcon,
-  Palette, Save, Undo2, Copy, Check, Layout,
-  Sun, Droplets, Sparkles, ArrowLeft
+  ImagePlus,
+  Trash2,
+  X,
+  Eye,
+  EyeOff,
+  ArrowUp,
+  ArrowDown,
+  Loader2,
+  RefreshCw,
+  Pencil,
+  Plus,
+  Type,
+  Image as ImageIcon,
+  Palette,
+  Link2,
+  Save,
+  Undo2,
+  Copy,
+  Check,
+  Layout,
+  Contrast,
+  Sun,
+  Droplets,
+  Sparkles,
+  ArrowLeft
 } from "lucide-react"
 
 interface Banner {
@@ -60,17 +82,13 @@ const TEXT_SIZES = {
 
 const hexToRgba = (hex: string, opacity: number): string => {
   if (!hex) return `rgba(0,0,0,${opacity / 100})`
-  if (hex.startsWith('rgba')) return hex.replace(/[\d\.]+\)$/g, `${opacity / 100})`)
+  if (hex.startsWith('rgba')) {
+    return hex.replace(/[\d\.]+\)$/g, `${opacity / 100})`)
+  }
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`
-}
-
-const addCacheBuster = (src: string): string => {
-  if (!src || src.startsWith('data:')) return src
-  const separator = src.includes('?') ? '&' : '?'
-  return `${src}${separator}t=${Date.now()}`
 }
 
 export default function AdminBannersPage() {
@@ -81,14 +99,13 @@ export default function AdminBannersPage() {
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [imagePreview, setImagePreview] = useState<string>("")
-  const [previewCacheBuster, setPreviewCacheBuster] = useState<number>(Date.now())
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [activeTab, setActiveTab] = useState("content")
   const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
+  
   const [formData, setFormData] = useState({
     title: "",
     subtitle: "",
@@ -114,12 +131,11 @@ export default function AdminBannersPage() {
   const loadBanners = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/banners/admin?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
-      })
+      const response = await fetch('/api/banners/admin')
       const data = await response.json()
-      if (data.success) setBanners(data.banners)
+      if (data.success) {
+        setBanners(data.banners)
+      }
     } catch (error) {
       console.error('Error loading banners:', error)
     } finally {
@@ -127,59 +143,89 @@ export default function AdminBannersPage() {
     }
   }
 
+  const uploadImage = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/banners/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al subir la imagen');
+    }
+
+    const data = await response.json();
+    return data.imagePath; 
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Por favor selecciona una imagen")
-      return
+      alert("Por favor selecciona una imagen");
+      return;
     }
+
     if (file.size > 2 * 1024 * 1024) {
-      alert("La imagen no puede superar los 2MB")
-      return
+      alert("La imagen no puede superar los 2MB");
+      return;
     }
 
-    setIsUploading(true)
+    setIsUploading(true);
+    
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-
+      // Subir la imagen al servidor usando FormData
+      const formData = new FormData();
+      formData.append('file', file);
+      
       const response = await fetch('/api/banners/upload', {
         method: 'POST',
-        body: fd,
-      })
+        body: formData,
+      });
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Error al subir la imagen')
+        const error = await response.json();
+        throw new Error(error.error || 'Error al subir la imagen');
       }
 
-      const data = await response.json()
-      setImagePreview(data.imagePath)
-      setPreviewCacheBuster(Date.now())
-      setImageFile(file)
+      const data = await response.json();
+      
+      // data.imagePath es la ruta como /banners/banner_1234567890.jpg
+      setImagePreview(data.imagePath);
+      setImageFile(file);
     } catch (error) {
-      console.error('Error uploading image:', error)
-      alert("Error al subir la imagen")
+      console.error('Error uploading image:', error);
+      alert("Error al subir la imagen");
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
     }
-  }
+  };
 
   const removeImage = () => {
     setImagePreview("")
     setImageFile(null)
-    setPreviewCacheBuster(Date.now())
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (formData.showText && !formData.title.trim()) return
-    if (!imagePreview && !editingBanner?.image) return
-
+    
+    if (formData.showText && !formData.title.trim()) {
+      return
+    }
+    
+    if (!imagePreview && !editingBanner?.image) {
+      return
+    }
+    
     setSaving(true)
+
     const bannerData = {
       title: formData.title || null,
       subtitle: formData.subtitle || null,
@@ -193,7 +239,7 @@ export default function AdminBannersPage() {
       overlayOpacity: formData.overlayOpacity,
       textPosition: formData.textPosition,
       textSize: formData.textSize
-    }
+};
 
     try {
       let response
@@ -212,8 +258,9 @@ export default function AdminBannersPage() {
       }
 
       if (response.ok) {
-        await loadBanners()
-        resetForm()
+        await fetch('/api/banners/clear-cache', { method: 'POST' });
+        await loadBanners();
+        resetForm();
       }
     } catch (error) {
       console.error('Error saving banner:', error)
@@ -226,16 +273,24 @@ export default function AdminBannersPage() {
     setEditingBanner(null)
     setIsEditing(false)
     setFormData({
-      title: "", subtitle: "", text: "", link: "",
-      isActive: true, showText: true,
-      overlayColor: "#ffffff", textColor: "#1f2937",
-      overlayOpacity: 70, textPosition: "left", textSize: "medium"
+      title: "",
+      subtitle: "",
+      text: "",
+      link: "",
+      isActive: true,
+      showText: true,
+      overlayColor: "#ffffff",
+      textColor: "#1f2937",
+      overlayOpacity: 70,
+      textPosition: "left",
+      textSize: "medium"
     })
     setImagePreview("")
     setImageFile(null)
-    setPreviewCacheBuster(Date.now())
     setActiveTab("content")
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   const handleEdit = (banner: Banner) => {
@@ -255,39 +310,53 @@ export default function AdminBannersPage() {
       textSize: banner.text_size || "medium"
     })
     setImagePreview(banner.image)
-    setPreviewCacheBuster(Date.now())
     setImageFile(null)
     setActiveTab("content")
   }
 
   const handleDelete = async (id: number, imagePath?: string) => {
     try {
-      const response = await fetch(`/api/banners/admin?id=${id}`, { method: 'DELETE' })
+      // Eliminar el banner de la base de datos
+      const response = await fetch(`/api/banners/admin?id=${id}`, { 
+        method: 'DELETE' 
+      });
+      
       if (response.ok) {
+        // Solo intentar eliminar el archivo si es una ruta válida (no base64)
         if (imagePath && imagePath.startsWith('/banners/') && !imagePath.includes('data:image')) {
-          const defaultImages = ['/banners/witcher.jpg', '/banners/banner2.jpg']
+          // Verificar que no sea imagen por defecto
+          const defaultImages = ['/banners/witcher.jpg', '/banners/banner2.jpg'];
           if (!defaultImages.includes(imagePath)) {
-            await fetch(`/api/banners/delete-image?path=${encodeURIComponent(imagePath)}`, { method: 'DELETE' })
+            await fetch(`/api/banners/delete-image?path=${encodeURIComponent(imagePath)}`, {
+              method: 'DELETE'
+            });
           }
         }
-        await loadBanners()
-        if (editingBanner?.id === id) resetForm()
+        
+        await loadBanners();
+        if (editingBanner?.id === id) resetForm();
       }
     } catch (error) {
-      console.error('Error deleting banner:', error)
+      console.error('Error deleting banner:', error);
     }
-  }
+  };
 
   const toggleActive = async (id: number, currentActive: number) => {
     const banner = banners.find(b => b.id === id)
     if (!banner) return
+
     try {
       const response = await fetch('/api/banners/admin', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...banner, isActive: currentActive === 0 })
+        body: JSON.stringify({ 
+          ...banner,
+          isActive: currentActive === 0 
+        })
       })
-      if (response.ok) await loadBanners()
+      if (response.ok) {
+        await loadBanners()
+      }
     } catch (error) {
       console.error('Error toggling banner:', error)
     }
@@ -297,22 +366,29 @@ export default function AdminBannersPage() {
     const index = banners.findIndex(b => b.id === id)
     if (direction === "up" && index === 0) return
     if (direction === "down" && index === banners.length - 1) return
-
+    
     const newIndex = direction === "up" ? index - 1 : index + 1
     const newBanners = [...banners]
     ;[newBanners[index], newBanners[newIndex]] = [newBanners[newIndex], newBanners[index]]
+    
     const reorderedBanners = newBanners.map((b, idx) => ({ id: b.id, order: idx }))
-
+    
     try {
       const response = await fetch('/api/banners/admin', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ banners: reorderedBanners })
       })
-      if (response.ok) setBanners(newBanners)
+      if (response.ok) {
+        setBanners(newBanners)
+      }
     } catch (error) {
       console.error('Error reordering banners:', error)
     }
+  }
+
+  const resetToDefault = async () => {
+    // Función vacía o puedes implementarla después
   }
 
   const copyToClipboard = (text: string) => {
@@ -329,11 +405,11 @@ export default function AdminBannersPage() {
     }
   }
 
-  const getTextSizeClass = () => TEXT_SIZES[formData.textSize]
+  const getTextSizeClass = () => {
+    return TEXT_SIZES[formData.textSize]
+  }
+
   const overlayRgba = hexToRgba(formData.overlayColor, formData.overlayOpacity)
-  const previewSrc = imagePreview
-    ? (imagePreview.startsWith('data:') ? imagePreview : `${imagePreview}?t=${previewCacheBuster}`)
-    : ""
 
   if (loading) {
     return (
@@ -353,6 +429,7 @@ export default function AdminBannersPage() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-8">
+        {/* Botón para volver al dashboard */}
         <Link href="/admin">
           <Button variant="ghost" className="mb-4">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -365,14 +442,14 @@ export default function AdminBannersPage() {
             <h1 className="text-2xl md:text-3xl font-bold">Gestión de Banners</h1>
             <p className="text-muted-foreground">Administra los banners del home</p>
           </div>
-          <Button variant="outline" onClick={loadBanners}>
+          <Button variant="outline" onClick={resetToDefault}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Recargar
+            Restaurar Default
           </Button>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
-          {/* Formulario */}
+          {/* Formulario - Panel izquierdo */}
           <Card className="lg:sticky lg:top-4 h-fit">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -392,20 +469,33 @@ export default function AdminBannersPage() {
                 </TabsList>
 
                 <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+                  {/* Pestaña: Contenido */}
                   <TabsContent value="content" className="space-y-4">
                     <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <input type="radio" id="showTextYes" checked={formData.showText}
-                          onChange={() => setFormData({ ...formData, showText: true })} className="h-4 w-4" />
+                        <input
+                          type="radio"
+                          id="showTextYes"
+                          checked={formData.showText}
+                          onChange={() => setFormData({ ...formData, showText: true })}
+                          className="h-4 w-4"
+                        />
                         <Label htmlFor="showTextYes" className="cursor-pointer flex items-center gap-1">
-                          <Type className="w-4 h-4" /> Con texto
+                          <Type className="w-4 h-4" />
+                          Con texto
                         </Label>
                       </div>
                       <div className="flex items-center gap-2">
-                        <input type="radio" id="showTextNo" checked={!formData.showText}
-                          onChange={() => setFormData({ ...formData, showText: false })} className="h-4 w-4" />
+                        <input
+                          type="radio"
+                          id="showTextNo"
+                          checked={!formData.showText}
+                          onChange={() => setFormData({ ...formData, showText: false })}
+                          className="h-4 w-4"
+                        />
                         <Label htmlFor="showTextNo" className="cursor-pointer flex items-center gap-1">
-                          <ImageIcon className="w-4 h-4" /> Solo imagen
+                          <ImageIcon className="w-4 h-4" />
+                          Solo imagen
                         </Label>
                       </div>
                     </div>
@@ -414,21 +504,34 @@ export default function AdminBannersPage() {
                       <>
                         <div>
                           <Label htmlFor="title">Título *</Label>
-                          <Input id="title" required value={formData.title}
+                          <Input
+                            id="title"
+                            required
+                            value={formData.title}
                             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                            placeholder="Ej: THE WITCHER" />
+                            placeholder="Ej: THE WITCHER"
+                          />
                         </div>
+
                         <div>
                           <Label htmlFor="subtitle">Subtítulo</Label>
-                          <Input id="subtitle" value={formData.subtitle}
+                          <Input
+                            id="subtitle"
+                            value={formData.subtitle}
                             onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
-                            placeholder="Ej: PATH OF DESTINY" />
+                            placeholder="Ej: PATH OF DESTINY"
+                          />
                         </div>
+
                         <div>
                           <Label htmlFor="text">Texto</Label>
-                          <Textarea id="text" value={formData.text}
+                          <Textarea
+                            id="text"
+                            value={formData.text}
                             onChange={(e) => setFormData({ ...formData, text: e.target.value })}
-                            placeholder="Ej: DON'T MISS THE LAUNCH DAY!" rows={2} />
+                            placeholder="Ej: DON'T MISS THE LAUNCH DAY!"
+                            rows={2}
+                          />
                         </div>
                       </>
                     )}
@@ -436,12 +539,20 @@ export default function AdminBannersPage() {
                     <div>
                       <Label htmlFor="link">Enlace (opcional)</Label>
                       <div className="flex gap-2">
-                        <Input id="link" value={formData.link}
+                        <Input
+                          id="link"
+                          value={formData.link}
                           onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                          placeholder="Ej: /products/2" className="flex-1" />
+                          placeholder="Ej: /products/2"
+                          className="flex-1"
+                        />
                         {formData.link && (
-                          <Button type="button" variant="outline" size="icon"
-                            onClick={() => copyToClipboard(formData.link || "")}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => copyToClipboard(formData.link || "")}
+                          >
                             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                           </Button>
                         )}
@@ -458,24 +569,36 @@ export default function AdminBannersPage() {
                           <div className="relative inline-block">
                             <div className="relative w-48 h-32 rounded-lg overflow-hidden border">
                               <Image
-                                key={previewCacheBuster}
-                                src={previewSrc}
+                                src={imagePreview}
                                 alt="Preview"
                                 fill
                                 className="object-cover"
-                                unoptimized
                               />
                             </div>
-                            <Button type="button" variant="destructive" size="icon"
-                              className="absolute -top-2 -right-2 h-6 w-6" onClick={removeImage}>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              className="absolute -top-2 -right-2 h-6 w-6"
+                              onClick={removeImage}
+                            >
                               <X className="w-3 h-3" />
                             </Button>
                           </div>
                         ) : (
                           <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                            <input type="file" accept="image/*" onChange={handleImageUpload}
-                              className="hidden" id="image-upload" ref={fileInputRef} />
-                            <label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                              id="image-upload"
+                              ref={fileInputRef}
+                            />
+                            <label
+                              htmlFor="image-upload"
+                              className="cursor-pointer flex flex-col items-center gap-2"
+                            >
                               <ImagePlus className="w-8 h-8 text-muted-foreground" />
                               <span className="text-sm text-muted-foreground">
                                 {isUploading ? "Subiendo..." : "Haz clic para subir imagen"}
@@ -490,10 +613,12 @@ export default function AdminBannersPage() {
                     </div>
                   </TabsContent>
 
+                  {/* Pestaña: Diseño */}
                   <TabsContent value="design" className="space-y-4">
                     <div>
                       <Label className="flex items-center gap-2 mb-2">
-                        <Layout className="w-4 h-4" /> Posición del texto
+                        <Layout className="w-4 h-4" />
+                        Posición del texto
                       </Label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
@@ -501,13 +626,16 @@ export default function AdminBannersPage() {
                           { value: "center", label: "Centro", icon: "⟷" },
                           { value: "right", label: "Derecha", icon: "→" }
                         ].map((pos) => (
-                          <button key={pos.value} type="button"
+                          <button
+                            key={pos.value}
+                            type="button"
                             className={`p-3 rounded-lg border-2 transition-all ${
                               formData.textPosition === pos.value
                                 ? "border-orange-500 bg-orange-50"
                                 : "border-gray-200 hover:border-gray-300"
                             }`}
-                            onClick={() => setFormData({ ...formData, textPosition: pos.value as any })}>
+                            onClick={() => setFormData({ ...formData, textPosition: pos.value as any })}
+                          >
                             <div className="text-center">
                               <div className="text-xl mb-1">{pos.icon}</div>
                               <span className="text-sm">{pos.label}</span>
@@ -519,25 +647,31 @@ export default function AdminBannersPage() {
 
                     <div>
                       <Label className="flex items-center gap-2 mb-2">
-                        <Sparkles className="w-4 h-4" /> Tamaño del texto
+                        <Sparkles className="w-4 h-4" />
+                        Tamaño del texto
                       </Label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
-                          { value: "small", label: "Pequeño" },
-                          { value: "medium", label: "Mediano" },
-                          { value: "large", label: "Grande" }
+                          { value: "small", label: "Pequeño", preview: "Texto" },
+                          { value: "medium", label: "Mediano", preview: "Texto" },
+                          { value: "large", label: "Grande", preview: "Texto" }
                         ].map((size) => (
-                          <button key={size.value} type="button"
+                          <button
+                            key={size.value}
+                            type="button"
                             className={`p-3 rounded-lg border-2 transition-all ${
                               formData.textSize === size.value
                                 ? "border-orange-500 bg-orange-50"
                                 : "border-gray-200 hover:border-gray-300"
                             }`}
-                            onClick={() => setFormData({ ...formData, textSize: size.value as any })}>
+                            onClick={() => setFormData({ ...formData, textSize: size.value as any })}
+                          >
                             <div className="text-center">
                               <div className={`font-bold ${
                                 size.value === "small" ? "text-sm" : size.value === "large" ? "text-xl" : "text-base"
-                              }`}>Texto</div>
+                              }`}>
+                                {size.preview}
+                              </div>
                               <span className="text-xs text-muted-foreground mt-1 block">{size.label}</span>
                             </div>
                           </button>
@@ -553,7 +687,10 @@ export default function AdminBannersPage() {
                       <Slider
                         value={[formData.overlayOpacity]}
                         onValueChange={(value) => setFormData({ ...formData, overlayOpacity: value[0] })}
-                        min={0} max={100} step={1} className="w-full"
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="w-full"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
                         <span>Transparente (se ve imagen)</span>
@@ -562,30 +699,41 @@ export default function AdminBannersPage() {
                     </div>
                   </TabsContent>
 
+                  {/* Pestaña: Colores */}
                   <TabsContent value="colors" className="space-y-4">
                     <div>
                       <Label className="flex items-center gap-2 mb-2">
-                        <Palette className="w-4 h-4" /> Color del overlay
+                        <Palette className="w-4 h-4" />
+                        Color del overlay (fondo semitransparente)
                       </Label>
                       <div className="grid grid-cols-5 gap-2 mb-2">
                         {PRESET_COLORS.slice(0, 10).map((color) => (
-                          <button key={color.value} type="button"
+                          <button
+                            key={color.value}
+                            type="button"
                             className={`h-10 rounded-lg border-2 transition-all ${color.bgClass} ${
                               formData.overlayColor === color.value
                                 ? "border-orange-500 ring-2 ring-orange-200"
                                 : "border-gray-200"
                             }`}
                             onClick={() => setFormData({ ...formData, overlayColor: color.value })}
-                            title={color.name} />
+                            title={color.name}
+                          />
                         ))}
                       </div>
                       <div className="flex items-center gap-2">
-                        <input type="color" value={formData.overlayColor}
+                        <input
+                          type="color"
+                          value={formData.overlayColor}
                           onChange={(e) => setFormData({ ...formData, overlayColor: e.target.value })}
-                          className="w-10 h-10 rounded border cursor-pointer" />
-                        <Input value={formData.overlayColor}
+                          className="w-10 h-10 rounded border cursor-pointer"
+                        />
+                        <Input
+                          value={formData.overlayColor}
                           onChange={(e) => setFormData({ ...formData, overlayColor: e.target.value })}
-                          className="flex-1 font-mono text-sm" placeholder="#RRGGBB" />
+                          className="flex-1 font-mono text-sm"
+                          placeholder="#RRGGBB"
+                        />
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         Este color se combinará con la opacidad para crear un overlay
@@ -594,36 +742,52 @@ export default function AdminBannersPage() {
 
                     <div>
                       <Label className="flex items-center gap-2 mb-2">
-                        <Sun className="w-4 h-4" /> Color del texto
+                        <Sun className="w-4 h-4" />
+                        Color del texto
                       </Label>
                       <div className="grid grid-cols-5 gap-2 mb-2">
                         {PRESET_COLORS.map((color) => (
-                          <button key={color.value} type="button"
+                          <button
+                            key={color.value}
+                            type="button"
                             className={`h-10 rounded-lg border-2 transition-all ${color.bgClass} ${
                               formData.textColor === color.value
                                 ? "border-orange-500 ring-2 ring-orange-200"
                                 : "border-gray-200"
                             }`}
                             onClick={() => setFormData({ ...formData, textColor: color.value })}
-                            title={color.name} />
+                            title={color.name}
+                          />
                         ))}
                       </div>
                       <div className="flex items-center gap-2">
-                        <input type="color" value={formData.textColor}
+                        <input
+                          type="color"
+                          value={formData.textColor}
                           onChange={(e) => setFormData({ ...formData, textColor: e.target.value })}
-                          className="w-10 h-10 rounded border cursor-pointer" />
-                        <Input value={formData.textColor}
+                          className="w-10 h-10 rounded border cursor-pointer"
+                        />
+                        <Input
+                          value={formData.textColor}
                           onChange={(e) => setFormData({ ...formData, textColor: e.target.value })}
-                          className="flex-1 font-mono text-sm" placeholder="#RRGGBB" />
+                          className="flex-1 font-mono text-sm"
+                          placeholder="#RRGGBB"
+                        />
                       </div>
                     </div>
                   </TabsContent>
 
                   <div className="flex items-center gap-2 pt-4 border-t">
-                    <input type="checkbox" id="isActive" checked={formData.isActive}
+                    <input
+                      type="checkbox"
+                      id="isActive"
+                      checked={formData.isActive}
                       onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-300" />
-                    <Label htmlFor="isActive" className="cursor-pointer">Banner activo</Label>
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <Label htmlFor="isActive" className="cursor-pointer">
+                      Banner activo
+                    </Label>
                   </div>
 
                   <div className="flex gap-2">
@@ -633,7 +797,8 @@ export default function AdminBannersPage() {
                     </Button>
                     {isEditing && (
                       <Button type="button" variant="outline" onClick={resetForm}>
-                        <Undo2 className="w-4 h-4 mr-2" /> Cancelar
+                        <Undo2 className="w-4 h-4 mr-2" />
+                        Cancelar
                       </Button>
                     )}
                   </div>
@@ -642,14 +807,17 @@ export default function AdminBannersPage() {
             </CardContent>
           </Card>
 
-          {/* Vista previa + lista */}
+          {/* Vista previa en vivo - Panel derecho */}
           <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Eye className="w-5 h-5" /> Vista Previa en Vivo
+                  <Eye className="w-5 h-5" />
+                  Vista Previa en Vivo
                 </CardTitle>
-                <CardDescription>Así se verá tu banner en la página principal</CardDescription>
+                <CardDescription>
+                  Así se verá tu banner en la página principal
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="relative rounded-xl overflow-hidden border shadow-lg">
@@ -657,40 +825,50 @@ export default function AdminBannersPage() {
                     {imagePreview ? (
                       <>
                         <Image
-                          key={previewCacheBuster}
-                          src={previewSrc}
+                          src={imagePreview}
                           alt="Preview"
                           fill
                           className="object-cover"
-                          unoptimized
                         />
-                        <div className="absolute inset-0 pointer-events-none"
-                          style={{ backgroundColor: overlayRgba }} />
+                        <div 
+                          className="absolute inset-0 pointer-events-none"
+                          style={{ backgroundColor: overlayRgba }}
+                        />
                       </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <p className="text-muted-foreground">Sube una imagen para ver la vista previa</p>
                       </div>
                     )}
-
+                    
                     {formData.showText && imagePreview && (
                       <div className={`absolute inset-0 flex items-center px-6 md:px-12 ${getPositionClass()} pointer-events-none`}>
                         <div className="max-w-md space-y-2">
-                          <p className="text-[10px] sm:text-xs tracking-widest uppercase"
-                            style={{ color: formData.textColor, opacity: 0.7 }}>
+                          <p 
+                            className="text-[10px] sm:text-xs tracking-widest uppercase"
+                            style={{ color: formData.textColor, opacity: 0.7 }}
+                          >
                             NOVEDADES
                           </p>
-                          <h2 className={`font-bold leading-tight ${getTextSizeClass().title}`}
-                            style={{ color: formData.textColor }}>
+                          <h2 
+                            className={`font-bold leading-tight ${getTextSizeClass().title}`}
+                            style={{ color: formData.textColor }}
+                          >
                             {formData.title || "Título aquí"}
                           </h2>
                           {formData.subtitle && (
-                            <p className={getTextSizeClass().subtitle} style={{ color: formData.textColor }}>
+                            <p 
+                              className={getTextSizeClass().subtitle}
+                              style={{ color: formData.textColor }}
+                            >
                               {formData.subtitle}
                             </p>
                           )}
                           {formData.text && (
-                            <p className={`font-medium ${getTextSizeClass().text}`} style={{ color: formData.textColor }}>
+                            <p 
+                              className={`font-medium ${getTextSizeClass().text}`}
+                              style={{ color: formData.textColor }}
+                            >
                               {formData.text}
                             </p>
                           )}
@@ -699,12 +877,12 @@ export default function AdminBannersPage() {
                     )}
                   </div>
                 </div>
-
+                
                 <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-muted-foreground">
-                    <strong>Info:</strong> Overlay: {formData.overlayColor} ({formData.overlayOpacity}%) |
-                    Texto: {formData.textColor} |
-                    Posición: {formData.textPosition} |
+                    <strong>Info:</strong> Overlay: {formData.overlayColor} ({formData.overlayOpacity}%) | 
+                    Texto: {formData.textColor} | 
+                    Posición: {formData.textPosition} | 
                     Tamaño: {formData.textSize}
                   </p>
                   {formData.overlayOpacity < 100 && imagePreview && (
@@ -721,27 +899,35 @@ export default function AdminBannersPage() {
               </CardContent>
             </Card>
 
+            {/* Lista de banners existentes */}
             <Card>
               <CardHeader>
                 <CardTitle>Banners Guardados</CardTitle>
-                <CardDescription>{banners.length} banner(s) configurado(s)</CardDescription>
+                <CardDescription>
+                  {banners.length} banner(s) configurado(s)
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {banners.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No hay banners. Crea uno nuevo.</p>
+                  <p className="text-center text-muted-foreground py-8">
+                    No hay banners. Crea uno nuevo.
+                  </p>
                 ) : (
                   <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                     {banners.map((banner, idx) => (
-                      <div key={banner.id}
-                        className={`border rounded-lg p-3 transition-all ${banner.is_active === 0 ? "opacity-60 bg-gray-50" : ""}`}>
+                      <div
+                        key={banner.id}
+                        className={`border rounded-lg p-3 transition-all ${
+                          banner.is_active === 0 ? "opacity-60 bg-gray-50" : ""
+                        }`}
+                      >
                         <div className="flex gap-3">
                           <div className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
                             <Image
-                              src={addCacheBuster(banner.image)}
+                              src={banner.image}
                               alt={banner.title || "Banner"}
                               fill
                               className="object-cover"
-                              unoptimized
                             />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -758,24 +944,55 @@ export default function AdminBannersPage() {
                             </div>
                           </div>
                           <div className="flex gap-1">
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
-                              onClick={() => moveBanner(banner.id, "up")} disabled={idx === 0}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => moveBanner(banner.id, "up")}
+                              disabled={idx === 0}
+                            >
                               <ArrowUp className="w-3 h-3" />
                             </Button>
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
-                              onClick={() => moveBanner(banner.id, "down")} disabled={idx === banners.length - 1}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => moveBanner(banner.id, "down")}
+                              disabled={idx === banners.length - 1}
+                            >
                               <ArrowDown className="w-3 h-3" />
                             </Button>
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-blue-600"
-                              onClick={() => handleEdit(banner)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-blue-600"
+                              onClick={() => handleEdit(banner)}
+                            >
                               <Pencil className="w-3 h-3" />
                             </Button>
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
-                              onClick={() => toggleActive(banner.id, banner.is_active)}>
-                              {banner.is_active === 1 ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => toggleActive(banner.id, banner.is_active)}
+                            >
+                              {banner.is_active === 1 ? (
+                                <EyeOff className="w-3 h-3" />
+                              ) : (
+                                <Eye className="w-3 h-3" />
+                              )}
                             </Button>
-                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500"
-                              onClick={() => handleDelete(banner.id, banner.image)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-red-500"
+                              onClick={() => handleDelete(banner.id, banner.image)}
+                            >
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>

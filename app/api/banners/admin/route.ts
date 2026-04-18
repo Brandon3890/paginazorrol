@@ -1,35 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
-import { bumpBannersVersion } from '@/app/api/banners/version/route';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// GET - Obtener todos los banners
 export async function GET(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-    const user = await query('SELECT role FROM users WHERE id = ?', [userId]) as any[];
+    const user = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [userId]
+    ) as any[];
+
     if (!user.length || user[0].role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
     const banners = await query(
-      `SELECT * FROM banners ORDER BY \`order\` ASC`, []
+      `SELECT * FROM banners ORDER BY \`order\` ASC`,
+      []
     ) as any[];
 
-    return NextResponse.json({ success: true, banners });
+    return NextResponse.json({ success: true, banners }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al obtener banners' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Error al obtener banners' },
+      { status: 500 }
+    );
   }
 }
 
+// POST - Crear nuevo banner
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-    const user = await query('SELECT role FROM users WHERE id = ?', [userId]) as any[];
+    const user = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [userId]
+    ) as any[];
+
     if (!user.length || user[0].role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
@@ -41,12 +67,18 @@ export async function POST(request: NextRequest) {
       textPosition, textSize
     } = body;
 
-    const maxOrder = await query('SELECT MAX(`order`) as max_order FROM banners', []) as any[];
+    const maxOrder = await query(
+      'SELECT MAX(`order`) as max_order FROM banners',
+      []
+    ) as any[];
     const newOrder = (maxOrder[0]?.max_order ?? -1) + 1;
 
     await query(
-      `INSERT INTO banners (title, subtitle, text, image, link, is_active, \`order\`, show_text, overlay_color, text_color, overlay_opacity, text_position, text_size)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO banners (
+        title, subtitle, text, image, link, is_active, \`order\`, 
+        show_text, overlay_color, text_color, overlay_opacity, 
+        text_position, text_size
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title || null, subtitle || null, text || null, image,
         link || null, isActive ? 1 : 0, newOrder,
@@ -56,20 +88,34 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    bumpBannersVersion();
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al crear banner' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Error al crear banner' },
+      { status: 500 }
+    );
   }
 }
 
+// PUT - Actualizar banner
 export async function PUT(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-    const user = await query('SELECT role FROM users WHERE id = ?', [userId]) as any[];
+    const user = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [userId]
+    ) as any[];
+
     if (!user.length || user[0].role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
@@ -82,7 +128,12 @@ export async function PUT(request: NextRequest) {
     } = body;
 
     await query(
-      `UPDATE banners SET title = ?, subtitle = ?, text = ?, image = ?, link = ?, is_active = ?, show_text = ?, overlay_color = ?, text_color = ?, overlay_opacity = ?, text_position = ?, text_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE banners SET 
+        title = ?, subtitle = ?, text = ?, image = ?, link = ?,
+        is_active = ?, show_text = ?, overlay_color = ?,
+        text_color = ?, overlay_opacity = ?, text_position = ?,
+        text_size = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
       [
         title || null, subtitle || null, text || null, image,
         link || null, isActive ? 1 : 0, showText ? 1 : 0,
@@ -92,57 +143,98 @@ export async function PUT(request: NextRequest) {
       ]
     );
 
-    bumpBannersVersion();
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al actualizar banner' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Error al actualizar banner' },
+      { status: 500 }
+    );
   }
 }
 
+// DELETE - Eliminar banner
 export async function DELETE(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-    const user = await query('SELECT role FROM users WHERE id = ?', [userId]) as any[];
+    const user = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [userId]
+    ) as any[];
+
     if (!user.length || user[0].role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    }
 
     await query('DELETE FROM banners WHERE id = ?', [id]);
 
-    bumpBannersVersion();
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al eliminar banner' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Error al eliminar banner' },
+      { status: 500 }
+    );
   }
 }
 
+// PATCH - Reordenar banners
 export async function PATCH(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
 
-    const user = await query('SELECT role FROM users WHERE id = ?', [userId]) as any[];
+    const user = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [userId]
+    ) as any[];
+
     if (!user.length || user[0].role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
     const { banners } = await request.json();
+
     for (const banner of banners) {
-      await query('UPDATE banners SET `order` = ? WHERE id = ?', [banner.order, banner.id]);
+      await query(
+        'UPDATE banners SET `order` = ? WHERE id = ?',
+        [banner.order, banner.id]
+      );
     }
 
-    bumpBannersVersion();
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      }
+    });
   } catch (error) {
     console.error('Error:', error);
-    return NextResponse.json({ success: false, error: 'Error al reordenar banners' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Error al reordenar banners' },
+      { status: 500 }
+    );
   }
 }
