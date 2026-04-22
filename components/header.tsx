@@ -20,6 +20,7 @@ import { CartDrawer } from "@/components/cart-drawer"
 import Link from "next/link"
 import { useCategoryStore } from "@/lib/category-store"
 import { motion } from "framer-motion"
+import Image from "next/image"
 
 export function Header() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -105,14 +106,17 @@ export function Header() {
         <div className="max-w-7xl mx-auto px-8 py-6">
           {/* TOP */}
           <div className="flex items-center justify-between gap-6">
-            {/* LOGO */}
-            <Link href="/" onClick={() => setGlobalSearchQuery("")}>
-              <h1
-                className="text-2xl leading-5"
-                style={{ fontFamily: "Modern Antiqua, serif", color: "#E4572E" }}
-              >
-                ZORRO <br /> LÚDICO
-              </h1>
+            {/* LOGO - Imagen SVG en lugar de texto */}
+            <Link href="" onClick={() => setGlobalSearchQuery("")} className="flex-shrink-0">
+              <div className="relative w-24 h-24 md:w-32 md:h-32">
+                <Image
+                  src="/logo-zorro.svg"
+                  alt="Zorro Lúdico"
+                  fill
+                  className="object-contain"
+                  priority
+                />
+              </div>
             </Link>
 
             {/* BUSCADOR DESKTOP - BÚSQUEDA INSTANTÁNEA SIN REDIRECCIÓN */}
