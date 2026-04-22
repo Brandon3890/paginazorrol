@@ -678,26 +678,42 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </h2>
           
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between bg-gray-100 p-2 rounded">
-              <span className="font-bold font-poppins text-gray-700">MARCA</span>
-              <span className="font-normal font-poppins text-gray-600">{product.brand || "Devir"}</span>
+            <div className="flex bg-gray-100 p-2 rounded">
+              <span className="font-bold font-poppins text-gray-700 w-1/2">
+                MARCA
+              </span>
+              <span className="font-normal font-poppins text-gray-600 w-1/2 text-left">
+                {product.brand || "Devir"}
+              </span>
             </div>
-            
-            <div className="flex justify-between bg-gray-100 p-2 rounded">
-              <span className="font-bold font-poppins text-gray-700">GÉNERO</span>
-              <span className="font-normal font-poppins text-gray-600">{product.genre || categoriesInfo.subcategories.map(s => s.name).join(", ")}</span>
+
+            <div className="flex bg-gray-100 p-2 rounded">
+              <span className="font-bold font-poppins text-gray-700 w-1/2">
+                GÉNERO
+              </span>
+              <span className="font-normal font-poppins text-gray-600 w-1/2 text-left">
+                {product.genre || categoriesInfo.subcategories.map(s => s.name).join(", ")}
+              </span>
             </div>
             
             <div className="mt-4 font-medium font-poppins text-gray-800">Especificaciones</div>
-            
-            <div className="flex justify-between bg-gray-100 p-2 rounded">
-              <span className="font-bold font-poppins text-gray-700">JUGADORES</span>
-              <span className="font-normal font-poppins text-gray-600">{product.players}</span>
+
+            <div className="flex bg-gray-100 p-2 rounded">
+              <span className="font-bold font-poppins text-gray-700 w-1/2">
+                JUGADORES
+              </span>
+              <span className="font-normal font-poppins text-gray-600 w-1/2 text-left">
+                {product.players}
+              </span>
             </div>
-            
-            <div className="flex justify-between bg-gray-100 p-2 rounded">
-              <span className="font-bold font-poppins text-gray-700">EDAD</span>
-              <span className="font-normal font-poppins text-gray-600">{product.age}</span>
+
+            <div className="flex bg-gray-100 p-2 rounded">
+              <span className="font-bold font-poppins text-gray-700 w-1/2">
+                EDAD
+              </span>
+              <span className="font-normal font-poppins text-gray-600 w-1/2 text-left">
+                {product.genre || categoriesInfo.subcategories.map(s => s.name).join(", ")}
+              </span>
             </div>
             
           </div>
