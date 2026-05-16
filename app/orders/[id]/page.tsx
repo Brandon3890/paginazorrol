@@ -247,17 +247,17 @@ export default function OrderDetailPage() {
     window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
   }
 
-  const getImageUrl = (imagePath: string | undefined) => {
-    if (!imagePath) return "/placeholder.svg"
-    if (imagePath.startsWith('http')) return imagePath
-    if (imagePath.startsWith('/uploads/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
-    }
-    if (imagePath.startsWith('/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
-    }
-    return "/placeholder.svg"
-  }
+  const getImageUrl = (url?: string) => {
+  if (!url) return "/placeholder.svg"
+
+  if (url.startsWith("http")) return url
+
+  if (url.startsWith("/")) return url
+
+  if (url.startsWith("uploads/")) return `/${url}`
+
+  return `/uploads/products/${url}`
+}
 
   if (authLoading) {
     return (
