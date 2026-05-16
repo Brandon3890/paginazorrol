@@ -57,7 +57,7 @@ function isAdminRoute(pathname: string): boolean {
   return adminRoutes.some(route => pathname.startsWith(route))
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const clientIP = getClientIP(request)
   const userAgent = getUserAgent(request)

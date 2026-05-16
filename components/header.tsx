@@ -47,7 +47,6 @@ export function Header() {
 
   const navItems = [
     { name: "PRODUCTOS", href: "/productos", hasDropdown: true },
-    { name: "NOTICIAS", href: "/noticias", hasDropdown: false },
     { name: "QUIÉNES SOMOS", href: "/quienes-somos", hasDropdown: false },
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
@@ -327,16 +326,6 @@ export function Header() {
                 </div>
               )}
             </div>
-
-            {/* NOTICIAS */}
-            <Link 
-              href="/noticias" 
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-[#E4572E] transition-colors"
-            >
-              NOTICIAS
-            </Link>
-
             {/* QUIÉNES SOMOS */}
             <Link 
               href="/quienes-somos" 

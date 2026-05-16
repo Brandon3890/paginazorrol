@@ -103,27 +103,17 @@ export default function OrdersPage() {
   }
 
   // Función para construir URLs completas de imágenes
-  const getImageUrl = (imagePath: string | undefined) => {
-    if (!imagePath) return "/placeholder.svg"
-    
-    // Si ya es una URL completa, usarla tal cual
-    if (imagePath.startsWith('http')) {
-      return imagePath
-    }
-    
-    // Si es una ruta relativa que empieza con /uploads/, construir la URL completa
-    if (imagePath.startsWith('/uploads/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
-    }
-    
-    // Si es una ruta relativa sin /uploads/, agregar /uploads/
-    if (imagePath.startsWith('/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
-    }
-    
-    // Para cualquier otro caso, usar placeholder
-    return "/placeholder.svg"
-  }
+  const getImageUrl = (url?: string) => {
+  if (!url) return "/placeholder.svg"
+
+  if (url.startsWith("http")) return url
+
+  if (url.startsWith("/")) return url
+
+  if (url.startsWith("uploads/")) return `/${url}`
+
+  return `/uploads/products/${url}`
+}
 
   if (authLoading) {
     return (
