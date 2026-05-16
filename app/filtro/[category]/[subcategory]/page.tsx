@@ -1,37 +1,9 @@
 import { Header } from "@/components/header"
+export const dynamic = 'force-dynamic'
 import { CategoryBreadcrumb } from "@/components/category-breadcrumb"
 import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
-
-// Esta función se ejecuta en el servidor para generar las páginas estáticas
-export async function generateStaticParams() {
-  try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const categories = await response.json()
-    
-    const params = categories
-      .filter((cat: any) => cat.is_active)
-      .flatMap((category: any) =>
-        category.subcategories
-          .filter((sub: any) => sub.is_active)
-          .map((subcategory: any) => ({
-            category: category.slug,
-            subcategory: subcategory.slug,
-          }))
-      )
-    
-    return params
-  } catch (error) {
-    console.error('Error generating static params for subcategories:', error)
-    return []
-  }
-}
 
 interface PageProps {
   params: Promise<{ category: string; subcategory: string }>
