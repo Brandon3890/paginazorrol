@@ -157,12 +157,14 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
       }
     });
 
-    console.log('📄 Obteniendo PDF para folio:', folio);
+    console.log('📄 Intentando obtener PDF...');
+    console.log('📄 Folio:', folio);
+    console.log('📄 Ambiente:', config.ambiente);
+    console.log('📄 Sucursal:', config.sucursal);
 
     const options = {
       method: 'POST',
       hostname: 'api.simplefactura.cl',
-
       path: '/pdf',
 
       headers: {
@@ -184,40 +186,45 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
 
         const buffer = Buffer.concat(chunks);
 
-        console.log('📊 PDF Status:', res.statusCode);
-        console.log('📄 PDF Content-Type:', res.headers['content-type']);
+        console.log('📊 STATUS PDF:', res.statusCode);
+        console.log('📊 HEADERS PDF:', res.headers);
 
-        // 🔥 MOSTRAR ERROR REAL
-        if (res.statusCode !== 200) {
+        const text = buffer.toString('utf8');
 
-          const text = buffer.toString('utf8');
+        console.log('📄 RESPUESTA PDF RAW:');
+        console.log(text.substring(0, 2000));
 
-          console.error('❌ RESPUESTA PDF:', text);
-
-          return reject(
-            new Error(`Error al obtener PDF: ${res.statusCode}`)
-          );
-        }
-
-        // VALIDAR PDF
+        // Si es PDF real
         if (
           buffer[0] === 0x25 &&
           buffer[1] === 0x50 &&
           buffer[2] === 0x44 &&
           buffer[3] === 0x46
         ) {
-
-          console.log('✅ PDF válido recibido');
-
-          resolve(new Uint8Array(buffer));
-
-        } else {
-
-          console.error('❌ Respuesta no es PDF');
-          console.error(buffer.toString('utf8').substring(0, 500));
-
-          reject(new Error('La respuesta no es un PDF válido'));
+          console.log('✅ PDF válido');
+          return resolve(new Uint8Array(buffer));
         }
+
+        // Intentar JSON
+        try {
+
+          const json = JSON.parse(text);
+
+          console.log('📄 JSON PDF:', json);
+
+          // Si viene base64
+          if (json.data?.pdf) {
+
+            const pdfBuffer = Buffer.from(json.data.pdf, 'base64');
+
+            console.log('✅ PDF Base64 convertido');
+
+            return resolve(new Uint8Array(pdfBuffer));
+          }
+
+        } catch {}
+
+        reject(new Error(`Respuesta inválida PDF (${res.statusCode})`));
 
       });
 
