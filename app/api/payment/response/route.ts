@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
 import { sendBoletaEmail } from '@/lib/email-service';
+import { emitirBoletaSimpleFactura } from '@/lib/simplefactura-service'
 
 // Función auxiliar para obtener el PDF de la boleta
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
@@ -90,25 +91,19 @@ async function emitirBoleta(orderId: number) {
     const total = parseFloat(order.total);
 
     // Llamar a la API de emisión de boleta
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/simplefactura/emitir-boleta`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        cliente,
-        productos,
-        total,
-        ordenId: order.id,
-        ordenNumero: order.order_number
-      }),
-    });
+    const result = await emitirBoletaSimpleFactura(
+      productos,
+      cliente,
+      total
+    );
 
-    const result = await response.json();
+    if (result.status === 200) {
+      console.log('✅ Boleta emitida exitosamente. Folio:', result.data.folio);
 
-    if (result.success) {
-      console.log('✅ Boleta emitida exitosamente. Folio:', result.folio);
-      return { success: true, folio: result.folio, boletaId: result.boletaId };
+      return {
+        success: true,
+        folio: result.data.folio
+      };
     } else {
       console.error('❌ Error emitiendo boleta:', result.error);
       return { success: false, error: result.error };
@@ -356,7 +351,10 @@ export async function POST(request: NextRequest) {
           console.log('✅ Pago APROBADO para orden:', order.id)
 
           return NextResponse.redirect(
-            `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=success`
+            new URL(
+              `/order-success?orderId=${order.id}&status=success`,
+              process.env.NEXTAUTH_URL
+            )
           )
 
         } else {

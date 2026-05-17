@@ -48,7 +48,14 @@ export function Footer() {
                   Preguntas frecuentes
                 </Link>
               </li>
-              <li className="hover:text-white cursor-pointer">Términos y condiciones</li>
+              <li>
+                <Link 
+                  href="/terminos-y-condiciones"
+                  className="hover:text-white transition-colors cursor-pointer"
+                >
+                  Términos y condiciones
+                </Link>
+              </li>
               <li className="hover:text-white cursor-pointer">Condiciones de envío</li>
               <li className="hover:text-white cursor-pointer">Política de privacidad</li>
             </ul>

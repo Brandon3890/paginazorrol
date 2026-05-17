@@ -25,7 +25,7 @@ const config: SimpleFacturaConfig = {
 };
 
 // ===============================
-// EMITIR BOLETA (CORREGIDO)
+// EMITIR BOLETA 
 // ===============================
 export async function emitirBoletaSimpleFactura(productos: any[], receptor: any, total: number): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -140,7 +140,7 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 }
 
 // ===============================
-// OBTENER PDF (sin cambios)
+// OBTENER PDF 
 // ===============================
 export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
