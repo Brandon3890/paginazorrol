@@ -151,16 +151,20 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
         nombreSucursal: config.sucursal
       },
       dteReferenciadoExterno: {
-        folio,
+        folio: Number(folio),
         codigoTipoDte: 39,
         ambiente: config.ambiente
       }
     });
 
+    console.log('📄 Obteniendo PDF para folio:', folio);
+
     const options = {
       method: 'POST',
       hostname: 'api.simplefactura.cl',
-      path: '/getPdf',
+
+      path: '/pdf',
+
       headers: {
         'Authorization': `Bearer ${config.token}`,
         'Content-Type': 'application/json',
@@ -169,31 +173,62 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
     };
 
     const req = https.request(options, (res) => {
-      const chunks: Uint8Array[] = [];
 
-      res.on('data', (chunk) => chunks.push(chunk));
+      const chunks: Buffer[] = [];
+
+      res.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
 
       res.on('end', () => {
-        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-        const result = new Uint8Array(totalLength);
 
-        let offset = 0;
-        for (const chunk of chunks) {
-          result.set(chunk, offset);
-          offset += chunk.length;
+        const buffer = Buffer.concat(chunks);
+
+        console.log('📊 PDF Status:', res.statusCode);
+        console.log('📄 PDF Content-Type:', res.headers['content-type']);
+
+        // 🔥 MOSTRAR ERROR REAL
+        if (res.statusCode !== 200) {
+
+          const text = buffer.toString('utf8');
+
+          console.error('❌ RESPUESTA PDF:', text);
+
+          return reject(
+            new Error(`Error al obtener PDF: ${res.statusCode}`)
+          );
         }
 
-        // PDF check
-        if (result[0] === 0x25 && result[1] === 0x50) {
-          resolve(result);
+        // VALIDAR PDF
+        if (
+          buffer[0] === 0x25 &&
+          buffer[1] === 0x50 &&
+          buffer[2] === 0x44 &&
+          buffer[3] === 0x46
+        ) {
+
+          console.log('✅ PDF válido recibido');
+
+          resolve(new Uint8Array(buffer));
+
         } else {
-          reject(new Error('No es un PDF válido'));
+
+          console.error('❌ Respuesta no es PDF');
+          console.error(buffer.toString('utf8').substring(0, 500));
+
+          reject(new Error('La respuesta no es un PDF válido'));
         }
+
       });
+
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => {
+      reject(new Error(`Error conexión PDF: ${err.message}`));
+    });
+
     req.write(postData);
     req.end();
+
   });
 }
