@@ -165,7 +165,8 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
     const options = {
       method: 'POST',
       hostname: 'api.simplefactura.cl',
-      path: '/pdf',
+      path: '/getPdf',
+      
 
       headers: {
         'Authorization': `Bearer ${config.token}`,
