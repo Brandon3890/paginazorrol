@@ -107,7 +107,7 @@ export function Header() {
           <div className="flex items-center justify-between gap-6">
             {/* LOGO - Imagen SVG en lugar de texto */}
             <Link href="" onClick={() => setGlobalSearchQuery("")} className="flex-shrink-0">
-              <div className="relative w-20 h-20 md:w-24 md:h-24">
+              <div className="relative w-28 h-28 md:w-32 md:h-32">
                 <Image
                   src="/logo-zorro.svg"
                   alt="Zorro Lúdico"
