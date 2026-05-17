@@ -56,8 +56,6 @@ export function Footer() {
                   Términos y condiciones
                 </Link>
               </li>
-              <li className="hover:text-white cursor-pointer">Condiciones de envío</li>
-              <li className="hover:text-white cursor-pointer">Política de privacidad</li>
             </ul>
           </div>
 
@@ -85,7 +83,7 @@ export function Footer() {
             <h3 className="font-semibold mb-3 text-lg mt-4">Síguenos</h3>
             <div className="flex gap-5">
               <a
-                href="https://www.instagram.com/reel/DWsVY_oDAWD/?utm_source=ig_web_copy_link&igsh=NTc4MTIwNjQ2YQ=="
+                href="https://www.instagram.com/zorroludico/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-300 hover:text-white transition-colors"
@@ -94,7 +92,7 @@ export function Footer() {
                 <FaInstagram className="text-2xl" />
               </a>
               <a
-                href="https://youtube.com"
+                href="https://www.youtube.com/@ZorroL%C3%BAdico"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-300 hover:text-white transition-colors"
@@ -103,7 +101,7 @@ export function Footer() {
                 <FaYoutube className="text-2xl" />
               </a>
               <a
-                href="https://facebook.com"
+                href="https://www.facebook.com/profile.php?id=61589561386914"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-300 hover:text-white transition-colors"
