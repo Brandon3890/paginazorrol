@@ -5,7 +5,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import Link from "next/link"
-import { ArrowLeft, FileText, Shield, Truck, RefreshCw, MessageCircle, Scale, AlertCircle, BookOpen, Mail, Phone } from "lucide-react"
+import { ArrowLeft, FileText, Shield, Truck, RefreshCw, MessageCircle, Scale, AlertCircle, BookOpen, Mail, Globe, Users, ShoppingBag, DollarSign } from "lucide-react"
 
 export default function TerminosYCondicionesPage() {
   return (
@@ -37,18 +37,12 @@ export default function TerminosYCondicionesPage() {
             Términos y Condiciones
           </h1>
           <div className="w-20 h-1 bg-orange-600 mx-auto rounded-full mb-4" />
-          <p className="text-lg font-normal font-poppins text-gray-600 max-w-2xl mx-auto">
-            Lee atentamente los siguientes términos que regulan el uso de nuestro sitio web y la relación comercial con Zorro Lúdico SpA.
-          </p>
-          <p className="text-sm text-gray-500 mt-3 font-poppins">
-            Versión vigente: Santiago, 18 de marzo de 2026
-          </p>
         </motion.div>
 
-        {/* Contenido principal */}
+        {/* Contenido principal - TEXTO ÍNTEGRO SIN RESUMIR */}
         <div className="space-y-8">
           
-          {/* Introducción */}
+          {/* TÉRMINOS Y CONDICIONES DE USO - Zorro Lúdico SpA */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -63,22 +57,16 @@ export default function TerminosYCondicionesPage() {
               <span className="font-semibold">Zorro Lúdico SpA</span>
             </p>
             <p className="text-gray-700 font-poppins leading-relaxed">
-              Los presentes términos de uso, aplicables a todo cliente¹ (en adelante “usted”, “el cliente”), se comprenden como un acuerdo 
-              que vincula legalmente a su persona o los derechos que represente, con <span className="font-semibold">Zorro Lúdico SpA</span> 
-              (en adelante, “La empresa”, “Nosotros”, “Zorro Lúdico”) para el uso e interacción con el sitio web bajo el dominio 
-              <span className="font-medium text-orange-700"> zorroludico.cl</span> y todos sus subsitios, comprendiendo además formularios, 
-              canales de comunicación, aplicaciones de dispositivos móviles o cualquier medio digital que convenga al presente acuerdo.
+              Los presentes términos de uso, aplicables a todo cliente¹ (en adelante “usted”, “el cliente”), se comprenden como un acuerdo que vincula legalmente a su persona o los derechos que represente, con Zorro Lúdico SpA (en adelante, “La empresa”, “Nosotros”, “Zorro Lúdico”) para el uso e interacción con el sitio web bajo el dominio zorroludico.cl y todos sus subsitios, comprendiendo además formularios, canales de comunicación, aplicaciones de dispositivos móviles o cualquier medio digital que convenga al presente acuerdo. POR LO TANTO, el cliente acepta haber leído, comprendido y aceptado en su plenitud indiscutible el presente acuerdo antes de efectuar cualquier acción dentro de la definición de “cliente” establecida en la presente, comunicando y confirmando indisputablemente que el cliente acepta haber leído, comprendido y aceptado en su plenitud el presente acuerdo. Cualquier controversia será sometida a los tribunales competentes conforme a la legislación chilena vigente.
             </p>
             <div className="mt-4 p-4 bg-amber-50 rounded-lg border-l-4 border-amber-500">
               <p className="text-sm text-gray-700 font-poppins">
-                 Entiéndase por cliente a cualquier persona que visite, 
-                realice una compra, establezca comunicación mediante cualquier canal remoto o presencial con representantes, accionistas, 
-                funcionarios o cualquier afiliado a la empresa; o quien establezca cualquier tipo de interacción con la página web zorroludico.cl.
+                <span className="font-bold"></span>Entiéndase por cliente a cualquier persona que visite, realice una compra, establezca comunicación mediante cualquier canal remoto o presencial con representantes, accionistas, funcionarios o cualquier afiliado a la empresa; o quien establezca cualquier tipo de interacción con la página web zorroludico.cl
               </p>
             </div>
           </motion.section>
 
-          {/* Jurisdicción */}
+          {/* Jurisdicción y Domicilio */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -90,13 +78,11 @@ export default function TerminosYCondicionesPage() {
               Jurisdicción y Domicilio
             </h2>
             <p className="text-gray-700 font-poppins leading-relaxed">
-              Se deja expresa constancia que las partes establecen su domicilio en la ciudad de Santiago de Chile, 
-              aplicando su jurisdicción y jurisprudencia ante potenciales litigios entre los suscriptores del presente contrato. 
-              Cualquier controversia será sometida a los tribunales competentes conforme a la legislación chilena vigente.
+              Se deja expresa constancia que las partes establecen su domicilio en la ciudad de Santiago de Chile, aplicando su jurisdicción y jurisprudencia ante potenciales litigios entre los suscriptores del presente contrato.
             </p>
           </motion.section>
 
-          {/* Modificaciones */}
+          {/* Modificaciones y Vigencia */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -108,18 +94,14 @@ export default function TerminosYCondicionesPage() {
               Modificaciones y Vigencia
             </h2>
             <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              Los términos y condiciones establecidos en la presente están sujetos a cambio. Cada versión estará acompañada de su 
-              fecha de publicación en la página web. La empresa se reserva el derecho a modificar estos términos en el futuro. 
-              Las modificaciones serán aplicables a todas las transacciones realizadas con posterioridad a su publicación.
+              Los términos y condiciones establecidos en la presente están sujetos a cambio, cada versión estará acompañada al final de ésta de su fecha de publicación en la página web de la empresa indicada con anterioridad, comprendiéndose como la versión válida la que corresponda a la ventana de tiempo en la que ocurra cualquier incidencia bajo la cual sea procedente citar los términos y condiciones a beneficio del cliente, quien puede solicitar, mediante los canales de contacto de la empresa, de manera completamente transparente y gratuita, cualquier acuerdo de términos de uso pasado, citando la fecha exacta del hecho que amerite la inspección del acuerdo vigente a la fecha de su ejecución, la cual debe ser demostrada sin cabida a dudas razonables, mediante por ejemplo, una boleta electrónica relevante al incidente emitida por la empresa o correos electrónicos con fecha legible. La falsificación, adulteración o cualquier manipulación en la fecha de emisión de documentos o recepción de comunicaciones está contemplada bajo los artículos 197, inciso 2°; y artículo 198 del código penal. Por lo tanto, dadas las facultades establecidas previamente, el cliente renuncia a cualquier derecho a ser notificado de actualizaciones de los términos y condiciones, renunciando así también a reclamar ignorancia de los términos y condiciones que rigen, entendiéndose que su uso del sitio posterior a la publicación de la versión más reciente, conforme a lo establecido en la definición de cliente, como toma de conocimiento del uso de la página.
             </p>
             <p className="text-gray-700 font-poppins leading-relaxed">
-              El cliente puede solicitar, mediante los canales de contacto de la empresa, de manera completamente transparente y gratuita, 
-              cualquier acuerdo de términos de uso pasado, citando la fecha exacta del hecho que amerite la inspección del acuerdo vigente 
-              a la fecha de su ejecución.
+              La empresa se reserva el derecho a modificar estos términos en el futuro. Las modificaciones serán aplicables a todas las transacciones realizadas con posterioridad a su publicación en el sitio web, a discreción de quien sus derechos representen o esté facultado para ello mediante cualquier carta poder, mandato, contrato de trabajo, prestación de servicios, en general, cualquier documento que vincule a la persona con Zorro Lúdico SpA.
             </p>
           </motion.section>
 
-          {/* Propiedad Intelectual */}
+          {/* Uso internacional */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -127,14 +109,49 @@ export default function TerminosYCondicionesPage() {
             className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
           >
             <h2 className="text-xl font-semibold font-poppins text-gray-900 mb-3 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-orange-600" />
+              Uso fuera de Chile
+            </h2>
+            <p className="text-gray-700 font-poppins leading-relaxed">
+              La información, imágenes, vídeos, contenido en general dentro del sitio web individualizado anteriormente y los productos ofrecidos dentro de ésta, no tienen como objeto su uso y/o difusión de cualquier tipo o escala, tanto por personas naturales y jurídicas (Tanto de derecho público como privado) dentro de jurisdicciones que restrinjan o requieran de licencias, registros, inspecciones, regulaciones, o cualquier tramitación que involucraría gestiones extraoficiales a responsabilidad y/o costas de la empresa y/o a quien sus derechos representen. Quienes accedan al sitio y efectúen una compra fuera de la República de Chile lo hacen bajo su propia iniciativa y son sujetos a la exclusiva responsabilidad cualquier consecuencia y/o costa producto de cualquier interacción especificada dentro de la definición de cliente con cualquier servicio administrado por la empresa y no son imputables a Zorro Lúdico SpA ni de sus representantes, accionistas, funcionarios o cualquier afiliado a la empresa.
+            </p>
+          </motion.section>
+
+          {/* Edad mínima */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
+          >
+            <h2 className="text-xl font-semibold font-poppins text-gray-900 mb-3 flex items-center gap-2">
+              <Users className="w-5 h-5 text-orange-600" />
+              Edad mínima
+            </h2>
+            <p className="text-gray-700 font-poppins leading-relaxed">
+              Los servicios ofrecidos por la empresa comprenden que el cliente tiene o es mayor de dieciocho (18) años de edad. Quienes no cumplan con este requisito, pueden interactuar con el sitio sólo si cuentan con autorización de su tutor legal. El uso de datos falsos para la creación del perfil cae en expresa responsabilidad de quien los proporciona. Zorro Lúdico, en sus principios de resguardar el venerable derecho a la vida privada, no valida las edades de sus clientes, renunciando a responder en caso del uso del sitio con fines inapropiados para un menor de dieciocho años de edad (Como, por ejemplo, pero no limitándose, a la compra de un producto con restricción de edad)
+            </p>
+          </motion.section>
+
+          {/* Propiedad Intelectual */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.25 }}
+            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
+          >
+            <h2 className="text-xl font-semibold font-poppins text-gray-900 mb-3 flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-orange-600" />
               Propiedad Intelectual
             </h2>
+            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
+              El sitio web, su código fuente, datos, funcionalidades específicas, diseños y cualquier medio digital o físico relacionado a Zorro Lúdico es de su exclusiva propiedad o han sido apropiadamente licenciados para su uso en el contexto que han sido presentados (A menos que se especifique lo contrario). Las gráficas, el nombre, logotipos, fuentes, o cualquier información escrita o multimedia asociada a Zorro Lúdico SpA están protegidas por derechos de autor y su reproducción no autorizada, tenga fines maliciosos o no, serán investigadas y denunciadas ante las autoridades competentes.
+            </p>
+            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
+              Quienes se entiendan como clientes, se les permite el uso exclusivamente no comercial para el uso y acceso al sitio, su descarga, reproducción en imágenes tanto digitales como impresas, grabaciones de pantallas o cualquier otro medio con el objeto de replicar su contenido de manera expedita y compresa.
+            </p>
             <p className="text-gray-700 font-poppins leading-relaxed">
-              El sitio web, su código fuente, datos, funcionalidades específicas, diseños y cualquier medio digital o físico relacionado 
-              a Zorro Lúdico es de su exclusiva propiedad o han sido apropiadamente licenciados. Las gráficas, el nombre, logotipos, 
-              fuentes, o cualquier información escrita o multimedia asociada a Zorro Lúdico SpA están protegidas por derechos de autor 
-              y su reproducción no autorizada será investigada y denunciada ante las autoridades competentes.
+              Se prohíbe estrictamente la reproducción, publicación, entrega o intercambio de licencia de cualquier medio de la empresa con propósitos comerciales sin permiso previo otorgado por un mandatario debidamente facultado para ello de la empresa.
             </p>
           </motion.section>
 
@@ -142,89 +159,19 @@ export default function TerminosYCondicionesPage() {
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
             className="bg-red-50 rounded-xl p-6 border border-red-200"
           >
             <div className="flex items-center gap-3 mb-4">
               <Shield className="w-6 h-6 text-red-600" />
-              <h2 className="text-xl font-semibold font-poppins text-gray-900">Responsabilidad Legal</h2>
+              <h2 className="text-xl font-semibold font-poppins text-gray-900">SOBRE LA RESPONSABILIDAD LEGAL</h2>
             </div>
             <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              La empresa rechaza activamente toda garantía expresa o implícita sobre el contenido del sitio. No se ofrece ningún tipo 
-              de garantía ni se declara la exactitud o veracidad sobre el contenido expuesto.
+              La empresa rechaza activamente toda garantía expresa o implícita sobre el contenido del sitio individualizado previamente o cualquier medio relevante a la actividad de Zorro Lúdico. No se ofrece ningún tipo de garantía ni se jura o declara la exactitud o veracidad sobre el contenido expuesto en el sitio, utilizando como ejemplo, pero no limitándose a cualquier inexactitud, lesiones físicas o a la propiedad fruto de cualquier interacción con la empresa, el uso no autorizado o malicioso de nuestros sistemas, el esparcimiento de un programa maligno o cualquier otra infección al sistema del usuario bajo responsabilidad de terceros no afiliados a la empresa, entre otros.
             </p>
             <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              La empresa sólo se limita a la distribución de los productos, y no se hace responsable por el contenido de éstos, siendo 
-              esto responsabilidad exclusiva de la casa productora de los bienes ofrecidos.
+              La empresa sólo se limita a la distribución de los productos, y no se hace responsable por el contenido de éstos, siendo esto responsabilidad exclusiva de la casa productora de los bienes ofrecidos en el sitio web. En ningún caso nosotros o nuestros directores, empleados o agentes seremos responsables ante usted o cualquier tercero por cualquier daño directo, indirecto, consecuente, ejemplar, incidental, especial o punitivo, incluyendo pérdida de beneficios, pérdida de ingresos, pérdida de datos, u otros daños que surjan de su uso del sitio, incluso si hemos sido advertidos de la posibilidad de dichos daños. El cliente acepta indemnizar a la empresa y/o a quien sus derechos representen ante cualquier causal de daños, pérdidas, litigios o cualquier desmedro a la integridad económica o estructural de la empresa a causa de acciones de cualquier índole.
             </p>
-            <p className="text-gray-700 font-poppins leading-relaxed font-medium">
-              En ningún caso nosotros o nuestros directores, empleados o agentes seremos responsables ante usted o cualquier tercero 
-              por cualquier daño directo, indirecto, consecuente, ejemplar, incidental, especial o punitivo, incluyendo pérdida de 
-              beneficios, pérdida de ingresos, pérdida de datos, u otros daños que surjan de su uso del sitio.
-            </p>
-          </motion.section>
-
-          {/* Compras y Envíos */}
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.25 }}
-            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <Truck className="w-6 h-6 text-orange-600" />
-              <h2 className="text-xl font-semibold font-poppins text-gray-900">Compras y Envíos</h2>
-            </div>
-            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              Una vez aprobado el pago de una compra, la empresa cuenta con un tiempo límite de <span className="font-semibold">tres días hábiles</span> 
-              por cada unidad de cada producto comprado para preparar los productos solicitados.
-            </p>
-            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              Los envíos estándar serán diligenciados por la empresa <span className="font-semibold">CHILEXPRESS S.A.</span>, la empresa no se responsabiliza 
-              por potenciales atrasos en la entrega de los productos, ya que estos corren bajo la exclusiva responsabilidad de la empresa de correos.
-            </p>
-            <p className="text-gray-700 font-poppins leading-relaxed">
-              El cliente puede solicitar que el envío sea efectuado por cualquier otra empresa del giro de transporte, logística y/o comunicaciones 
-              que se haya seleccionado en la sección titulada <span className="italic">“Personalizado”</span>.
-            </p>
-          </motion.section>
-
-          {/* Reembolsos y Garantía */}
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.3 }}
-            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <RefreshCw className="w-6 h-6 text-orange-600" />
-              <h2 className="text-xl font-semibold font-poppins text-gray-900">Reembolsos y Garantía Legal</h2>
-            </div>
-            <div className="p-4 bg-orange-50 rounded-lg mb-4 border border-orange-200">
-              <p className="text-gray-800 font-poppins font-semibold">
-                ⚠️ Importante: Exclusión expresa del Derecho de Retracto
-              </p>
-              <p className="text-gray-700 font-poppins text-sm mt-1">
-                En conformidad a lo dispuesto en el artículo 3 bis letra b) de la Ley N° 19.496, Zorro Lúdico SpA dispone la exclusión expresa 
-                del Derecho de Retracto para todas las compras realizadas a través de su sitio web. Por tanto, el cliente no podrá rescindir 
-                unilateralmente el contrato por mera expectativa o insatisfacción.
-              </p>
-            </div>
-            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              La empresa cumplirá sin disputar solicitudes de reembolso conforme a lo estipulado por el Servicio Nacional del Consumidor. 
-              El cliente cuenta con <span className="font-semibold">seis meses a contar de la entrega del producto</span> para solicitar una devolución 
-              del dinero, cambio o reparación del producto, siempre y cuando sea demostrable la existencia de fallas de fábrica en la mercancía.
-            </p>
-            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
-              Una vez abierto el producto, se pierde la posibilidad de cambio, salvo por las causales expuestas por ley.
-            </p>
-            <p className="text-gray-700 font-poppins leading-relaxed">
-              <span className="font-semibold">Métodos de reembolso disponibles:</span>
-            </p>
-            <ul className="list-disc list-inside text-gray-700 font-poppins mt-2 space-y-1 ml-2">
-              <li>Transferencia bancaria</li>
-              <li>Crédito de tienda (mediante cupón de descuento de un solo uso por el valor del producto reembolsado)</li>
-            </ul>
           </motion.section>
 
           {/* Comunicaciones */}
@@ -236,37 +183,95 @@ export default function TerminosYCondicionesPage() {
           >
             <div className="flex items-center gap-3 mb-4">
               <Mail className="w-6 h-6 text-orange-600" />
-              <h2 className="text-xl font-semibold font-poppins text-gray-900">Comunicaciones</h2>
+              <h2 className="text-xl font-semibold font-poppins text-gray-900">SOBRE COMUNICACIONES</h2>
             </div>
             <p className="text-gray-700 font-poppins leading-relaxed">
-              El cliente acepta recibir comunicaciones electrónicas de Zorro Lúdico SpA, sean estas confirmaciones de compra, avisos varios, 
-              difusiones o comunicados de todo tipo, pudiendo optar a no recibir divulgaciones de relevancia menor mediante un comunicado 
-              expreso mediante los canales de comunicación de la empresa.
+              El cliente acepta recibir comunicaciones electrónicas de Zorro Lúdico SpA, sean estas confirmaciones de compra, avisos varios, difusiones o comunicados de todo tipo, pudiendo optar a no recibir divulgaciones de relevancia menor mediante un comunicado expreso mediante los canales de comunicación de la empresa.
             </p>
-            <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-              <p className="text-sm text-gray-700 font-poppins">
-                <span className="font-semibold">Tiempo de respuesta a reclamaciones:</span> El cliente reconoce y acepta que toda reclamación 
-                suscrita a los medios de contacto de la empresa está sujeta a un tiempo límite de respuesta de veinte (20) días hábiles.
-              </p>
-            </div>
           </motion.section>
 
-          {/* Notas finales */}
+          {/* Compras */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.4 }}
+            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <ShoppingBag className="w-6 h-6 text-orange-600" />
+              <h2 className="text-xl font-semibold font-poppins text-gray-900">SOBRE LAS COMPRAS</h2>
+            </div>
+            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
+              Una vez aprobado el pago de una compra, la empresa cuenta con un tiempo límite de tres días hábiles por cada unidad de cada producto comprado para preparar los productos solicitados. Los envíos serán diligenciados por la empresa CHILEXPRESS S.A., la empresa no se responsabiliza por potenciales atrasos en la entrega de los productos, ya que estos corren bajo la exclusiva responsabilidad de la empresa de correos. El cliente puede solicitar que el envío sea efectuado por cualquier otra empresa del giro de transporte, logística y/o comunicaciones que se haya seleccionado en la sección titulada “Personalizado”. La empresa se reserva el derecho a rechazar el utilizar los servicios de la empresa solicitada si ésta no es factible para el envío de los productos (Como, por ejemplo, pero no limitándose a, una empresa del giro de las telecomunicaciones, restaurantes, abastecimiento, etc.…). Toda queja referente a sujetos relacionados a tiempos de entrega han de ser dirigido a los canales de comunicación y reclamaciones de la empresa de correos.
+            </p>
+          </motion.section>
+
+          {/* Reembolsos */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.45 }}
+            className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <DollarSign className="w-6 h-6 text-orange-600" />
+              <h2 className="text-xl font-semibold font-poppins text-gray-900">SOBRE LOS REEMBOLSOS</h2>
+            </div>
+            <div className="p-4 bg-orange-50 rounded-lg mb-4 border border-orange-200">
+              <p className="text-gray-800 font-poppins font-semibold">
+                ⚠️ Importante: Exclusión expresa del Derecho de Retracto
+              </p>
+              <p className="text-gray-700 font-poppins text-sm mt-1">
+                En conformidad a lo dispuesto en el artículo 3 bis letra b) de la Ley N° 19.496, Zorro Lúdico SpA dispone la exclusión expresa del Derecho de Retracto para todas las compras realizadas a través de su sitio web. Por tanto, el cliente no podrá rescindir unilateralmente el contrato por mera expectativa o insatisfacción, sin perjuicio del pleno ejercicio de su Garantía Legal de seis meses en caso de fallas de fabricación.
+              </p>
+            </div>
+            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
+              La empresa cumplirá sin disputar solicitudes de reembolso conforme a lo estipulado por el Servicio Nacional del Consumidor, en esencia, el cliente cuenta con seis meses a contar de la entrega del producto para solicitar una devolución del dinero, cambio o reparación del producto, siempre y cuando sea demostrable la existencia de fallas de fábrica en la mercancía.
+            </p>
+            <p className="text-gray-700 font-poppins leading-relaxed mb-3">
+              Una vez abierto el producto, se pierde la posibilidad de cambio, salvo por las causales expuestas por ley.
+            </p>
+            <p className="text-gray-700 font-poppins leading-relaxed">
+              <span className="font-semibold">El cliente cuenta con el derecho de solicitar, como método de reembolso, entre las siguientes opciones:</span>
+            </p>
+            <ul className="list-disc list-inside text-gray-700 font-poppins mt-2 space-y-1 ml-2">
+              <li>1.- Transferencia bancaria</li>
+              <li>2.- Crédito de tienda (Mediante cupón de descuento de un solo uso por el valor del producto reembolsado)</li>
+            </ul>
+            <p className="text-gray-700 font-poppins leading-relaxed mt-3">
+              La empresa se reserva el derecho a descontar cualquier comisión bancaria o costo de operación relacionado con la devolución salvo las causales de reembolso protegidas por ley.
+            </p>
+          </motion.section>
+
+          {/* Sobre Nosotros */}
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.5 }}
             className="bg-gray-50 rounded-xl p-6 border border-gray-200"
           >
-            <h2 className="text-lg font-semibold font-poppins text-gray-900 mb-3">Cláusulas complementarias</h2>
-            <ul className="space-y-2 text-gray-700 font-poppins text-sm list-disc list-inside">
-              <li>La empresa no se hace responsable de lesiones o incidentes relacionados al mal uso de los productos ofrecidos.</li>
-              <li>La renuncia a aplicar cualquier medida establecida en el presente acuerdo no implica su renuncia de aplicación futura.</li>
-              <li>Cualquier cita que contradiga las leyes de la República de Chile se entenderá como sin efecto.</li>
-              <li>El cliente declara que estima innecesaria la firma física del presente contrato.</li>
-              <li>El cliente acepta indemnizar a la empresa ante cualquier desmedro a su integridad económica o estructural.</li>
-            </ul>
+            <h2 className="text-xl font-semibold font-poppins text-gray-900 mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              SOBRE NOSOTROS
+            </h2>
+            <div className="space-y-3 text-gray-700 font-poppins leading-relaxed">
+              <p>1.- La empresa no se hace responsable de lesiones, menoscabo o cualquier incidente relacionado al mal, imprudente, temerario o malicioso uso de los productos ofrecidos. Zorro Lúdico SpA responderá únicamente por daños directos que sean exclusiva y directamente imputables a una negligencia grave de nuestra parte, excluyendo daños indirectos, lucro cesante o perjuicios causados por actos de terceros o empresas de transporte.</p>
+              <p>2.- La renuncia, cesión u omisión a aplicar cualquier medida o facultad establecida en el presente acuerdo no transmuta en su renuncia de aplicación futura.</p>
+              <p>3.- Cualquier cita extraíble del presente acuerdo que pueda violar o contradecir lo establecido por las leyes de la República de Chile se entenderá como sin efecto de ser declarada como tal por un ministro de fe, sin afectar la validez y aplicabilidad de la información legalmente procedente que pueda acompañar a dicha cita o el resto del texto.</p>
+              <p>4.- El cliente declara que estima innecesaria la firma física o manuscrita del presente contrato, no pudiendo alegar la ausencia de esta como base para desestimar el acuerdo.</p>
+              <p>5.- El cliente reconoce y acepta que toda reclamación suscrita a los medios de contacto de la empresa está sujetas a un tiempo límite de respuesta de veinte (20) días hábiles.</p>
+            </div>
           </motion.section>
+
+          {/* Fecha */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.55 }}
+            className="text-center"
+          >
+          </motion.div>
+
         </div>
       </main>
 
