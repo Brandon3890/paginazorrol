@@ -1,12 +1,11 @@
+// app/api/user/addresses/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
 
-// GET - Obtener perfil del usuario
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -15,47 +14,49 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el ID de la URL coincide con el usuario autenticado
-    if (parseInt(params.id) !== userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    const resolvedParams = await params
+    const addressId = parseInt(resolvedParams.id)
+
+    const addresses = await query(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ?`,
+      [addressId, userId]
+    )
+
+    if ((addresses as any[]).length === 0) {
+      return NextResponse.json({ error: 'Dirección no encontrada' }, { status: 404 })
     }
 
-    // Obtener datos del usuario
-    const users = await query(
-      `SELECT id, email, first_name, last_name, phone, role, created_at, updated_at 
-       FROM users WHERE id = ?`,
-      [userId]
-    ) as any[]
-
-    if (users.length === 0) {
-      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
+    const address = (addresses as any[])[0]
+    
+    const formattedAddress = {
+      id: address.id,
+      title: address.title,
+      street: address.street,
+      hasNoNumber: Boolean(address.has_no_number),
+      regionIso: address.region_iso,
+      regionName: address.region_name,
+      communeName: address.commune_name,
+      postalCode: address.postal_code,
+      department: address.department,
+      deliveryInstructions: address.delivery_instructions,
+      isDefault: Boolean(address.is_default),
+      createdAt: address.created_at,
+      updatedAt: address.updated_at
     }
 
-    const user = users[0]
-
-    return NextResponse.json({
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      phone: user.phone || '',
-      role: user.role,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at
-    })
+    return NextResponse.json(formattedAddress)
   } catch (error) {
-    console.error('Error fetching user:', error)
+    console.error('Error fetching address:', error)
     return NextResponse.json(
-      { error: 'Error al obtener el perfil' },
+      { error: 'Error al obtener la dirección' },
       { status: 500 }
     )
   }
 }
 
-// PUT - Actualizar datos del perfil
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -64,89 +65,112 @@ export async function PUT(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el ID de la URL coincide con el usuario autenticado
-    if (parseInt(params.id) !== userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    const resolvedParams = await params
+    const addressId = parseInt(resolvedParams.id)
+
+    const existingAddresses = await query(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ?`,
+      [addressId, userId]
+    )
+
+    if ((existingAddresses as any[]).length === 0) {
+      return NextResponse.json({ error: 'Dirección no encontrada' }, { status: 404 })
     }
 
     const body = await request.json()
-    const { firstName, lastName, email, phone } = body
+    const {
+      title,
+      street,
+      hasNoNumber = false,
+      regionIso,
+      regionName,
+      communeName,
+      postalCode = '',
+      department = '',
+      deliveryInstructions = '',
+      isDefault = false
+    } = body
 
-    // Validaciones básicas
-    if (!firstName || !lastName || !email) {
+    if (!title || !street || !regionIso || !communeName) {
       return NextResponse.json(
-        { error: 'Nombre, apellido y email son requeridos' },
+        { error: 'Faltan campos requeridos' },
         { status: 400 }
       )
     }
 
-    // Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: 'Email inválido' },
-        { status: 400 }
+    if (isDefault) {
+      await query(
+        `UPDATE user_addresses SET is_default = FALSE WHERE user_id = ?`,
+        [userId]
       )
     }
 
-    // Verificar si el email ya está en uso por otro usuario
-    const existingUsers = await query(
-      `SELECT id FROM users WHERE email = ? AND id != ?`,
-      [email, userId]
-    ) as any[]
-
-    if (existingUsers.length > 0) {
-      return NextResponse.json(
-        { error: 'El email ya está en uso por otro usuario' },
-        { status: 409 }
-      )
-    }
-
-    // Actualizar datos del usuario
     await query(
-      `UPDATE users SET 
-        first_name = ?, 
-        last_name = ?, 
-        email = ?, 
-        phone = ?,
+      `UPDATE user_addresses SET 
+        title = ?,
+        street = ?,
+        has_no_number = ?,
+        region_iso = ?,
+        region_name = ?,
+        commune_name = ?,
+        postal_code = ?,
+        department = ?,
+        delivery_instructions = ?,
+        is_default = ?,
         updated_at = NOW()
-      WHERE id = ?`,
-      [firstName, lastName, email, phone || null, userId]
+      WHERE id = ? AND user_id = ?`,
+      [
+        title,
+        street,
+        hasNoNumber ? 1 : 0,
+        regionIso,
+        regionName,
+        communeName,
+        postalCode,
+        department,
+        deliveryInstructions,
+        isDefault ? 1 : 0,
+        addressId,
+        userId
+      ]
     )
 
-    // Obtener los datos actualizados
-    const updatedUsers = await query(
-      `SELECT id, email, first_name, last_name, phone, role, created_at, updated_at 
-       FROM users WHERE id = ?`,
-      [userId]
-    ) as any[]
+    const updatedAddresses = await query(
+      `SELECT * FROM user_addresses WHERE id = ?`,
+      [addressId]
+    )
 
-    const user = updatedUsers[0]
+    const updatedAddress = (updatedAddresses as any[])[0]
+    
+    const formattedAddress = {
+      id: updatedAddress.id,
+      title: updatedAddress.title,
+      street: updatedAddress.street,
+      hasNoNumber: Boolean(updatedAddress.has_no_number),
+      regionIso: updatedAddress.region_iso,
+      regionName: updatedAddress.region_name,
+      communeName: updatedAddress.commune_name,
+      postalCode: updatedAddress.postal_code,
+      department: updatedAddress.department,
+      deliveryInstructions: updatedAddress.delivery_instructions,
+      isDefault: Boolean(updatedAddress.is_default),
+      createdAt: updatedAddress.created_at,
+      updatedAt: updatedAddress.updated_at
+    }
 
-    return NextResponse.json({
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      phone: user.phone || '',
-      role: user.role,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at,
-      message: 'Perfil actualizado exitosamente'
-    })
+    return NextResponse.json(formattedAddress)
   } catch (error) {
-    console.error('Error updating user:', error)
+    console.error('Error updating address:', error)
     return NextResponse.json(
-      { error: 'Error al actualizar el perfil' },
+      { error: 'Error al actualizar la dirección' },
       { status: 500 }
     )
   }
 }
 
-// PATCH - Cambiar contraseña
-export async function PATCH(
+export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -155,72 +179,48 @@ export async function PATCH(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el ID de la URL coincide con el usuario autenticado
-    if (parseInt(params.id) !== userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const resolvedParams = await params
+    const addressId = parseInt(resolvedParams.id)
 
-    const body = await request.json()
-    const { currentPassword, newPassword, confirmPassword } = body
-
-    // Validaciones
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      return NextResponse.json(
-        { error: 'Todos los campos son requeridos' },
-        { status: 400 }
-      )
-    }
-
-    if (newPassword !== confirmPassword) {
-      return NextResponse.json(
-        { error: 'Las contraseñas nuevas no coinciden' },
-        { status: 400 }
-      )
-    }
-
-    if (newPassword.length < 6) {
-      return NextResponse.json(
-        { error: 'La contraseña debe tener al menos 6 caracteres' },
-        { status: 400 }
-      )
-    }
-
-    // Obtener la contraseña actual
-    const users = await query(
-      'SELECT password_hash FROM users WHERE id = ?',
-      [userId]
-    ) as any[]
-
-    if (users.length === 0) {
-      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
-    }
-
-    // Verificar contraseña actual
-    const isValidPassword = await bcrypt.compare(currentPassword, users[0].password_hash)
-    
-    if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'La contraseña actual es incorrecta' },
-        { status: 400 }
-      )
-    }
-
-    // Hashear y actualizar nueva contraseña
-    const newPasswordHash = await bcrypt.hash(newPassword, 10)
-    
-    await query(
-      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
-      [newPasswordHash, userId]
+    const existingAddresses = await query(
+      `SELECT * FROM user_addresses WHERE id = ? AND user_id = ?`,
+      [addressId, userId]
     )
 
-    return NextResponse.json({
-      success: true,
-      message: 'Contraseña actualizada exitosamente'
-    })
-  } catch (error) {
-    console.error('Error changing password:', error)
+    if ((existingAddresses as any[]).length === 0) {
+      return NextResponse.json({ error: 'Dirección no encontrada' }, { status: 404 })
+    }
+
+    const address = (existingAddresses as any[])[0]
+
+    await query(
+      `DELETE FROM user_addresses WHERE id = ? AND user_id = ?`,
+      [addressId, userId]
+    )
+
+    if (address.is_default) {
+      const remainingAddresses = await query(
+        `SELECT id FROM user_addresses WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      )
+
+      if ((remainingAddresses as any[]).length > 0) {
+        const newDefaultId = (remainingAddresses as any[])[0].id
+        await query(
+          `UPDATE user_addresses SET is_default = TRUE WHERE id = ?`,
+          [newDefaultId]
+        )
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Error al cambiar la contraseña' },
+      { message: 'Dirección eliminada correctamente' },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error('Error deleting address:', error)
+    return NextResponse.json(
+      { error: 'Error al eliminar la dirección' },
       { status: 500 }
     )
   }

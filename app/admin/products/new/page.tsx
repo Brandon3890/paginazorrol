@@ -1,4 +1,3 @@
-// app/admin/products/new/page.tsx - COMPLETO
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo } from "react"
@@ -16,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
-  Rocket, Sparkles, Package, AlertCircle, Tag
+  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
 } from "lucide-react"
 import Link from "next/link"
 
@@ -220,6 +219,11 @@ export default function NewProductPage() {
     recommendedProducts: [] as number[],
     brand: "Devir",
     genre: "Estrategia, Familiar",
+    // NUEVOS CAMPOS - Dimensiones para envío
+    weight: "0.5",
+    height: "10",
+    width: "15",
+    length: "20",
   })
 
   const [selectedCategory, setSelectedCategory] = useState<string>("")
@@ -377,7 +381,7 @@ export default function NewProductPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
+      alert(`Máximo ${MAX_TOTAL_IMAGES} imágenes en total`)
       return
     }
     if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
@@ -408,7 +412,7 @@ export default function NewProductPage() {
   const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
+      alert(`Máximo ${MAX_TOTAL_IMAGES} imágenes en total`)
       return
     }
     if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
@@ -450,7 +454,7 @@ export default function NewProductPage() {
     }
 
     if (formData.subcategoryIds.length === 0) {
-      alert("Por favor selecciona al menos una subcategoria")
+      alert("Por favor selecciona al menos una subcategoría")
       return
     }
 
@@ -465,6 +469,12 @@ export default function NewProductPage() {
       formDataToSend.append('youtubeVideoId', formData.youtubeVideoId)
       formDataToSend.append('brand', formData.brand)
       formDataToSend.append('genre', formData.genre)
+      
+      // NUEVOS CAMPOS - Peso y dimensiones para envío
+      formDataToSend.append('weight', formData.weight)
+      formDataToSend.append('height', formData.height)
+      formDataToSend.append('width', formData.width)
+      formDataToSend.append('length', formData.length)
       
       if (selectedTag && selectedTag !== "") {
         formDataToSend.append('tags', selectedTag)
@@ -536,7 +546,7 @@ export default function NewProductPage() {
         <main className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Cargando categorias...</span>
+            <span>Cargando categorías...</span>
           </div>
         </main>
         <Footer />
@@ -558,7 +568,7 @@ export default function NewProductPage() {
         <Card>
           <CardHeader>
             <CardTitle>Añadir Nuevo Producto</CardTitle>
-            <CardDescription>Completa la informacion del producto</CardDescription>
+            <CardDescription>Completa la información del producto</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -626,12 +636,12 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* Imagenes */}
+                {/* Imágenes */}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
-                    <Label>Imagenes del Producto</Label>
+                    <Label>Imágenes del Producto</Label>
                     <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
-                      {totalImages}/{MAX_TOTAL_IMAGES} imagenes
+                      {totalImages}/{MAX_TOTAL_IMAGES} imágenes
                     </span>
                   </div>
 
@@ -683,7 +693,7 @@ export default function NewProductPage() {
                   </div>
 
                   <div className="border rounded-lg p-4">
-                    <Label className="text-sm font-medium">Imagenes Adicionales</Label>
+                    <Label className="text-sm font-medium">Imágenes Adicionales</Label>
                     <div className="mt-2">
                       <div className="flex items-center gap-2">
                         <Input
@@ -727,9 +737,9 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
-                {/* Categoria */}
+                {/* Categoría */}
                 <div className="space-y-2">
-                  <Label htmlFor="category-select">Categoria *</Label>
+                  <Label htmlFor="category-select">Categoría *</Label>
                   <select
                     id="category-select"
                     value={formData.categoryId}
@@ -745,7 +755,7 @@ export default function NewProductPage() {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     required
                   >
-                    <option value="">Selecciona una categoria</option>
+                    <option value="">Selecciona una categoría</option>
                     {categories.map((cat) => (
                       <option key={cat.id} value={safeToString(cat.id)}>
                         {cat.name}
@@ -754,14 +764,14 @@ export default function NewProductPage() {
                   </select>
                 </div>
 
-                {/* Subcategorias */}
+                {/* Subcategorías */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Subcategorias *</Label>
+                  <Label>Subcategorías *</Label>
                   <div className="border rounded-lg p-4 bg-muted/20">
                     {!selectedCategory ? (
-                      <p className="text-sm text-muted-foreground">Primero selecciona una categoria</p>
+                      <p className="text-sm text-muted-foreground">Primero selecciona una categoría</p>
                     ) : availableSubcategories.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay subcategorias disponibles</p>
+                      <p className="text-sm text-muted-foreground">No hay subcategorías disponibles</p>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         {availableSubcategories.map((subcat) => (
@@ -777,7 +787,7 @@ export default function NewProductPage() {
                   </div>
                   {formData.subcategoryIds.length > 0 && (
                     <p className="text-sm text-green-600 mt-2">
-                      {formData.subcategoryIds.length} subcategoria(s) seleccionada(s)
+                      {formData.subcategoryIds.length} subcategoría(s) seleccionada(s)
                     </p>
                   )}
                 </div>
@@ -806,6 +816,83 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
+                {/* DIMENSIONES PARA ENVÍO - NUEVA SECCIÓN */}
+                <div className="md:col-span-2 space-y-3">
+                  <Label className="text-lg font-semibold flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Dimensiones para Envío
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Estas dimensiones se usarán para calcular el costo de envío con Chilexpress.
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
+                    <div className="space-y-2">
+                      <Label htmlFor="weight" className="text-sm flex items-center gap-1">
+                        <Weight className="w-3 h-3" /> Peso (kg) *
+                      </Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        required
+                        value={formData.weight}
+                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        placeholder="0.5"
+                      />
+                      <p className="text-xs text-muted-foreground">Peso real del producto</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="height" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Alto (cm) *
+                      </Label>
+                      <Input
+                        id="height"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.height}
+                        onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                        placeholder="10"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="width" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Ancho (cm) *
+                      </Label>
+                      <Input
+                        id="width"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.width}
+                        onChange={(e) => setFormData({ ...formData, width: e.target.value })}
+                        placeholder="15"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="length" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Largo (cm) *
+                      </Label>
+                      <Input
+                        id="length"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.length}
+                        onChange={(e) => setFormData({ ...formData, length: e.target.value })}
+                        placeholder="20"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Etiquetas del Producto */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
@@ -817,12 +904,11 @@ export default function NewProductPage() {
                   </p>
                   
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {/* Agregar opción "Normal" al principio */}
                     {[
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
                       { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
                       { value: "descuento", label: "DESCUENTO", icon: Percent, description: "Activar oferta especial", color: "bg-orange-500", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
-                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recien llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
+                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recién llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
                       { value: "agotado", label: "AGOTADO", icon: AlertCircle, description: "Sin stock (stock = 0)", color: "bg-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
                     ].map((tag) => {
                       const IconComponent = tag.icon;
@@ -1001,7 +1087,7 @@ export default function NewProductPage() {
                   )}
                   
                   {/* Vista previa del badge */}
-                   {selectedTag && selectedTag !== "" && (
+                  {selectedTag && selectedTag !== "" && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
                       <div className="flex flex-wrap gap-2">
@@ -1037,7 +1123,7 @@ export default function NewProductPage() {
                     Productos Recomendados
                   </Label>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Selecciona los productos que se mostraran como "Tambien te podria gustar"
+                    Selecciona los productos que se mostrarán como "También te podría gustar"
                   </p>
                   
                   <div className="flex items-center gap-2 mb-4">
@@ -1087,7 +1173,7 @@ export default function NewProductPage() {
                     className={selectedTag === "agotado" ? "bg-gray-100" : ""}
                   />
                   {selectedTag === "agotado" && (
-                    <p className="text-xs text-red-500">El stock esta fijado en 0 porque el producto esta agotado</p>
+                    <p className="text-xs text-red-500">El stock está fijado en 0 porque el producto está agotado</p>
                   )}
                 </div>
 
@@ -1102,7 +1188,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ageMin">Edad Minima *</Label>
+                  <Label htmlFor="ageMin">Edad Mínima *</Label>
                   <Input
                     id="ageMin"
                     type="number"
@@ -1123,7 +1209,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMin">Jugadores Minimo *</Label>
+                  <Label htmlFor="playersMin">Jugadores Mínimo *</Label>
                   <Input
                     id="playersMin"
                     type="number"
@@ -1134,7 +1220,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMax">Jugadores Maximo *</Label>
+                  <Label htmlFor="playersMax">Jugadores Máximo *</Label>
                   <Input
                     id="playersMax"
                     type="number"
@@ -1145,7 +1231,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duracion (ej: 15 min) *</Label>
+                  <Label htmlFor="duration">Duración (ej: 15 min) *</Label>
                   <Input
                     id="duration"
                     required
@@ -1155,7 +1241,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="durationMin">Duracion Minima (min) *</Label>
+                  <Label htmlFor="durationMin">Duración Mínima (min) *</Label>
                   <Input
                     id="durationMin"
                     type="number"
@@ -1166,7 +1252,7 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Descripcion *</Label>
+                  <Label htmlFor="description">Descripción *</Label>
                   <Textarea
                     id="description"
                     required

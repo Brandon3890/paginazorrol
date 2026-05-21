@@ -1,9 +1,9 @@
+// app/api/user/addresses/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function POST(request: NextRequest) {
-  
   try {
     const userId = await getUserIdFromRequest(request)
     
@@ -42,7 +42,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-
     // Si esta dirección será la predeterminada, quitar predeterminada de las demás
     if (isDefault) {
       await query(
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar si el usuario ya tiene direcciones para determinar si esta debe ser predeterminada
+    // Verificar si el usuario ya tiene direcciones
     const existingAddresses = await query(
       `SELECT COUNT(*) as count FROM user_addresses WHERE user_id = ?`,
       [userId]
@@ -59,7 +58,6 @@ export async function POST(request: NextRequest) {
     
     const addressCount = (existingAddresses as any)[0].count
     const shouldBeDefault = isDefault || addressCount === 0
-    
 
     const result = await query(
       `INSERT INTO user_addresses (
@@ -81,7 +79,6 @@ export async function POST(request: NextRequest) {
       ]
     )
 
-
     const newAddressResult = await query(
       `SELECT * FROM user_addresses WHERE id = ?`,
       [(result as any).insertId]
@@ -89,7 +86,6 @@ export async function POST(request: NextRequest) {
 
     const newAddress = (newAddressResult as any)[0]
     
-    // Mapear los nombres de campos de la base de datos al formato esperado por el frontend
     const formattedAddress = {
       id: newAddress.id,
       title: newAddress.title,
@@ -106,10 +102,9 @@ export async function POST(request: NextRequest) {
       updatedAt: newAddress.updated_at
     }
 
-
     return NextResponse.json(formattedAddress)
   } catch (error) {
-    console.error('💥 Error creating address:', error)
+    console.error('Error creating address:', error)
     return NextResponse.json(
       { 
         error: 'Error interno del servidor al crear la dirección',
@@ -133,7 +128,6 @@ export async function GET(request: NextRequest) {
       [userId]
     )
 
-    // Mapear los resultados al formato esperado por el frontend
     const formattedAddresses = (addresses as any[]).map(addr => ({
       id: addr.id,
       title: addr.title,

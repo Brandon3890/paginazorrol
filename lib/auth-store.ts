@@ -1,7 +1,8 @@
+// lib/auth-store.ts
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-interface UserAddress {
+export interface UserAddress {
   id: number
   title: string
   street: string
@@ -17,13 +18,29 @@ interface UserAddress {
   updatedAt?: string
 }
 
+export interface Address {
+  id: number;
+  title: string;
+  street: string;
+  hasNoNumber: boolean;
+  regionIso: string;
+  regionName: string;
+  communeName: string;
+  postalCode: string;
+  department?: string;
+  deliveryInstructions?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface User {
   id: string
   email: string
   firstName: string
   lastName: string
   phone: string
-  rut?: string // AGREGADO
+  rut?: string
   role: 'user' | 'admin'
   addresses?: UserAddress[]
   createdAt: string
@@ -36,7 +53,7 @@ interface RegisterData {
   firstName: string
   lastName: string
   phone?: string
-  rut: string // AGREGADO
+  rut: string
 }
 
 interface AuthState {
@@ -79,7 +96,6 @@ export const useAuthStore = create<AuthState>()(
           const data = await response.json()
           
           if (data.success && data.user) {
-            // Cargar direcciones después del login
             const addressesResponse = await fetch('/api/user/addresses', {
               headers: {
                 'Authorization': `Bearer ${data.token}`,
@@ -129,7 +145,6 @@ export const useAuthStore = create<AuthState>()(
           const data = await response.json()
           
           if (data.success && data.user) {
-            // Login automático después del registro
             const loginResponse = await fetch('/api/auth/login', {
               method: 'POST',
               headers: {
@@ -144,7 +159,6 @@ export const useAuthStore = create<AuthState>()(
             const loginData = await loginResponse.json()
             
             if (loginData.success && loginData.user) {
-              // Cargar direcciones después del login
               const addressesResponse = await fetch('/api/user/addresses', {
                 headers: {
                   'Authorization': `Bearer ${loginData.token}`,
@@ -208,7 +222,6 @@ export const useAuthStore = create<AuthState>()(
           if (response.ok) {
             const data = await response.json()
             if (data.valid && data.user) {
-              // Cargar direcciones al verificar el token
               const addressesResponse = await fetch('/api/user/addresses', {
                 headers: {
                   'Authorization': `Bearer ${token}`,
@@ -272,7 +285,6 @@ export const useAuthStore = create<AuthState>()(
       addUserAddress: async (addressData) => {
         try {
           const { token } = get()
-          console.log('🔄 Adding address with token:', token ? 'Present' : 'Missing')
           
           const response = await fetch('/api/user/addresses', {
             method: 'POST',
@@ -285,12 +297,10 @@ export const useAuthStore = create<AuthState>()(
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
-            console.error('❌ API Error:', errorData)
             throw new Error(errorData.error || 'Error adding address')
           }
 
           const newAddress = await response.json()
-          console.log('✅ Address added successfully:', newAddress)
           
           set(state => ({
             user: state.user ? {
@@ -299,7 +309,7 @@ export const useAuthStore = create<AuthState>()(
             } : null
           }))
         } catch (error) {
-          console.error('❌ Error adding address:', error)
+          console.error('Error adding address:', error)
           throw error
         }
       },

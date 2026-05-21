@@ -1,4 +1,4 @@
-// lib/product-store.ts
+// lib/product-store.ts - ACTUALIZADO CON DIMENSIONES
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -56,6 +56,11 @@ export interface Product {
   genre: string;
   createdAt: string;
   updatedAt: string;
+  // NUEVAS PROPIEDADES PARA DIMENSIONES DE ENVÍO
+  weight: number;
+  height: number;
+  width: number;
+  length: number;
 }
 
 interface ProductStore {
@@ -134,7 +139,12 @@ const migrateStore = (persistedState: any, version: number) => {
     ...product,
     tags: normalizeTags(product.tags || product.tagsRaw),
     brand: product.brand || 'Devir',
-    genre: product.genre || 'Estrategia, Familiar'
+    genre: product.genre || 'Estrategia, Familiar',
+    // Valores por defecto para dimensiones si no existen
+    weight: product.weight ?? 0.5,
+    height: product.height ?? 10,
+    width: product.width ?? 15,
+    length: product.length ?? 20,
   }));
   
   console.log(`🔄 Cleaned ${cleanedProducts.length} valid products`);
@@ -202,7 +212,12 @@ export const useProductStore = create<ProductStore>()(
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
             brand: product.brand || 'Devir',
-            genre: product.genre || 'Estrategia, Familiar'
+            genre: product.genre || 'Estrategia, Familiar',
+            // Asegurar que las dimensiones tengan valores por defecto
+            weight: product.weight ?? 0.5,
+            height: product.height ?? 10,
+            width: product.width ?? 15,
+            length: product.length ?? 20,
           }));
           
           console.log('🏷️ Tags normalizados:', normalizedProducts.map((p: any) => ({ name: p.name, tags: p.tags })));
@@ -240,14 +255,25 @@ export const useProductStore = create<ProductStore>()(
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
             brand: product.brand || 'Devir',
-            genre: product.genre || 'Estrategia, Familiar'
+            genre: product.genre || 'Estrategia, Familiar',
+            // Asegurar que las dimensiones tengan valores por defecto
+            weight: product.weight ?? 0.5,
+            height: product.height ?? 10,
+            width: product.width ?? 15,
+            length: product.length ?? 20,
           };
           
           console.log(`✅ Product ${id} fetched successfully:`, {
             name: normalizedProduct.name,
             tags: normalizedProduct.tags,
             brand: normalizedProduct.brand,
-            genre: normalizedProduct.genre
+            genre: normalizedProduct.genre,
+            dimensions: {
+              weight: normalizedProduct.weight,
+              height: normalizedProduct.height,
+              width: normalizedProduct.width,
+              length: normalizedProduct.length,
+            }
           });
           
           set(state => {
@@ -458,7 +484,7 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 2,
+      version: 3, // IMPORTANTE: Incrementar la versión para migrar datos existentes
       migrate: migrateStore,
       partialize: (state) => ({ 
         products: state.products,

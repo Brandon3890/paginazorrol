@@ -4,7 +4,7 @@ import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // ← Cambio: params es una Promesa
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -13,7 +13,8 @@ export async function PUT(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const addressId = parseInt(params.id)
+    const { id } = await params // ← Resolver la promesa
+    const addressId = parseInt(id)
 
     // Verificar que la dirección pertenece al usuario
     const existingAddresses = await query(
@@ -21,11 +22,11 @@ export async function PUT(
       [addressId, userId]
     )
 
-    if ((existingAddresses as any).length === 0) {
+    if ((existingAddresses as any[]).length === 0) {
       return NextResponse.json({ error: 'Dirección no encontrada' }, { status: 404 })
     }
 
-    // Quitar predeterminada de todas las direcciones
+    // Quitar predeterminada de todas las direcciones del usuario
     await query(
       `UPDATE user_addresses SET is_default = FALSE WHERE user_id = ?`,
       [userId]
@@ -37,6 +38,7 @@ export async function PUT(
       [addressId, userId]
     )
 
+    // Obtener la dirección actualizada
     const updatedAddressResult = await query(
       `SELECT * FROM user_addresses WHERE id = ?`,
       [addressId]

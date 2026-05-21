@@ -1,8 +1,9 @@
+// app/checkout/page.tsx
 "use client"
 
 import type React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { useCartStore, shippingOptions } from "@/lib/cart-store"
+import { useCartStore } from "@/lib/cart-store"
 import { useAuthStore } from "@/lib/auth-store"
 import { useOrderStore } from "@/lib/order-store"
 import { useCouponStore } from "@/lib/coupon-store"
@@ -15,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, CreditCard, Truck, Shield, LogIn, Tag, X, Loader2, MapPin, Plus, RefreshCw } from "lucide-react"
+import { ArrowLeft, CreditCard, Truck, Shield, LogIn, Tag, X, Loader2, MapPin, Plus, RefreshCw, Check } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -24,14 +25,41 @@ import { useCheckoutTimer } from '@/hooks/use-checkout-timer'
 import { CheckoutTimer } from '@/components/checkout-timer'
 import { motion, AnimatePresence } from "framer-motion"
 
+// Interfaces para las opciones de Chilexpress
+interface ChilexpressOption {
+  id?: string;
+  type?: string;
+  typeCode?: number;
+  serviceTypeCode?: number;
+  name: string;
+  price: number;
+  actualShippingCost?: number;
+  finalWeight?: number;
+  finalWeightFormatted?: string;
+  didUseVolumetricWeight?: boolean;
+  deliveryDescription?: string;
+  conditions?: string;
+  branches?: Array<{
+    id?: number;
+    name: string;
+    address: string;
+    telephone?: string;
+    businessHours?: any[];
+    latitude?: string;
+    longitude?: string;
+  }>;
+  requiresBranchSelection?: boolean;
+  selectedBranch?: any;
+  isCashOnDelivery?: boolean;
+  isHomeDelivery?: boolean;
+  isBranchPickup?: boolean;
+}
+
 // Función para manejar rate limit
 const handleRateLimit = async (response: Response) => {
   if (response.status === 429) {
     const retryAfter = response.headers.get('Retry-After')
     const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 10000
-    
-    console.warn(`⏰ Rate limit alcanzado. Esperando ${waitTime/1000} segundos...`)
-    
     await new Promise(resolve => setTimeout(resolve, waitTime))
     return true
   }
@@ -41,30 +69,17 @@ const handleRateLimit = async (response: Response) => {
 // Función helper para tipos de cupón
 const getCouponTypeText = (type: string) => {
   switch (type) {
-    case 'global':
-      return 'Descuento global'
-    case 'category':
-      return 'Descuento por categoría'
-    case 'subcategory':
-      return 'Descuento por subcategoría'
-    case 'product':
-      return 'Descuento por producto'
-    case 'multiple':
-      return 'Descuento múltiple'
-    default:
-      return 'Descuento'
+    case 'global': return 'Descuento global'
+    case 'category': return 'Descuento por categoría'
+    case 'subcategory': return 'Descuento por subcategoría'
+    case 'product': return 'Descuento por producto'
+    case 'multiple': return 'Descuento múltiple'
+    default: return 'Descuento'
   }
 }
 
-// Función para redondear a número entero sin decimales
-const roundToInteger = (amount: number): number => {
-  return Math.round(amount);
-};
-
-// Función para formatear precio en CLP sin decimales
-const formatCLP = (price: number): string => {
-  return roundToInteger(price).toLocaleString('es-CL');
-};
+const roundToInteger = (amount: number): number => Math.round(amount)
+const formatCLP = (price: number): string => roundToInteger(price).toLocaleString('es-CL')
 
 export default function CheckoutPage() {
   const {
@@ -72,9 +87,9 @@ export default function CheckoutPage() {
     getTotalPrice,
     getSubtotalPrice,
     getDiscountAmount,
-    clearCart,
     shippingMethod,
     setShippingMethod,
+    setShippingCost,
     getShippingCost,
     appliedCoupon,
     couponDiscount,
@@ -82,27 +97,18 @@ export default function CheckoutPage() {
     applyCoupon,
     removeCoupon,
     isLoading: cartLoading,
-    startCheckout,
-    endCheckout,
     hasActiveCheckout,
-    checkoutExpiresAt
   } = useCartStore()
   
   const { user, isAuthenticated, loadUserAddresses } = useAuthStore()
   const { addOrder } = useOrderStore()
-  const { validateCoupon } = useCouponStore()
   const router = useRouter()
   const { toast } = useToast()
 
-  // Usar el hook del temporizador
-  const { formattedTime, isExpired, progress, isReserving } = useCheckoutTimer()
+  const { formattedTime, isExpired, progress, isReserving, confirmPurchase } = useCheckoutTimer()
 
   const [formData, setFormData] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    phone: "",
-    notes: "",
+    email: "", firstName: "", lastName: "", phone: "", notes: "",
   })
 
   const [selectedAddress, setSelectedAddress] = useState<any>(null)
@@ -112,43 +118,156 @@ export default function CheckoutPage() {
   const [couponError, setCouponError] = useState("")
   const [loadingAddresses, setLoadingAddresses] = useState(false)
   const [addressLoadAttempts, setAddressLoadAttempts] = useState(0)
-  const [hasInitializedCheckout, setHasInitializedCheckout] = useState(false)
 
-  // CÁLCULOS (los precios de productos ya incluyen IVA)
+  // Estados para Chilexpress
+  const [chilexpressOptions, setChilexpressOptions] = useState<ChilexpressOption[]>([])
+  const [isLoadingShipping, setIsLoadingShipping] = useState(false)
+  const [shippingError, setShippingError] = useState<string | null>(null)
+  const [selectedChilexpressOption, setSelectedChilexpressOption] = useState<ChilexpressOption | null>(null)
+  const [selectedBranch, setSelectedBranch] = useState<any>(null)
+  const [showBranchSelector, setShowBranchSelector] = useState(false)
+  const [availableBranches, setAvailableBranches] = useState<any[]>([])
+  const [branchSearchTerm, setBranchSearchTerm] = useState("")
+
+  // Cálculos
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
   const totalAfterDiscount = roundToInteger(getTotalPrice())
   const shipping = roundToInteger(getShippingCost())
-  const calculateIncludedIVA = (amount: number): number => {
-    return roundToInteger(amount - (amount / 1.19))
-  }
-  const includedIVA = calculateIncludedIVA(totalAfterDiscount)
   const finalTotal = roundToInteger(totalAfterDiscount + shipping)
 
-  // Verificar si hay checkout activo al cargar la página
+  // Resetear sucursales cuando cambia la dirección
   useEffect(() => {
-    if (!hasActiveCheckout() && items.length > 0 && !hasInitializedCheckout) {
-      setHasInitializedCheckout(true)
-    }
-  }, [items, hasActiveCheckout, hasInitializedCheckout])
+    setSelectedBranch(null);
+    setShowBranchSelector(false);
+    setBranchSearchTerm("");
+  }, [selectedAddress?.communeName]);
 
-  // Liberar stock al salir de la página (solo si no se completó la compra)
+  // Efecto para redirigir cuando expira el tiempo
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (items.length > 0 && !isExpired && !isProcessing) {
-        e.preventDefault()
-        e.returnValue = '¿Estás seguro de que quieres salir? Tu reserva de stock se perderá.'
+    if (isExpired) {
+      toast({
+        title: "⏰ Tiempo agotado",
+        description: "Tu sesión de compra ha expirado. Serás redirigido al inicio.",
+        variant: "destructive",
+        duration: 3000,
+      });
+      
+      const timer = setTimeout(() => {
+        router.push("/");
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isExpired, router, toast]);
+
+  // Efecto para manejar cuando cambia la opción seleccionada
+  useEffect(() => {
+    if (selectedChilexpressOption) {
+      if (selectedChilexpressOption.requiresBranchSelection && selectedChilexpressOption.branches && selectedChilexpressOption.branches.length > 0) {
+        setShowBranchSelector(true);
+      } else {
+        setShowBranchSelector(false);
+        setSelectedBranch(null);
       }
     }
+  }, [selectedChilexpressOption]);
 
-    window.addEventListener('beforeunload', handleBeforeUnload)
+  // Función para manejar selección de sucursal
+  const handleSelectBranch = (option: ChilexpressOption, branch: any) => {
+    console.log("📦 Seleccionando sucursal:", branch);
+    setSelectedBranch(branch);
+    // Actualizar la opción seleccionada
+    const updatedOption = {
+      ...option,
+      selectedBranch: branch,
+      deliveryDescription: `Retiro en ${branch.name} - ${branch.address}`,
+    };
+    setSelectedChilexpressOption(updatedOption);
+    setShowBranchSelector(false);
+  };
+
+  // Función para obtener tarifas de Chilexpress
+  const fetchShippingRates = useCallback(async (communeName: string) => {
+    if (!communeName || items.length === 0) return
     
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
+    setIsLoadingShipping(true)
+    setShippingError(null)
+    setShowBranchSelector(false)
+    setSelectedBranch(null)
+    setAvailableBranches([]) // Resetear sucursales
+    
+    try {
+      const totalValue = getTotalPrice();
+      
+      const itemsWithDimensions = items.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        weight: item.weight || 0.5,
+        height: item.height || 10,
+        width: item.width || 15,
+        length: item.length || 20,
+      }));
+      
+      const response = await fetch('/api/shipping/rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          communeName,
+          declaredWorth: totalValue,
+          items: itemsWithDimensions,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.options && data.options.length > 0) {
+        setChilexpressOptions(data.options);
+        setShippingError(null);
+        
+        // Buscar la opción de retiro en sucursal y guardar sus branches
+        const branchOption = data.options.find((o: any) => o.type === "branch_pickup");
+        if (branchOption && branchOption.branches && branchOption.branches.length > 0) {
+          setAvailableBranches(branchOption.branches);
+        }
+        
+        // Seleccionar opción por defecto (priorizar envío por pagar o envío a domicilio)
+        let defaultOption = data.options[0];
+        const cashOnDeliveryOption = data.options.find((o: any) => o.isCashOnDelivery);
+        if (cashOnDeliveryOption) {
+          defaultOption = cashOnDeliveryOption;
+        }
+        
+        setSelectedChilexpressOption(defaultOption);
+        setShippingCost(defaultOption.price);
+        
+        const isExpress = defaultOption.serviceTypeCode === 2 || defaultOption.serviceTypeCode === 3;
+        setShippingMethod(isExpress ? "express" : "standard");
+        
+        // Si es retiro en sucursal, mostrar selector
+        if (defaultOption.type === "branch_pickup" && defaultOption.branches && defaultOption.branches.length > 0) {
+          setShowBranchSelector(true);
+        }
+      } else {
+        setShippingError(data.error || "No se encontraron tarifas de envío");
+      }
+    } catch (error) {
+      console.error("Error fetching shipping rates:", error);
+      setShippingError("Error al calcular el costo de envío");
+    } finally {
+      setIsLoadingShipping(false);
     }
-  }, [items, isExpired, isProcessing])
+  }, [items, getTotalPrice, setShippingCost, setShippingMethod]);
 
-  // Cargar datos del usuario
+  // Efecto para obtener tarifas cuando cambia la comuna
+  useEffect(() => {
+    if (selectedAddress?.communeName && items.length > 0) {
+      fetchShippingRates(selectedAddress.communeName)
+    }
+  }, [selectedAddress?.communeName, items, fetchShippingRates])
+
+  // Efecto para cargar direcciones del usuario
   useEffect(() => {
     const loadUserData = async () => {
       if (isAuthenticated && user) {
@@ -166,13 +285,6 @@ export default function CheckoutPage() {
             if (addressLoadAttempts < 3) {
               await loadUserAddresses()
               setAddressLoadAttempts(prev => prev + 1)
-            } else {
-              console.warn('⚠️ Máximo de intentos de carga de direcciones alcanzado')
-              toast({
-                title: "Advertencia",
-                description: "No se pudieron cargar las direcciones. Por favor intenta agregar una dirección manualmente.",
-                variant: "destructive",
-              })
             }
           } catch (error) {
             console.error('Error loading addresses:', error)
@@ -182,9 +294,8 @@ export default function CheckoutPage() {
         }
       }
     }
-
     loadUserData()
-  }, [isAuthenticated, user, loadUserAddresses, addressLoadAttempts, toast])
+  }, [isAuthenticated, user, loadUserAddresses, addressLoadAttempts])
 
   // Seleccionar dirección predeterminada
   useEffect(() => {
@@ -194,901 +305,512 @@ export default function CheckoutPage() {
     }
   }, [user?.addresses, selectedAddress])
 
-  // Mostrar loading mientras se hidrata el carrito
-  if (cartLoading) {
-    return (
-      <motion.div 
-        className="container mx-auto px-4 py-8"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Cargando carrito...</p>
-        </div>
-      </motion.div>
-    )
-  }
-
-  // Si el carrito está vacío
-  if (items.length === 0) {
-    return (
-      <motion.div 
-        className="container mx-auto px-4 py-8"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Tu carrito está vacío</h1>
-          <p className="text-muted-foreground mb-6">Agrega algunos productos antes de proceder al checkout.</p>
-          <Link href="/">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Continuar Comprando
-              </Button>
-            </motion.div>
-          </Link>
-        </div>
-      </motion.div>
-    )
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      toast({
-        title: "Error",
-        description: "Por favor ingresa un código de cupón",
-        variant: "destructive",
-      })
-      return
+  const handleSelectShippingOption = (option: ChilexpressOption) => {
+    console.log("📦 Seleccionando opción:", option);
+    setSelectedChilexpressOption(option);
+    const price = option.price ?? 0;
+    setShippingCost(price);
+    
+    const isExpress = option.serviceTypeCode === 2 || option.serviceTypeCode === 3;
+    setShippingMethod(isExpress ? "express" : "standard");
+    
+    // Si es retiro en sucursal y tiene branches, mostrar selector y guardar branches
+    if (option.type === "branch_pickup" && option.branches && option.branches.length > 0) {
+      setAvailableBranches(option.branches);
+      setShowBranchSelector(true);
+      setSelectedBranch(null); // Resetear sucursal seleccionada
+    } else {
+      setShowBranchSelector(false);
+      setSelectedBranch(null);
+      setAvailableBranches([]);
     }
-
-    setIsValidatingCoupon(true)
-    setCouponError("")
-
-    try {
-      const response = await fetch('/api/coupons/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: couponCode.trim().toUpperCase(),
-          items: items.map(item => ({
-            id: item.id,
-            categoryId: item.categoryId,
-            subcategoryId: item.subcategoryId,
-            price: item.price,
-            quantity: item.quantity
-          }))
-        }),
-      })
-
-      if (await handleRateLimit(response)) {
-        return handleApplyCoupon()
-      }
-
-      const result = await response.json()
-
-      if (result.valid && result.coupon) {
-        let discountAmount = 0
-        const coupon = result.coupon
-
-        if (coupon.type === 'global') {
-          discountAmount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
-        } else {
-          items.forEach(item => {
-            let appliesToItem = false
-            
-            switch (coupon.type) {
-              case 'category':
-                appliesToItem = item.categoryId && coupon.categoryIds.includes(item.categoryId)
-                break
-              case 'subcategory':
-                appliesToItem = item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)
-                break
-              case 'product':
-                appliesToItem = coupon.productIds.includes(item.id)
-                break
-              case 'multiple':
-                appliesToItem = (
-                  (item.categoryId && coupon.categoryIds.includes(item.categoryId)) ||
-                  (item.subcategoryId && coupon.subcategoryIds.includes(item.subcategoryId)) ||
-                  coupon.productIds.includes(item.id)
-                )
-                break
-            }
-            
-            if (appliesToItem) {
-              const itemTotal = item.price * item.quantity
-              const itemDiscount = (itemTotal * coupon.discountPercentage) / 100
-              discountAmount += itemDiscount
-            }
-          })
-        }
-
-        discountAmount = roundToInteger(discountAmount)
-
-        if (discountAmount === 0 && coupon.type !== 'global') {
-          setCouponError("El cupón no aplica a ningún producto en tu carrito")
-          toast({
-            title: "Cupón no aplicable",
-            description: "Este cupón no aplica a ningún producto en tu carrito",
-            variant: "destructive",
-          })
-          setIsValidatingCoupon(false)
-          return
-        }
-
-        applyCoupon(couponCode.trim().toUpperCase(), discountAmount, coupon)
-        
-        toast({
-          title: "¡Cupón aplicado!",
-          description: `${coupon.discountPercentage}% de descuento aplicado ($${formatCLP(discountAmount)})`,
-        })
-        setCouponCode("")
-      } else {
-        setCouponError(result.error || "Cupón inválido")
-        toast({
-          title: "Cupón inválido",
-          description: result.error || "No se pudo aplicar el cupón",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error('Error validating coupon:', error)
-      setCouponError("Error al validar el cupón")
-      toast({
-        title: "Error",
-        description: "No se pudo validar el cupón",
-        variant: "destructive",
-      })
-    } finally {
-      setIsValidatingCoupon(false)
-    }
-  }
-
-  const handleRemoveCoupon = () => {
-    removeCoupon()
-    toast({
-      title: "Cupón removido",
-      description: "El descuento ha sido eliminado",
-    })
-  }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Verificar si el tiempo expiró
     if (isExpired) {
-      toast({
-        title: "⏰ Tiempo agotado",
-        description: "El tiempo para completar la compra ha expirado",
-        variant: "destructive",
-      })
+      toast({ title: "⏰ Tiempo agotado", description: "Tu sesión ha expirado", variant: "destructive" })
       router.push('/')
       return
     }
     
     if (!selectedAddress) {
-      toast({
-        title: "Error",
-        description: "Por favor selecciona una dirección de envío",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "Selecciona una dirección de envío", variant: "destructive" })
       return
     }
 
-    const requiredFields = ['email', 'firstName', 'lastName', 'phone']
-    const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData].trim())
+    if (!selectedChilexpressOption) {
+      toast({ title: "Error", description: "Selecciona un método de envío", variant: "destructive" })
+      return
+    }
 
-    if (missingFields.length > 0) {
-      toast({
-        title: "Error",
-        description: `Por favor completa todos los campos requeridos`,
-        variant: "destructive",
-      })
+    if (selectedChilexpressOption.requiresBranchSelection && !selectedBranch) {
+      toast({ title: "Error", description: "Por favor selecciona una sucursal para retirar", variant: "destructive" })
       return
     }
 
     setIsProcessing(true)
 
-    let couponId = null
-    let couponCodeUsed = null
-
-    if (appliedCoupon && couponDetails) {
-      couponId = couponDetails.id
-      couponCodeUsed = couponDetails.code
-      
-      if (couponDetails.currentUses >= couponDetails.maxUses) {
-        toast({
-          title: "Cupón agotado",
-          description: "Este cupón ya ha sido utilizado el máximo de veces permitido",
-          variant: "destructive",
-        })
-        setIsProcessing(false)
-        return
-      }
-    }
-
     try {
-      // 1. Crear la orden en MySQL
       const orderResponse = await fetch('/api/orders/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: items.map((item) => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            image: item.image,
-            category: item.category,
-            categoryId: item.categoryId,
-            subcategoryId: item.subcategoryId,
+            id: item.id, name: item.name, price: item.price,
+            quantity: item.quantity, image: item.image, category: item.category,
           })),
           customerInfo: {
-            email: formData.email,
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            phone: formData.phone,
-            address: selectedAddress.street,
-            city: selectedAddress.communeName,
-            region: selectedAddress.regionName,
-            postalCode: selectedAddress.postalCode,
-            department: selectedAddress.department,
-            deliveryInstructions: selectedAddress.deliveryInstructions,
+            email: formData.email, firstName: formData.firstName,
+            lastName: formData.lastName, phone: formData.phone,
+            address: selectedAddress.street, city: selectedAddress.communeName,
+            region: selectedAddress.regionName, postalCode: selectedAddress.postalCode,
           },
           shippingAddress: selectedAddress,
-          totals: {
-            subtotal: subtotalBeforeDiscount,
-            discount: discountAmount,
-            shipping,
-            total: finalTotal,
-          },
+          totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping, total: finalTotal },
           notes: formData.notes,
-          couponId: couponId,
-          couponCode: couponCodeUsed,
+          couponId: appliedCoupon ? couponDetails?.id : null,
+          couponCode: appliedCoupon,
           shippingMethod: shippingMethod,
+          shippingDetails: {
+            carrier: "Chilexpress",
+            serviceName: selectedChilexpressOption.name,
+            serviceCode: selectedChilexpressOption.typeCode,
+            finalWeight: selectedChilexpressOption.finalWeight,
+            selectedBranch: selectedBranch ? {
+              id: selectedBranch.id,
+              name: selectedBranch.name,
+              address: selectedBranch.address,
+              telephone: selectedBranch.telephone,
+            } : null,
+            isCashOnDelivery: selectedChilexpressOption.isCashOnDelivery,
+            actualShippingCost: selectedChilexpressOption.actualShippingCost,
+          }
         }),
       })
 
-      if (await handleRateLimit(orderResponse)) {
-        return handleSubmit(e)
-      }
-
       const orderData = await orderResponse.json()
+      if (!orderResponse.ok) throw new Error(orderData.error)
 
-      if (!orderResponse.ok) {
-        throw new Error(orderData.error || 'Error al crear la orden')
-      }
-
-      // 2. MARCAR CUPÓN COMO USADO
-      if (couponId) {
-        try {
-          const couponUseResponse = await fetch(`/api/coupons/${couponId}/use`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          })
-
-          if (couponUseResponse.ok) {
-            console.log(`✅ Cupón ${couponId} marcado como usado exitosamente`)
-          } else {
-            console.warn(`⚠️ No se pudo marcar el cupón como usado: ${couponUseResponse.status}`)
-          }
-        } catch (couponError) {
-          console.error('❌ Error al marcar cupón como usado:', couponError)
-        }
-      }
-
-      // 3. Guardar en el store local
       addOrder({
         userId: user?.id,
-        items: items.map((item) => ({
-          id: item.id.toString(),
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          image: item.image,
-          category: item.category,
-          categoryId: item.categoryId,
-          subcategoryId: item.subcategoryId,
-        })),
-        customerInfo: {
-          email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          phone: formData.phone,
-          address: selectedAddress.street,
-          city: selectedAddress.communeName,
-          region: selectedAddress.regionName,
-          postalCode: selectedAddress.postalCode,
-          department: selectedAddress.department,
-          deliveryInstructions: selectedAddress.deliveryInstructions,
-        },
+        items: items.map((item) => ({ ...item, id: item.id.toString() })),
+        customerInfo: { ...formData, address: selectedAddress.street, city: selectedAddress.communeName, region: selectedAddress.regionName, postalCode: selectedAddress.postalCode },
         shippingAddress: selectedAddress,
-        paymentInfo: {
-          method: "transbank",
-          status: "pending",
-        },
-        totals: {
-          subtotal: subtotalBeforeDiscount,
-          discount: discountAmount,
-          shipping,
-          tax: includedIVA,  
-          total: finalTotal,
-        },
+        paymentInfo: { method: "transbank", status: "pending" },
+        totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping, tax: 0, total: finalTotal },
         status: "pending",
         notes: formData.notes,
-        couponId: couponId,
-        couponCode: couponCodeUsed,
+        couponId: appliedCoupon ? couponDetails?.id : null,
+        couponCode: appliedCoupon,
         shippingMethod: shippingMethod,
       })
 
-      // 4. Crear transacción en Transbank
       const paymentResponse = await fetch('/api/payment/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orderId: orderData.orderId,
-          amount: finalTotal
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderData.orderId, amount: finalTotal }),
       })
 
-      if (await handleRateLimit(paymentResponse)) {
-        return handleSubmit(e)
-      }
-
       const paymentData = await paymentResponse.json()
-
-      if (!paymentResponse.ok) {
-        throw new Error(paymentData.error || 'Error al crear transacción de pago')
-      }
-
       if (paymentData.success && paymentData.token && paymentData.url) {
-        console.log('🔄 Redirigiendo a Transbank...')
-        
-        // ✅ NO confirmar la compra aquí - eso se hace en payment/response
-        // ✅ NO finalizar checkout aquí - eso se hace en payment/response
-        
         window.location.href = `${paymentData.url}?token_ws=${paymentData.token}`
       } else {
         throw new Error('No se pudo crear la transacción de pago')
       }
 
     } catch (error: any) {
-      console.error('❌ Error procesando pedido:', error)
-      toast({
-        title: "Error",
-        description: error.message || "Hubo un problema al procesar tu pedido. Por favor intenta nuevamente.",
-        variant: "destructive",
-      })
+      console.error('Error:', error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setIsProcessing(false)
     }
   }
 
-  // Función para recargar direcciones manualmente
-  const handleReloadAddresses = async () => {
-    setLoadingAddresses(true)
-    try {
-      await loadUserAddresses()
-      toast({
-        title: "Direcciones actualizadas",
-        description: "Las direcciones se han cargado correctamente",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las direcciones",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingAddresses(false)
-    }
-  }
+  // Filtrar sucursales por término de búsqueda
+  const filteredBranches = selectedChilexpressOption?.branches?.filter(branch =>
+    branch.name.toLowerCase().includes(branchSearchTerm.toLowerCase()) ||
+    branch.address.toLowerCase().includes(branchSearchTerm.toLowerCase())
+  ) || [];
 
-  // Si el tiempo expiró, mostrar mensaje
-  if (isExpired) {
+  if (cartLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center py-12 space-y-4"
-        >
-          <h1 className="text-3xl font-bold">⏰ Tiempo agotado</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            El tiempo para completar la compra ha expirado. Los productos han sido liberados y serás redirigido al inicio.
-          </p>
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-            className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mt-4"
-          />
-        </motion.div>
+      <div className="container mx-auto px-4 py-8 text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto" />
+        <p className="mt-2">Cargando carrito...</p>
       </div>
     )
   }
 
+  if (items.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-2xl font-bold mb-4">Tu carrito está vacío</h1>
+        <Link href="/">
+          <Button><ArrowLeft className="w-4 h-4 mr-2" />Continuar Comprando</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  if (isExpired) {
   return (
-    <motion.div 
-      className="container mx-auto px-4 py-8"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-    >
+    <div className="container mx-auto px-4 py-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center py-12 space-y-4"
+      >
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+        </div>
+        <h1 className="text-2xl font-bold">⏰ Tiempo agotado</h1>
+        <p className="text-muted-foreground max-w-md mx-auto">
+          Tu sesión de compra ha expirado. Serás redirigido al inicio en unos segundos...
+        </p>
+        <Button onClick={() => router.push("/")} className="mt-4">
+          Ir ahora
+        </Button>
+      </motion.div>
+    </div>
+  )
+}
+
+  return (
+    <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
-        <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Volver a la tienda
+        <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-2" />Volver a la tienda
         </Link>
       </div>
 
-      {/* TEMPORIZADOR DE CHECKOUT */}
-      <CheckoutTimer 
-        timeLeft={formattedTime} 
-        progress={progress} 
-        isExpired={isExpired} 
-      />
-
-      <AnimatePresence>
-        {!isAuthenticated && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <LogIn className="w-5 h-5 text-primary" />
-                    <div>
-                      <h3 className="font-medium">¿Ya tienes una cuenta?</h3>
-                      <p className="text-sm text-muted-foreground">Inicia sesión para usar tus direcciones guardadas</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Link href="/login">
-                      <Button variant="outline" size="sm">
-                        Iniciar Sesión
-                      </Button>
-                    </Link>
-                    <Link href="/register">
-                      <Button size="sm">
-                        Crear Cuenta
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <CheckoutTimer timeLeft={formattedTime} progress={progress} isExpired={isExpired} />
 
       <div className="grid lg:grid-cols-2 gap-8">
-        {/* Checkout Form */}
-        <motion.div 
-          className="space-y-6"
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <div>
-            <h1 className="text-3xl font-bold">Checkout</h1>
-            <p className="text-muted-foreground">Completa tu información para finalizar la compra</p>
-          </div>
+        {/* Formulario de Checkout */}
+        <div className="space-y-6">
+          <h1 className="text-3xl font-bold">Checkout</h1>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Contact Information */}
+            {/* Información de Contacto */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="w-5 h-5" />
-                  Información de Contacto
-                </CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Información de Contacto</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    placeholder="tu@email.com"
-                    disabled={isAuthenticated}
+                  <Label>Email *</Label>
+                  <Input 
+                    name="email" 
+                    type="email" 
+                    required 
+                    value={formData.email} 
+                    onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                    disabled={isAuthenticated} 
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="firstName">Nombre *</Label>
-                    <Input
-                      id="firstName"
-                      name="firstName"
-                      required
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      placeholder="Juan"
+                    <Label>Nombre *</Label>
+                    <Input 
+                      name="firstName" 
+                      required 
+                      value={formData.firstName} 
+                      onChange={(e) => setFormData({...formData, firstName: e.target.value})} 
                     />
                   </div>
                   <div>
-                    <Label htmlFor="lastName">Apellido *</Label>
-                    <Input
-                      id="lastName"
-                      name="lastName"
-                      required
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      placeholder="Pérez"
+                    <Label>Apellido *</Label>
+                    <Input 
+                      name="lastName" 
+                      required 
+                      value={formData.lastName} 
+                      onChange={(e) => setFormData({...formData, lastName: e.target.value})} 
                     />
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="phone">Teléfono *</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    placeholder="+56 9 1234 5678"
+                  <Label>Teléfono *</Label>
+                  <Input 
+                    name="phone" 
+                    type="tel" 
+                    required 
+                    value={formData.phone} 
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})} 
                   />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Shipping Address */}
+            {/* Dirección de Envío */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5" />
-                  Dirección de Envío
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
+              <CardContent>
                 {loadingAddresses ? (
                   <div className="text-center py-6">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Cargando direcciones...</p>
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    <p className="mt-2">Cargando direcciones...</p>
                   </div>
                 ) : isAuthenticated && user?.addresses && user.addresses.length > 0 ? (
                   <>
-                    <div className="flex justify-between items-center">
-                      <Label>Selecciona una dirección guardada</Label>
-                      <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={handleReloadAddresses}
-                        disabled={loadingAddresses}
-                      >
-                        <RefreshCw className={`w-4 h-4 mr-1 ${loadingAddresses ? 'animate-spin' : ''}`} />
-                        Actualizar
-                      </Button>
-                    </div>
-                    <Select
-                      value={selectedAddress?.id?.toString() || ""}
-                      onValueChange={(value) => {
-                        const address = user.addresses!.find(addr => addr.id.toString() === value)
-                        setSelectedAddress(address)
-                      }}
-                    >
+                    <Select value={selectedAddress?.id?.toString()} onValueChange={(value) => {
+                      const address = user.addresses!.find(addr => addr.id.toString() === value)
+                      setSelectedAddress(address)
+                    }}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecciona una dirección" />
                       </SelectTrigger>
                       <SelectContent>
                         {user.addresses.map((address) => (
                           <SelectItem key={address.id} value={address.id.toString()}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{address.title}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {address.street}, {address.communeName}
-                                {address.isDefault && " (Predeterminada)"}
-                              </span>
-                            </div>
+                            {address.title} - {address.street}, {address.communeName}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-
-                    {selectedAddress && (
-                      <div className="border rounded-lg p-4 bg-muted/50">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-semibold">{selectedAddress.title}</h4>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {selectedAddress.street}
-                              {selectedAddress.hasNoNumber && " (Sin número)"}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {selectedAddress.communeName}, {selectedAddress.regionName}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Código Postal: {selectedAddress.postalCode}
-                            </p>
-                            {selectedAddress.department && (
-                              <p className="text-sm text-muted-foreground">
-                                Depto: {selectedAddress.department}
-                              </p>
-                            )}
-                            {selectedAddress.deliveryInstructions && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                <strong>Indicaciones:</strong> {selectedAddress.deliveryInstructions}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-muted-foreground">
-                        ¿No encuentras tu dirección?
-                      </p>
-                      <Link href="/profile">
-                        <Button variant="outline" size="sm">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Gestionar direcciones
-                        </Button>
-                      </Link>
-                    </div>
+                    <Link href="/profile" className="mt-4 block">
+                      <Button variant="outline" size="sm">
+                        <Plus className="w-4 h-4 mr-2" />Gestionar direcciones
+                      </Button>
+                    </Link>
                   </>
                 ) : (
                   <div className="text-center py-6">
-                    <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground mb-4">
-                      {isAuthenticated 
-                        ? "No tienes direcciones guardadas" 
-                        : "Inicia sesión para usar direcciones guardadas"
-                      }
-                    </p>
-                    <div className="flex gap-2 justify-center">
-                      <Link href={isAuthenticated ? "/profile" : "/login"}>
-                        <Button>
-                          <Plus className="w-4 h-4 mr-2" />
-                          {isAuthenticated ? "Agregar Dirección" : "Iniciar Sesión"}
-                        </Button>
-                      </Link>
-                      {isAuthenticated && (
-                        <Button variant="outline" onClick={handleReloadAddresses}>
-                          <RefreshCw className="w-4 h-4 mr-2" />
-                          Recargar
-                        </Button>
+                    <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <Link href="/login">
+                      <Button>Iniciar Sesión para usar direcciones</Button>
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Método de Envío */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="w-5 h-5" />
+                    Método de Envío
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingShipping ? (
+                    <div className="text-center py-6">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Calculando opciones de envío...</p>
+                    </div>
+                  ) : shippingError ? (
+                    <div className="text-center py-6 text-red-600">
+                      <p className="text-sm">{shippingError}</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => fetchShippingRates(selectedAddress?.communeName)} 
+                        className="mt-2"
+                      >
+                        Reintentar
+                      </Button>
+                    </div>
+                  ) : chilexpressOptions.length > 0 ? (
+                      <div className="space-y-4">
+                        <RadioGroup 
+                        value={selectedChilexpressOption?.id || selectedChilexpressOption?.serviceTypeCode?.toString() || selectedChilexpressOption?.type} 
+                        onValueChange={(value) => {
+                          const option = chilexpressOptions.find(o => 
+                            o.id === value || 
+                            o.serviceTypeCode?.toString() === value ||
+                            o.type === value
+                          );
+                          if (option) handleSelectShippingOption(option);
+                        }}
+                      >
+                        <div className="space-y-3">
+                          {chilexpressOptions.map((option) => {
+                            const uniqueId = option.id || `${option.type}_${option.serviceTypeCode || Math.random()}`;
+                            const isCashOnDelivery = option.isCashOnDelivery || option.type === "cash_on_delivery";
+                            const isBranchPickup = option.type === "branch_pickup";
+                            const price = option.price ?? 0;
+                            
+                            return (
+                              <div
+                                key={uniqueId}
+                                className={`flex items-start space-x-3 border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                                  isCashOnDelivery ? "bg-amber-50 border-amber-200" : 
+                                  isBranchPickup ? "bg-blue-50 border-blue-200" : ""
+                                }`}
+                              >
+                                <RadioGroupItem value={uniqueId} id={uniqueId} className="mt-1" />
+                                <Label htmlFor={uniqueId} className="flex-1 cursor-pointer">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium">
+                                        {option.name}
+                                        {isCashOnDelivery && option.actualShippingCost && (
+                                          <span className="text-xs text-muted-foreground ml-2">
+                                          </span>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="text-sm text-muted-foreground mt-1">
+                                        {option.deliveryDescription}
+                                      </div>
+                                      
+                                      {option.conditions && (
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                          {option.conditions}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="text-right font-medium ml-4">
+                                      {price === 0 ? (
+                                        <span className="text-green-600">Gratis</span>
+                                      ) : (
+                                        <div>${formatCLP(price)}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </Label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </RadioGroup>
+                      {/* Selector de sucursales */}
+                      {showBranchSelector && selectedChilexpressOption?.type === "branch_pickup" && availableBranches.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-4 p-4 border rounded-lg bg-blue-50 border-blue-200"
+                        >
+                          <Label className="font-semibold flex items-center gap-2 mb-3">
+                            <MapPin className="w-4 h-4 text-blue-600" />
+                            Selecciona la sucursal donde deseas retirar
+                            <Badge variant="secondary" className="ml-2">
+                              {availableBranches.length} sucursales disponibles
+                            </Badge>
+                          </Label>
+                          
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {availableBranches.map((branch: any, idx: number) => (
+                              <div
+                                key={branch.id || idx}
+                                className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                                  selectedBranch?.id === branch.id
+                                    ? "border-blue-500 bg-blue-100 ring-2 ring-blue-200"
+                                    : "border-gray-200 bg-white hover:border-blue-300"
+                                }`}
+                                onClick={() => handleSelectBranch(selectedChilexpressOption, branch)}
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                                      {branch.name}
+                                      {selectedBranch?.id === branch.id && (
+                                        <Badge className="bg-blue-600 text-white text-xs">Seleccionada</Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {branch.address}
+                                    </div>
+                                    {branch.telephone && branch.telephone !== "No disponible" && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        {branch.telephone}
+                                      </div>
+                                    )}
+                                    {branch.businessHours && branch.businessHours.length > 0 && (
+                                      <div className="text-xs text-muted-foreground mt-2 pt-1 border-t border-blue-100">
+                                        <span className="font-medium">Horario:</span>{' '}
+                                        {branch.businessHours[0]?.day}: {branch.businessHours[0]?.initialStartHour} - {branch.businessHours[0]?.initialEndHour}
+                                        {branch.businessHours[0]?.finalStartHour && branch.businessHours[0]?.finalEndHour && (
+                                          <span>, {branch.businessHours[0]?.finalStartHour} - {branch.businessHours[0]?.finalEndHour}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {selectedBranch?.id === branch.id && (
+                                    <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {selectedBranch && (
+                            <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                              <p className="text-xs text-green-700 flex items-center gap-1">
+                                <Check className="w-3 h-3" />
+                                Sucursal seleccionada: <strong>{selectedBranch.name}</strong>
+                              </p>
+                            </div>
+                          )}
+                        </motion.div>
                       )}
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <p>No hay métodos de envío disponibles</p>
+                      <p className="text-xs mt-2">Selecciona una dirección para cotizar</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-            {/* Shipping Method */}
+            {/* Método de Pago */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="w-5 h-5" />
-                  Método de Envío
-                </CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Método de Pago</CardTitle></CardHeader>
               <CardContent>
-                <RadioGroup value={shippingMethod} onValueChange={(value) => setShippingMethod(value as any)}>
-                  <div className="space-y-3">
-                    {shippingOptions.map((option) => (
-                      <div
-                        key={option.id}
-                        className="flex items-center space-x-3 border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                      >
-                        <RadioGroupItem value={option.id} id={option.id} />
-                        <Label htmlFor={option.id} className="flex-1 cursor-pointer">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-medium">{option.name}</div>
-                              <div className="text-sm text-muted-foreground">{option.description}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-medium">
-                                {totalAfterDiscount >= 50000 ? (
-                                  <span className="text-green-600">Gratis</span>
-                                ) : (
-                                  `$${formatCLP(option.price)}`
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </RadioGroup>
-                {totalAfterDiscount >= 50000 && (
-                  <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-sm text-green-800">🎉 ¡Envío gratis! Tu pedido supera los $50.000</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Payment Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  Método de Pago
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-6 bg-blue-600 rounded flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">TB</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">Transbank Webpay</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Paga seguro con Webpay Plus
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 text-sm text-blue-700">
-                    <p>Serás redirigido a Transbank para completar tu pago de manera segura.</p>
-                    <p className="mt-1">Aceptamos todas las tarjetas de crédito, débito y prepago.</p>
-                  </div>
+                <div className="border rounded-lg p-4 bg-blue-50">
+                  <h4 className="font-semibold">Transbank Webpay</h4>
+                  <p className="text-sm">Paga seguro con tarjetas de crédito, débito y prepago</p>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Order Notes */}
+            {/* Notas del Pedido */}
             <Card>
-              <CardHeader>
-                <CardTitle>Notas del Pedido</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Notas del Pedido</CardTitle></CardHeader>
               <CardContent>
-                <Textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleInputChange}
+                <Textarea 
+                  name="notes" 
+                  value={formData.notes} 
+                  onChange={(e) => setFormData({...formData, notes: e.target.value})} 
+                  rows={3} 
                   placeholder="Instrucciones especiales para la entrega..."
-                  rows={3}
                 />
               </CardContent>
             </Card>
           </form>
-        </motion.div>
+        </div>
 
-        {/* Order Summary */}
-        <motion.div 
-          className="space-y-6"
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
+        {/* Resumen del Pedido */}
+        <div className="space-y-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Resumen del Pedido</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Resumen del Pedido</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {/* Items */}
-              <div className="space-y-3">
-                {items.map((item) => (
-                  <div key={item.id} className="flex gap-3">
-                    <div className="relative w-12 h-12 flex-shrink-0">
-                      <Image
-                        src={item.image || "/placeholder.svg"}
-                        alt={item.name}
-                        fill
-                        className="object-cover rounded"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm line-clamp-2">{item.name}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="secondary" className="text-xs">
-                          {item.category}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">${formatCLP(item.price * item.quantity)}</div>
+              {items.map((item) => (
+                <div key={item.id} className="flex gap-3">
+                  <div className="relative w-12 h-12 flex-shrink-0">
+                    <Image 
+                      src={item.image || "/placeholder.svg"} 
+                      alt={item.name} 
+                      fill 
+                      className="object-cover rounded" 
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm line-clamp-2">{item.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="secondary" className="text-xs">{item.category}</Badge>
+                      <span className="text-xs text-muted-foreground">x{item.quantity}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-
+                  <div className="font-medium text-right">
+                    ${formatCLP(item.price * item.quantity)}
+                  </div>
+                </div>
+              ))}
+              
               <Separator />
-
-              {/* Coupon Section */}
-              <div className="space-y-2">
-                <Label htmlFor="coupon" className="flex items-center gap-2">
-                  <Tag className="w-4 h-4" />
-                  Código de Cupón
-                </Label>
-                {appliedCoupon ? (
-                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <div className="flex-1">
-                      <span className="text-sm font-medium text-green-800">{appliedCoupon}</span>
-                      {couponDetails && (
-                        <div className="text-xs text-green-600 mt-1">
-                          {couponDetails.discountPercentage}% de descuento aplicado
-                          {couponDetails.type !== 'global' && (
-                            <span className="block text-green-500">
-                              ({getCouponTypeText(couponDetails.type)})
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRemoveCoupon}
-                      className="h-auto p-1 hover:bg-green-100"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <Input
-                        id="coupon"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        placeholder="CODIGO2025"
-                        className="uppercase"
-                        disabled={isValidatingCoupon}
-                      />
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={handleApplyCoupon}
-                        disabled={isValidatingCoupon || !couponCode.trim()}
-                      >
-                        {isValidatingCoupon ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          "Aplicar"
-                        )}
-                      </Button>
-                    </div>
-                    {couponError && (
-                      <p className="text-sm text-red-600">{couponError}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Totals */}
+              
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
@@ -1096,32 +818,18 @@ export default function CheckoutPage() {
                 </div>
                 
                 {discountAmount > 0 && (
-                  <>
-                    <div className="flex justify-between text-green-600">
-                      <span className="flex items-center gap-1">
-                        <Tag className="w-3 h-3" />
-                        Descuento ({appliedCoupon})
-                      </span>
-                      <span>-${formatCLP(discountAmount)}</span>
-                    </div>
-                    
-                    <div className="flex justify-between border-t pt-2">
-                      <span className="font-medium">Subtotal con descuento</span>
-                      <span className="font-medium">${formatCLP(totalAfterDiscount)}</span>
-                    </div>
-                  </>
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      Descuento ({appliedCoupon})
+                    </span>
+                    <span>-${formatCLP(discountAmount)}</span>
+                  </div>
                 )}
                 
                 <div className="flex justify-between">
                   <span>Envío</span>
                   <span>{shipping === 0 ? "Gratis" : `$${formatCLP(shipping)}`}</span>
-                </div>
-                
-                {/* Mostrar IVA incluido (opcional, para transparencia) */}
-                <div className="flex justify-between text-muted-foreground text-sm">
-                  <span>Todos los valores incluyen IVA</span>
-                  {/* 
-                  <span>${formatCLP(includedIVA)}</span>*/}
                 </div>
                 
                 <Separator />
@@ -1131,17 +839,21 @@ export default function CheckoutPage() {
                   <span>${formatCLP(finalTotal)}</span>
                 </div>
                 
-                {discountAmount > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
-                    <div className="flex justify-between items-center text-green-800">
-                      <span className="font-medium">¡Estás ahorrando!</span>
-                      <span className="font-bold">${formatCLP(discountAmount)}</span>
-                    </div>
-                    {couponDetails && (
-                      <p className="text-xs text-green-600 mt-1">
-                        {couponDetails.discountPercentage}% de descuento {couponDetails.type !== 'global' ? 'aplicado a productos seleccionados' : 'aplicado a toda tu compra'}
-                      </p>
-                    )}
+                {selectedChilexpressOption?.isCashOnDelivery && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      El envío se pagará al momento de la entrega. El monto mostrado corresponde solo a los productos.
+                    </p>
+                  </div>
+                )}
+                
+                {selectedChilexpressOption?.isBranchPickup && selectedBranch && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-700 flex items-start gap-2">
+                      <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>Retirarás tu pedido en: <strong>{selectedBranch.name}</strong><br />
+                      {selectedBranch.address}</span>
+                    </p>
                   </div>
                 )}
               </div>
@@ -1150,38 +862,32 @@ export default function CheckoutPage() {
                 type="submit" 
                 className="w-full" 
                 size="lg" 
-                disabled={isProcessing || !selectedAddress || isReserving}
+                disabled={isProcessing || !selectedAddress || !selectedChilexpressOption || isLoadingShipping || (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch)} 
                 onClick={handleSubmit}
               >
                 {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Procesando...
-                  </>
-                ) : isReserving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Verificando stock...
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Procesando...</>
+                ) : isLoadingShipping ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Calculando envío...</>
                 ) : (
-                  `Pagar con Transbank $${formatCLP(finalTotal)}`
+                  `Pagar $${formatCLP(finalTotal)}`
                 )}
               </Button>
-
-              {!selectedAddress && (
-                <p className="text-sm text-red-600 text-center">
-                  Por favor selecciona una dirección de envío
+              
+              {selectedChilexpressOption?.requiresBranchSelection && !selectedBranch && (
+                <p className="text-xs text-red-500 text-center mt-2">
+                  * Debes seleccionar una sucursal para continuar
                 </p>
               )}
-
+              
               <div className="text-xs text-muted-foreground text-center">
-                <Shield className="w-4 h-4 inline mr-1" />
+                <Shield className="w-3 h-3 inline mr-1" />
                 Pago seguro con Transbank Webpay
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

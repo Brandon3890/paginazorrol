@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { Search, ShoppingCart, User, LogIn, UserPlus, Package, Settings, Menu, X, AlertTriangle } from "lucide-react"
+import { Search, ShoppingCart, User, LogIn, UserPlus, Package, Settings, Menu, X, AlertTriangle, Shield, Crown, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -19,7 +19,7 @@ import { useProductStore } from "@/lib/product-store"
 import { CartDrawer } from "@/components/cart-drawer"
 import Link from "next/link"
 import { useCategoryStore } from "@/lib/category-store"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 
 export function Header() {
@@ -75,6 +75,17 @@ export function Header() {
   const handleLogout = () => {
     logout()
     router.push("/")
+  }
+
+  // Obtener iniciales del usuario para el avatar
+  const getUserInitials = () => {
+    if (!user) return "U"
+    const firstName = user.firstName || ""
+    const lastName = user.lastName || ""
+    if (firstName && lastName) {
+      return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
+    }
+    return firstName ? firstName.charAt(0).toUpperCase() : "U"
   }
 
   return (
@@ -181,63 +192,111 @@ export function Header() {
                 )}
               </Button>
 
-              {/* USER - Versión mejorada con más opciones como en el header antiguo */}
+              {/* USER - Versión mejorada con indicador visual de sesión */}
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-black">
-                      <User className="w-6 h-6" />
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="relative group"
+                    >
+                      {/* Anillo de estado - indicador de sesión activa */}
+                      <div className="absolute -top-1 -right-1">
+                        <div className="relative">
+                          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                          <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full animate-ping opacity-75"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Avatar con iniciales */}
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-sm font-bold">
+                        {getUserInitials()}
+                      </div>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <div className="px-2 py-1.5 text-sm font-medium">
-                      {user?.firstName} {user?.lastName}
+                  <DropdownMenuContent align="end" className="w-64">
+                    <div className="px-3 py-2 bg-gradient-to-r from-[#E4572E]/10 to-transparent">
+                      <div className="flex items-center gap-3">
+                        {/* Avatar grande en el dropdown */}
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-md font-bold">
+                          {getUserInitials()}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-sm">
+                            {user?.firstName} {user?.lastName}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {user?.email}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">{user?.email}</div>
+                    
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/profile">
-                        <User className="w-4 h-4 mr-2" />
-                        Mi Perfil
+                    
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                      <Link href="/profile" className="flex items-center">
+                        <User className="w-4 h-4 mr-3 text-[#121212]" />
+                        <span>Mi Perfil</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/orders">
-                        <Package className="w-4 h-4 mr-2" />
-                        Mis Pedidos
+                    
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                      <Link href="/orders" className="flex items-center">
+                        <Package className="w-4 h-4 mr-3 text-[#2563EB]" />
+                        <span>Mis Pedidos</span>
                       </Link>
                     </DropdownMenuItem>
+                    
                     {user?.role === 'admin' && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/admin">
-                          <Settings className="w-4 h-4 mr-2" />
-                          Administración
-                        </Link>
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem asChild className="cursor-pointer">
+                          <Link href="/admin" className="flex items-center">
+                            <Shield className="w-4 h-4 mr-3 text-purple-600" />
+                            <span className="flex items-center gap-1">
+                              Administración
+                            </span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
                     )}
+                    
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout}>
-                      <LogIn className="w-4 h-4 mr-2" />
-                      Cerrar Sesión
+                    
+                    <DropdownMenuItem 
+                      onClick={handleLogout}
+                      className="cursor-pointer text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <LogIn className="w-4 h-4 mr-3" />
+                      <span>Cerrar Sesión</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-black">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-black hover:bg-gray-100 transition-colors"
+                    >
                       <User className="w-6 h-6" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem asChild>
-                      <Link href="/login">
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">
+                      ¿Ya tienes cuenta?
+                    </div>
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                      <Link href="/login" className="flex items-center text-[#E4572E] font-medium">
                         <LogIn className="w-4 h-4 mr-2" />
                         Iniciar Sesión
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/register">
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild className="cursor-pointer">
+                      <Link href="/register" className="flex items-center">
                         <UserPlus className="w-4 h-4 mr-2" />
                         Crear Cuenta
                       </Link>
@@ -297,7 +356,27 @@ export function Header() {
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-80">
           <SheetTitle>Menú</SheetTitle>
-          <div className="mt-6 flex flex-col gap-4">
+          
+          {/* Mostrar información de usuario en mobile si está autenticado */}
+          {isAuthenticated && (
+            <div className="mt-4 p-3 bg-gradient-to-r from-[#E4572E]/10 to-transparent rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-md font-bold">
+                  {getUserInitials()}
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-sm">
+                    {user?.firstName} {user?.lastName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {user?.email}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-4 flex flex-col gap-4">
             {/* PRODUCTOS con submenú */}
             <div className="flex flex-col gap-2">
               <button
@@ -347,6 +426,49 @@ export function Header() {
             >
               CONTACTO
             </Link>
+
+            {/* Opciones de usuario en mobile si está autenticado */}
+            {isAuthenticated && (
+              <>
+                <div className="border-t border-gray-200 my-2"></div>
+                <Link 
+                  href="/profile" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 text-gray-700 hover:text-[#E4572E] transition-colors"
+                >
+                  <User className="w-4 h-4" />
+                  Mi Perfil
+                </Link>
+                <Link 
+                  href="/orders" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 text-gray-700 hover:text-[#E4572E] transition-colors"
+                >
+                  <Package className="w-4 h-4" />
+                  Mis Pedidos
+                </Link>
+                {user?.role === 'admin' && (
+                  <Link 
+                    href="/admin" 
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 text-purple-600 hover:text-purple-700 transition-colors"
+                  >
+                    <Shield className="w-4 h-4" />
+                    Administración
+                  </Link>
+                )}
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 text-red-600 hover:text-red-700 transition-colors text-left"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Cerrar Sesión
+                </button>
+              </>
+            )}
           </div>
         </SheetContent>
       </Sheet>

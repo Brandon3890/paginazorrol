@@ -1,4 +1,4 @@
-// app/admin/products/[id]/page.tsx - COMPLETO
+// app/admin/products/[id]/page.tsx - COMPLETO CON DIMENSIONES
 "use client"
 
 import React, { useEffect, useState, use, useCallback, useMemo } from "react"
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
-  Rocket, Sparkles, Package, AlertCircle, Tag
+  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
 } from "lucide-react"
 import Link from "next/link"
 
@@ -225,6 +225,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     recommendedProducts: [] as number[],
     brand: "Devir",
     genre: "Estrategia, Familiar",
+    weight: "0.5",
+    height: "10",
+    width: "15",
+    length: "20",
   })
 
   const [selectedCategory, setSelectedCategory] = useState<string>("")
@@ -259,7 +263,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const extractProductTag = (productData: any): string => {
     if (productData.tags) {
       if (typeof productData.tags === 'string') {
-        return productData.tags // puede ser string vacío ""
+        return productData.tags
       }
       if (Array.isArray(productData.tags) && productData.tags.length > 0) {
         const firstTag = productData.tags[0]
@@ -354,6 +358,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             recommendedProducts: productData.recommendedProducts || [],
             brand: productData.brand || "Devir",
             genre: productData.genre || "Estrategia, Familiar",
+            weight: safeToString(productData.weight) || "0.5",
+            height: safeToString(productData.height) || "10",
+            width: safeToString(productData.width) || "15",
+            length: safeToString(productData.length) || "20",
           })
           
           setSelectedCategory(categoryId)
@@ -588,6 +596,12 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('brand', safeToString(formData.brand))
       formDataToSend.append('genre', safeToString(formData.genre))
       formDataToSend.append('tags', selectedTag)
+      
+      // NUEVOS CAMPOS DE DIMENSIONES
+      formDataToSend.append('weight', safeToString(formData.weight))
+      formDataToSend.append('height', safeToString(formData.height))
+      formDataToSend.append('width', safeToString(formData.width))
+      formDataToSend.append('length', safeToString(formData.length))
       
       if (selectedTag === "descuento" && formData.originalPrice) {
         formDataToSend.append('originalPrice', safeToString(formData.originalPrice))
@@ -945,6 +959,83 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
                       placeholder="Ej: Estrategia, Familiar"
                     />
+                  </div>
+                </div>
+
+                {/* DIMENSIONES PARA ENVÍO - NUEVA SECCIÓN */}
+                <div className="md:col-span-2 space-y-3">
+                  <Label className="text-lg font-semibold flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Dimensiones para Envío
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Estas dimensiones se usarán para calcular el costo de envío con Chilexpress.
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
+                    <div className="space-y-2">
+                      <Label htmlFor="weight" className="text-sm flex items-center gap-1">
+                        <Weight className="w-3 h-3" /> Peso (kg) *
+                      </Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        required
+                        value={formData.weight}
+                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        placeholder="0.5"
+                      />
+                      <p className="text-xs text-muted-foreground">Peso real del producto</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="height" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Alto (cm) *
+                      </Label>
+                      <Input
+                        id="height"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.height}
+                        onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                        placeholder="10"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="width" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Ancho (cm) *
+                      </Label>
+                      <Input
+                        id="width"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.width}
+                        onChange={(e) => setFormData({ ...formData, width: e.target.value })}
+                        placeholder="15"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="length" className="text-sm flex items-center gap-1">
+                        <Ruler className="w-3 h-3" /> Largo (cm) *
+                      </Label>
+                      <Input
+                        id="length"
+                        type="number"
+                        step="1"
+                        min="1"
+                        required
+                        value={formData.length}
+                        onChange={(e) => setFormData({ ...formData, length: e.target.value })}
+                        placeholder="20"
+                      />
+                    </div>
                   </div>
                 </div>
 
