@@ -1,4 +1,4 @@
-// app/api/simplefactura/pdf/route.ts - Versión CORREGIDA
+// app/api/simplefactura/pdf/route.ts - VERSIÓN CORREGIDA
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { obtenerPDFSimpleFactura } from '@/lib/simplefactura-service';
@@ -41,19 +41,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const pdfBuffer = await obtenerPDFSimpleFactura(folioNumero);
+    // Obtener el PDF como Uint8Array
+    const pdfUint8Array = await obtenerPDFSimpleFactura(folioNumero);
+    
+    // Convertir a Buffer para poder obtener la longitud
+    const pdfBuffer = Buffer.from(pdfUint8Array);
 
-    // CORRECCIÓN: Convertir Buffer a Uint8Array que es compatible con BodyInit
-    const pdfUint8Array = new Uint8Array(pdfBuffer);
-
-    // Usar Response con Uint8Array
-    return new Response(pdfUint8Array, {
+    // Devolver el PDF como respuesta
+    return new Response(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="boleta-${folioNumero}.pdf"`,
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Content-Length': pdfBuffer.length.toString()
+        'Content-Disposition': `inline; filename="boleta-${folioNumero}.pdf"`,
+        'Content-Length': pdfBuffer.length.toString(),
+        'Cache-Control': 'no-cache'
       }
     });
 

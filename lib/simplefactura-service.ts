@@ -1,3 +1,4 @@
+// lib/simplefactura-service.ts - VERSIÓN CORREGIDA para PDF
 import https from 'https';
 
 interface SimpleFacturaConfig {
@@ -84,7 +85,6 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 
     const postData = JSON.stringify(datosBoleta);
 
-    // 🔥 ENDPOINT CORRECTO
     const path = `/invoiceV2/${sucursalEncoded}`;
 
     console.log('📡 URL:', `https://api.simplefactura.cl${path}`);
@@ -110,7 +110,6 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
         console.log('📊 Status:', res.statusCode);
         console.log('📄 RAW:', data.substring(0, 300));
 
-        // 🚨 DETECTAR HTML (ERROR REAL)
         if (!data || data.trim().startsWith('<')) {
           return reject(new Error(`❌ API devolvió HTML (endpoint incorrecto o error servidor)`));
         }
@@ -140,7 +139,7 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 }
 
 // ===============================
-// OBTENER PDF 
+// OBTENER PDF - VERSIÓN CORREGIDA
 // ===============================
 export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -157,8 +156,7 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
       }
     });
 
-    console.log('📄 Intentando obtener PDF...');
-    console.log('📄 Folio:', folio);
+    console.log('📄 Solicitando PDF para folio:', folio);
     console.log('📄 Ambiente:', config.ambiente);
     console.log('📄 Sucursal:', config.sucursal);
 
@@ -166,8 +164,6 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
       method: 'POST',
       hostname: 'api.simplefactura.cl',
       path: '/getPdf',
-      
-
       headers: {
         'Authorization': `Bearer ${config.token}`,
         'Content-Type': 'application/json',
@@ -176,7 +172,6 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
     };
 
     const req = https.request(options, (res) => {
-
       const chunks: Buffer[] = [];
 
       res.on('data', (chunk) => {
@@ -184,59 +179,57 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
       });
 
       res.on('end', () => {
-
         const buffer = Buffer.concat(chunks);
+        
+        console.log('📊 Status PDF:', res.statusCode);
+        console.log('📊 Content-Type:', res.headers['content-type']);
 
-        console.log('📊 STATUS PDF:', res.statusCode);
-        console.log('📊 HEADERS PDF:', res.headers);
-
-        const text = buffer.toString('utf8');
-
-        console.log('📄 RESPUESTA PDF RAW:');
-        console.log(text.substring(0, 2000));
-
-        // Si es PDF real
-        if (
-          buffer[0] === 0x25 &&
-          buffer[1] === 0x50 &&
-          buffer[2] === 0x44 &&
-          buffer[3] === 0x46
-        ) {
-          console.log('✅ PDF válido');
+        // Verificar si es un PDF directamente
+        if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+          console.log('✅ PDF recibido directamente');
           return resolve(new Uint8Array(buffer));
         }
 
-        // Intentar JSON
+        // Intentar parsear como JSON (puede venir en base64)
         try {
-
-          const json = JSON.parse(text);
-
-          console.log('📄 JSON PDF:', json);
-
-          // Si viene base64
-          if (json.data?.pdf) {
-
-            const pdfBuffer = Buffer.from(json.data.pdf, 'base64');
-
-            console.log('✅ PDF Base64 convertido');
-
+          const responseText = buffer.toString('utf8');
+          const jsonResponse = JSON.parse(responseText);
+          
+          // Buscar el PDF en diferentes formatos de respuesta
+          let pdfBase64 = null;
+          
+          if (jsonResponse.data && jsonResponse.data.pdf) {
+            pdfBase64 = jsonResponse.data.pdf;
+          } else if (jsonResponse.pdf) {
+            pdfBase64 = jsonResponse.pdf;
+          } else if (jsonResponse.data && typeof jsonResponse.data === 'string') {
+            pdfBase64 = jsonResponse.data;
+          }
+          
+          if (pdfBase64) {
+            console.log('✅ PDF encontrado en base64, decodificando...');
+            const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+            console.log(`📄 Tamaño PDF decodificado: ${pdfBuffer.length} bytes`);
             return resolve(new Uint8Array(pdfBuffer));
           }
-
-        } catch {}
-
-        reject(new Error(`Respuesta inválida PDF (${res.statusCode})`));
-
+          
+          // Si llegamos aquí, no encontramos el PDF
+          console.error('❌ Respuesta sin PDF:', responseText.substring(0, 500));
+          reject(new Error('No se encontró PDF en la respuesta'));
+          
+        } catch (err) {
+          console.error('❌ Error parsing respuesta PDF:', err);
+          reject(new Error('Formato de respuesta inválido'));
+        }
       });
-
     });
 
     req.on('error', (err) => {
-      reject(new Error(`Error conexión PDF: ${err.message}`));
+      console.error('❌ Error en petición PDF:', err);
+      reject(new Error(`Error de conexión: ${err.message}`));
     });
 
     req.write(postData);
     req.end();
-
   });
 }
