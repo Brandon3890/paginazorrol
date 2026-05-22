@@ -143,6 +143,7 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 // OBTENER PDF 
 // ===============================
 export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array> {
+  console.log('📄 TOKEN:', config.token ? 'OK' : 'FALTA TOKEN');
   return new Promise((resolve, reject) => {
 
     const postData = JSON.stringify({
@@ -165,7 +166,7 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
     const options = {
       method: 'POST',
       hostname: 'api.simplefactura.cl',
-      path: '/getPdf',
+      path: '/pdf',
       
 
       headers: {

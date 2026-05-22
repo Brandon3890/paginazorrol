@@ -1,67 +1,168 @@
-// app/api/simplefactura/pdf/route.ts - Versión CORREGIDA
+// app/api/simplefactura/pdf/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { obtenerPDFSimpleFactura } from '@/lib/simplefactura-service';
 
 export async function GET(request: NextRequest) {
+
   try {
+
     const searchParams = request.nextUrl.searchParams;
+
     const folio = searchParams.get('folio');
     const orderId = searchParams.get('orderId');
 
     if (!folio && !orderId) {
+
       return NextResponse.json(
-        { error: 'Se requiere folio o orderId' },
+        {
+          success: false,
+          error: 'Se requiere folio o orderId'
+        },
         { status: 400 }
       );
+
     }
 
-    let folioNumero: number | null = folio ? parseInt(folio) : null;
+    let folioNumero: number | null = null;
 
-    if (orderId && !folioNumero) {
+    // =========================
+    // SI VIENE FOLIO DIRECTO
+    // =========================
+    if (folio) {
+
+      const parsed = parseInt(folio);
+
+      if (isNaN(parsed)) {
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Folio inválido'
+          },
+          { status: 400 }
+        );
+
+      }
+
+      folioNumero = parsed;
+
+    }
+
+    // =========================
+    // SI VIENE ORDER ID
+    // =========================
+    if (orderId && folioNumero === null) {
+
       const boletas = await query(
-        `SELECT folio FROM boletas WHERE order_id = ?`,
+        `
+        SELECT folio
+        FROM boletas
+        WHERE order_id = ?
+        LIMIT 1
+        `,
         [orderId]
       ) as any[];
 
       if (boletas.length === 0) {
+
         return NextResponse.json(
-          { error: 'No se encontró boleta para esta orden' },
+          {
+            success: false,
+            error: 'No se encontró boleta para esta orden'
+          },
           { status: 404 }
         );
+
       }
 
-      folioNumero = parseInt(boletas[0].folio);
+      const parsed = parseInt(boletas[0].folio);
+
+      if (isNaN(parsed)) {
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Folio inválido en base de datos'
+          },
+          { status: 500 }
+        );
+
+      }
+
+      folioNumero = parsed;
+
     }
 
-    if (!folioNumero || isNaN(folioNumero)) {
+    // =========================
+    // VALIDACIÓN FINAL TS
+    // =========================
+    if (folioNumero === null) {
+
       return NextResponse.json(
-        { error: 'Folio inválido' },
+        {
+          success: false,
+          error: 'No se pudo determinar el folio'
+        },
         { status: 400 }
       );
+
     }
 
-    const pdfBuffer = await obtenerPDFSimpleFactura(folioNumero);
+    console.log('📄 Obteniendo PDF folio:', folioNumero);
 
-    // CORRECCIÓN: Convertir Buffer a Uint8Array que es compatible con BodyInit
-    const pdfUint8Array = new Uint8Array(pdfBuffer);
+    // =========================
+    // OBTENER PDF
+    // =========================
+    const pdfUint8Array = await obtenerPDFSimpleFactura(folioNumero);
 
-    // Usar Response con Uint8Array
-    return new Response(pdfUint8Array, {
+    console.log('✅ PDF obtenido');
+    console.log('📦 Bytes PDF:', pdfUint8Array.length);
+
+    // =========================
+    // CONVERTIR A BUFFER
+    // =========================
+    const pdfBuffer = Buffer.from(pdfUint8Array);
+
+    // =========================
+    // RESPUESTA PDF
+    // =========================
+    return new Response(pdfBuffer, {
       status: 200,
       headers: {
+
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="boleta-${folioNumero}.pdf"`,
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Content-Length': pdfBuffer.length.toString()
+
+        'Content-Disposition':
+          `attachment; filename="boleta-${folioNumero}.pdf"`,
+
+        'Content-Length':
+          pdfBuffer.length.toString(),
+
+        'Cache-Control':
+          'no-cache, no-store, must-revalidate',
+
+        'Pragma':
+          'no-cache',
+
+        'Expires':
+          '0'
       }
     });
 
   } catch (error: any) {
-    console.error('❌ Error en pdf route:', error);
+
+    console.error('❌ Error en PDF route:', error);
+
     return NextResponse.json(
-      { error: error.message || 'Error al obtener PDF' },
+      {
+        success: false,
+        error: error.message || 'Error obteniendo PDF'
+      },
       { status: 500 }
     );
+
   }
+
 }

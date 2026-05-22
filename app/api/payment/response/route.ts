@@ -3,24 +3,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
 import { sendBoletaEmail } from '@/lib/email-service';
-import { emitirBoletaSimpleFactura } from '@/lib/simplefactura-service'
+import { emitirBoletaSimpleFactura, obtenerPDFSimpleFactura } from '@/lib/simplefactura-service'
 
 // Función auxiliar para obtener el PDF de la boleta
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
   try {
-    console.log('📄 Obteniendo PDF de boleta para folio:', folio);
-    
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/simplefactura/pdf?folio=${folio}`);
-    
-    if (!response.ok) {
-      throw new Error(`Error al obtener PDF: ${response.status}`);
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-    
+
+    console.log('📄 Obteniendo PDF directamente desde SimpleFactura');
+
+    const pdfUint8Array = await obtenerPDFSimpleFactura(Number(folio));
+
+    return Buffer.from(pdfUint8Array);
+
   } catch (error: any) {
+
     console.error('❌ Error obteniendo PDF:', error.message);
+
     return null;
   }
 }
