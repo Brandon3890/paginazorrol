@@ -294,26 +294,6 @@ export default function LoginPage() {
                           Regístrate aquí
                         </Link>
                       </p>
-
-                      <motion.div 
-                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        transition={{ type: "spring", stiffness: 300 }}
-                      >
-                        <p className="font-medium mb-1">Cuenta de prueba usuario normal:</p>
-                        <p>Email: demo@example.com</p>
-                        <p>Contraseña: demo123</p>
-                      </motion.div>
-                      
-                      <motion.div 
-                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
-                      >
-                        <p className="font-medium mb-1">Cuenta de prueba admin:</p>
-                        <p>Email: admin@ludicagames.com</p>
-                        <p>Contraseña: admin123</p>
-                      </motion.div>
                     </motion.div>
                   </motion.div>
                 ) : (
