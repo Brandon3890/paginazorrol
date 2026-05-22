@@ -27,23 +27,18 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false)
 
   const router = useRouter()
   const pathname = usePathname()
 
   const { getTotalItems, toggleCart } = useCartStore()
   const { user, isAuthenticated, logout } = useAuthStore()
-  const { categories, fetchCategories } = useCategoryStore()
+  const { categories, loading, fetchCategories } = useCategoryStore() // ← Cambiado: loading en lugar de isLoading
   const { globalSearchQuery, setGlobalSearchQuery } = useProductStore()
 
   useEffect(() => {
     setIsMounted(true)
-    const loadCategories = async () => {
-      await fetchCategories()
-      setCategoriesLoaded(true)
-    }
-    loadCategories()
+    fetchCategories()
   }, [fetchCategories])
 
   const totalItems = isMounted ? getTotalItems() : 0
@@ -56,7 +51,7 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
-  // Filtrar categorías activas y asegurar que tienen slug válido
+  // Filtrar categorías activas
   const headerCategories = categories
     .filter(category => category.is_active && category.slug && category.slug.trim() !== '')
     .map(category => ({
@@ -101,12 +96,12 @@ export function Header() {
     return firstName ? firstName.charAt(0).toUpperCase() : "U"
   }
 
-  // Debug: Mostrar categorías en consola (solo desarrollo)
+  // Debug: Mostrar categorías en consola
   useEffect(() => {
-    if (categoriesLoaded && headerCategories.length > 0) {
+    if (!loading && headerCategories.length > 0) {
       console.log("📋 Categorías cargadas en Header:", headerCategories)
     }
-  }, [categoriesLoaded, headerCategories])
+  }, [loading, headerCategories])
 
   return (
     <div className="sticky top-0 z-50">
@@ -335,7 +330,7 @@ export function Header() {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="min-w-[200px]">
-                      {!categoriesLoaded ? (
+                      {loading ? (  // ← Cambiado: loading en lugar de isLoading
                         <div className="px-2 py-4 text-center text-sm text-gray-500">
                           Cargando categorías...
                         </div>
@@ -412,7 +407,7 @@ export function Header() {
               
               {mobileProductsOpen && (
                 <div className="ml-4 flex flex-col gap-2">
-                  {!categoriesLoaded ? (
+                  {loading ? (  // ← Cambiado: loading en lugar de isLoading
                     <div className="text-sm text-gray-500">Cargando...</div>
                   ) : headerCategories.length > 0 ? (
                     headerCategories.map((cat) => (

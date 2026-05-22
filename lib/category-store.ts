@@ -31,7 +31,7 @@ interface Category {
 
 interface CategoryStore {
   categories: Category[]
-  loading: boolean
+  loading: boolean  // ← Se llama "loading", no "isLoading"
   error: string | null
   categoriesLoaded: boolean
   

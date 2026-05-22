@@ -1,4 +1,3 @@
-// app/global-error.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -14,11 +13,8 @@ interface GlobalErrorProps {
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
-    // Log del error a un servicio de monitoreo
-    console.error("Error global capturado:", error);
-    
-    // Aquí podrías enviar el error a Sentry, LogRocket, etc.
-    // Ejemplo: sentry.captureException(error);
+    console.error("❌ Error global capturado:", error);
+    // Aquí podrías enviar el error a un servicio de monitoreo
   }, [error]);
 
   return (
@@ -26,7 +22,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
       <body className="bg-gradient-to-b from-white to-gray-50">
         <div className="min-h-screen flex items-center justify-center px-4">
           <div className="max-w-md w-full text-center">
-            {/* Animación */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -38,7 +33,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               </div>
             </motion.div>
 
-            {/* Títulos */}
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -57,7 +51,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               Ha ocurrido un error inesperado. Estamos trabajando para solucionarlo.
             </motion.p>
 
-            {/* Mensaje de soporte */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -70,7 +63,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               </p>
             </motion.div>
 
-            {/* Botones */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -92,7 +84,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               </Link>
             </motion.div>
 
-            {/* Footer */}
             <p className="text-xs text-gray-400 mt-8">
               Si el problema persiste, contacta a soporte@ludicagames.com
             </p>

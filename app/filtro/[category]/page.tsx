@@ -45,10 +45,10 @@ export default async function CategoryPage({ params }: PageProps) {
     
     categories = await response.json()
     console.log(`✅ Categorías cargadas: ${categories.length}`)
+    console.log(`📋 Slugs disponibles: ${categories.map((c: any) => c.slug).join(', ')}`)
     
   } catch (error) {
     console.error('❌ Error fetching categories:', error)
-    // En caso de error, intentar obtener de la caché o fallback
     notFound()
   }
 
@@ -59,11 +59,10 @@ export default async function CategoryPage({ params }: PageProps) {
 
   if (!category) {
     console.log(`❌ Categoría no encontrada para slug: ${categorySlug}`)
-    console.log(`📋 Slugs disponibles: ${categories.map((c: any) => c.slug).join(', ')}`)
     notFound()
   }
 
-  console.log(`✅ Categoría encontrada: ${category.name}`)
+  console.log(`✅ Categoría encontrada: ${category.name} (ID: ${category.id})`)
 
   return (
     <div className="min-h-screen bg-background">
@@ -81,7 +80,11 @@ export default async function CategoryPage({ params }: PageProps) {
           <p className="text-muted-foreground mb-8">
             {category.description || `Explora nuestra selección de ${category.name.toLowerCase()}`}
           </p>
-          <Suspense fallback={<div>Cargando productos...</div>}>
+          <Suspense fallback={
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+            </div>
+          }>
             <ProductGrid category={category.name} />
           </Suspense>
         </div>
@@ -98,7 +101,10 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   const baseUrl = getBaseUrl()
 
   try {
-    const response = await fetch(`${baseUrl}/api/categories`, { cache: 'no-store' })
+    const response = await fetch(`${baseUrl}/api/categories`, { 
+      cache: 'no-store' 
+    })
+    
     if (response.ok) {
       const categories = await response.json()
       const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
@@ -107,6 +113,11 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
         return {
           title: `${category.name} - Zorro Lúdico`,
           description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
+          openGraph: {
+            title: `${category.name} - Zorro Lúdico`,
+            description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
+            type: 'website',
+          }
         }
       }
     }

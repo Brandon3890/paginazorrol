@@ -51,6 +51,7 @@ export default async function SubcategoryPage({ params }: PageProps) {
     notFound()
   }
 
+  // Buscar categoría
   const category = categories.find((cat: any) => 
     cat.slug === categorySlug && cat.is_active === true
   )
@@ -60,16 +61,18 @@ export default async function SubcategoryPage({ params }: PageProps) {
     notFound()
   }
 
+  // Buscar subcategoría
   const subcategory = category.subcategories?.find((sub: any) => 
     sub.slug === subcategorySlug && sub.is_active === true
   )
 
   if (!subcategory) {
     console.log(`❌ Subcategoría no encontrada: ${subcategorySlug} en categoría ${category.name}`)
+    console.log(`📋 Subcategorías disponibles: ${category.subcategories?.map((s: any) => s.slug).join(', ') || 'ninguna'}`)
     notFound()
   }
 
-  console.log(`✅ Subcategoría encontrada: ${subcategory.name}`)
+  console.log(`✅ Subcategoría encontrada: ${subcategory.name} (ID: ${subcategory.id})`)
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,7 +93,11 @@ export default async function SubcategoryPage({ params }: PageProps) {
           <p className="text-muted-foreground mb-8">
             {subcategory.description || `Explora nuestra selección de ${subcategory.name.toLowerCase()} en ${category.name.toLowerCase()}`}
           </p>
-          <Suspense fallback={<div>Cargando productos...</div>}>
+          <Suspense fallback={
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+            </div>
+          }>
             <ProductGrid category={category.name} subcategory={subcategory.name} />
           </Suspense>
         </div>
@@ -100,6 +107,7 @@ export default async function SubcategoryPage({ params }: PageProps) {
   )
 }
 
+// Metadata dinámica para subcategoría
 export async function generateMetadata({ params }: { params: Promise<{ category: string; subcategory: string }> }) {
   const resolvedParams = await params
   const categorySlug = decodeURIComponent(resolvedParams.category)
@@ -107,7 +115,10 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   const baseUrl = getBaseUrl()
 
   try {
-    const response = await fetch(`${baseUrl}/api/categories`, { cache: 'no-store' })
+    const response = await fetch(`${baseUrl}/api/categories`, { 
+      cache: 'no-store' 
+    })
+    
     if (response.ok) {
       const categories = await response.json()
       const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
@@ -117,6 +128,11 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
         return {
           title: `${subcategory.name} - ${category.name} - Zorro Lúdico`,
           description: subcategory.description || `Descubre nuestra selección de ${subcategory.name.toLowerCase()}`,
+          openGraph: {
+            title: `${subcategory.name} - ${category.name} - Zorro Lúdico`,
+            description: subcategory.description || `Descubre nuestra selección de ${subcategory.name.toLowerCase()}`,
+            type: 'website',
+          }
         }
       }
     }

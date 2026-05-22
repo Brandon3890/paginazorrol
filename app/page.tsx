@@ -2,6 +2,7 @@ import { Header } from "@/components/header"
 import { Banner } from "@/components/banner"
 import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
+import { Suspense } from "react"
 
 export default function HomePage() {
   return (
@@ -9,7 +10,9 @@ export default function HomePage() {
       <Header />
       <Banner />
       <main className="container mx-auto px-4 py-8">
-        <ProductGrid />
+        <Suspense fallback={<div className="text-center py-20">Cargando productos...</div>}>
+          <ProductGrid />
+        </Suspense>
       </main>
       <Footer />
     </div>
