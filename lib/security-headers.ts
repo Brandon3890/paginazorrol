@@ -33,23 +33,16 @@ export function getCSPHeaders() {
     }
   }
   
-  // CSP para producción - Permite lo necesario pero mantiene seguridad
+  // CSP para producción
   return {
     'Content-Security-Policy': 
       "default-src 'self'; " +
-      // Permite scripts de Next.js, Cloudflare y hashes para inline
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.google-analytics.com; " +
-      // Permite estilos inline (necesario para Tailwind/Shadcn)
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-      // Fuentes
       "font-src 'self' https://fonts.gstatic.com data:; " +
-      // Imágenes
       "img-src 'self' data: https: blob:; " +
-      // Conexiones API
       "connect-src 'self' https://api.webpay.com https://static.cloudflareinsights.com https://www.google-analytics.com https://api.simplefactura.cl; " +
-      // Frames para Webpay
       "frame-src 'self' https://webpay3gint.transbank.cl https://webpay3g.transbank.cl; " +
-      // Formularios
       "form-action 'self'; " +
       "frame-ancestors 'none';"
   }

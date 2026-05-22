@@ -1,3 +1,4 @@
+// proxy.ts
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -92,7 +93,7 @@ function isAdminRoute(pathname: string): boolean {
   return adminRoutes.some(route => pathname.startsWith(route))
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const method = request.method
   const clientIP = getClientIP(request)
