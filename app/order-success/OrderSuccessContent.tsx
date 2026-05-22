@@ -473,108 +473,90 @@ export default function OrderSuccessContent() {
 
             {/* SECCIÓN DE BOLETA ELECTRÓNICA */}
             {status === 'success' && (
-              <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-                <h3 className="font-semibold mb-2 flex items-center gap-2 text-blue-800">
-                  <FileText className="w-4 h-4" />
-                  Boleta Electrónica SII
-                </h3>
-                
-                {emitiendoBoleta && (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                    <span className="text-sm text-blue-700">Generando boleta electrónica...</span>
-                  </div>
-                )}
-
-                {boletaError && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                    <p className="text-xs text-yellow-800 mb-2">
-                      ⚠️ {boletaError}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => {
-                          setBoletaInfo(null)
-                          setBoletaError(null)
-                        }}
-                      >
-                        Reintentar
-                      </Button>
+                <div className="border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Boleta Electrónica
+                    </h3>
+                    
+                    {emitiendoBoleta && (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
                     </div>
-                  </div>
-                )}
-
-                {boletaFolio && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-blue-700 font-medium">Folio:</span>
-                      <span className="font-mono font-bold text-blue-800 text-lg">
-                        {boletaFolio}
-                      </span>
-                    </div>
-
-                    {boletaInfo?.data && (
-                      <div className="text-sm text-blue-700 border-t border-blue-200 pt-2">
-                        <p>📅 Fecha: {boletaInfo.data.fechaEmision}</p>
-                        <p>💰 Total: ${boletaInfo.data.total?.toLocaleString('es-CL')}</p>
-                      </div>
                     )}
 
-                    <div className="flex gap-2 mt-2">
-                      <Button
+                    {boletaError && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                        <p className="text-xs text-yellow-800 mb-2">
+                        ⚠️ {boletaError}
+                        </p>
+                        <Button 
                         size="sm"
                         variant="outline"
-                        className="flex-1"
-                        onClick={verPDF}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Ver
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={descargarPDF}
-                        disabled={descargandoPDF}
-                      >
-                        {descargandoPDF ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4 mr-2" />
-                        )}
-                        Descargar PDF
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={reenviarEmail}
-                        disabled={reenviandoEmail}
-                      >
-                        {reenviandoEmail ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Mail className="w-4 h-4 mr-2" />
-                        )}
-                        Reenviar
-                      </Button>
+                        onClick={() => {
+                            setBoletaInfo(null)
+                            setBoletaError(null)
+                        }}
+                        >
+                        Reintentar
+                        </Button>
                     </div>
-                    
-                    <p className="text-xs text-blue-600 text-center mt-2">
-                      ✅ También recibirás este PDF por correo electrónico
-                    </p>
-                  </div>
-                )}
+                    )}
 
-                {!boletaFolio && !emitiendoBoleta && !boletaError && (
-                  <p className="text-sm text-blue-700">
-                    Generando boleta electrónica automáticamente...
-                  </p>
+                    {boletaFolio && (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Folio:</span>
+                        <span className="font-mono font-medium">{boletaFolio}</span>
+                        </div>
+
+                        <div className="flex gap-3">
+                        <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={verPDF}
+                        >
+                            <Eye className="w-4 h-4 mr-2" />
+                            Ver PDF
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={descargarPDF}
+                            disabled={descargandoPDF}
+                        >
+                            {descargandoPDF ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                            <Download className="w-4 h-4 mr-2" />
+                            )}
+                            Descargar PDF
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={reenviarEmail}
+                            disabled={reenviandoEmail}
+                        >
+                            {reenviandoEmail ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                            <Mail className="w-4 h-4 mr-2" />
+                            )}
+                            Reenviar Email
+                        </Button>
+                        </div>
+                    </div>
+                    )}
+
+                    {!boletaFolio && !emitiendoBoleta && !boletaError && (
+                    <p className="text-sm text-muted-foreground">
+                        Generando boleta electrónica...
+                    </p>
+                    )}
+                </div>
                 )}
-              </div>
-            )}
 
             {loading && (
               <div className="text-center py-4">
