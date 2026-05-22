@@ -1,4 +1,3 @@
-// proxy.ts
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -24,7 +23,7 @@ const publicRoutes = [
   '/product', 
   '/cart',
   '/order-success',
-  '/filtro',
+  '/filtro',      // ✅ Agregar página de filtros
 ]
 
 // Endpoints API públicos (solo lectura)
@@ -45,22 +44,20 @@ const publicApiRoutes = [
 function isPublicApiRoute(pathname: string, method: string): boolean {
   // Endpoints públicos exactos
   if (publicApiRoutes.some(route => pathname === route)) {
+    console.log('📌 API pública exacta:', pathname)
     return true
   }
   
   // Endpoints con subrutas (ej: /api/banners/image/xxx)
   if (pathname.startsWith('/api/banners/')) {
-    return true  // ✅ Todas las rutas de banners son públicas
+    console.log('📌 API pública (banners):', pathname)
+    return true
   }
   
-  // Endpoint de órdenes: GET es público (para order-success), otros métodos requieren auth
+  // Endpoint de órdenes: GET es público (para order-success)
   if (pathname.match(/^\/api\/orders\/\d+$/)) {
-    return method === 'GET'  // Solo GET es público
-  }
-  
-  // Listado de órdenes: solo para usuarios autenticados
-  if (pathname === '/api/orders' && method === 'GET') {
-    return false  // Requiere autenticación
+    console.log('📌 API pública (order):', pathname)
+    return method === 'GET'
   }
   
   return false
@@ -81,16 +78,17 @@ function getClientIP(request: NextRequest): string {
   return '127.0.0.1'
 }
 
-function getUserAgent(request: NextRequest): string {
-  return request.headers.get('user-agent') || 'unknown'
-}
-
 function requiresAuth(pathname: string): boolean {
   // Rutas públicas no requieren auth
   if (publicRoutes.some(route => pathname === route)) {
     return false
   }
   if (publicRoutes.some(route => pathname.startsWith(route + '?'))) {
+    return false
+  }
+  
+  // Verificar si es una ruta de filtro (pública)
+  if (pathname.startsWith('/filtro')) {
     return false
   }
   
@@ -106,9 +104,10 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const method = request.method
   const clientIP = getClientIP(request)
-  const userAgent = getUserAgent(request)
   
   const response = NextResponse.next()
+
+  console.log(`🔍 Proxy: ${method} ${pathname}`)
 
   // Headers de seguridad
   const securityHeaders = getSecurityHeaders()
@@ -124,7 +123,17 @@ export async function proxy(request: NextRequest) {
     })
   }
 
-  // Rate limiting para login
+  // ============================================
+  // IMPORTANTE: Verificar API públicas PRIMERO
+  // ============================================
+  
+  // Si es una API pública, permitir acceso sin ninguna verificación adicional
+  if (pathname.startsWith('/api/') && isPublicApiRoute(pathname, method)) {
+    console.log('✅ API pública permitida:', pathname)
+    return response
+  }
+
+  // Rate limiting para login (solo después de verificar que no es pública)
   if (pathname === '/api/auth/login') {
     const limitResult = loginRateLimiter.attempt(`login_${clientIP}`)
     if (!limitResult.allowed) {
@@ -135,13 +144,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Verificar si es una API pública (no requiere auth)
-  if (isPublicApiRoute(pathname, method)) {
-    console.log('✅ API pública:', { pathname, method })
-    return response
-  }
-
-  // Rate limiting general para API (excepto públicas)
+  // Rate limiting general para API (solo para APIs no públicas)
   if (pathname.startsWith('/api/')) {
     const limitResult = apiRateLimiter.attempt(`api_${clientIP}`)
     if (!limitResult.allowed) {
@@ -157,14 +160,15 @@ export async function proxy(request: NextRequest) {
   const needsAuth = requiresAuth(pathname)
   const isAdmin = isAdminRoute(pathname)
 
-  if (needsAuth || isAdmin || pathname.startsWith('/api/')) {
+  // Si requiere autenticación o es API no pública
+  if (needsAuth || isAdmin || (pathname.startsWith('/api/') && !isPublicApiRoute(pathname, method))) {
     if (!token) {
-      // Si es API, devolver 401
+      console.log('❌ No autorizado - Sin token:', pathname)
+      
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
       }
       
-      // Si es página, redirigir a login
       const loginUrl = new URL('/login', request.url)
       loginUrl.searchParams.set('from', pathname)
       return NextResponse.redirect(loginUrl)
