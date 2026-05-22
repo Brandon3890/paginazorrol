@@ -23,7 +23,8 @@ const publicRoutes = [
   '/products', 
   '/product', 
   '/cart',
-  '/order-success'  
+  '/order-success',
+  '/filtro',
 ]
 
 // Endpoints API públicos (solo lectura)
