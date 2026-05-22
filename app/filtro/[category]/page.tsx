@@ -3,66 +3,60 @@ import { CategoryBreadcrumb } from "@/components/category-breadcrumb"
 import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
-import { Suspense } from "react"
+import { useCategoryStore } from "@/lib/category-store"
 
-// Forzar renderizado dinámico para evitar problemas de build
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Esta función se ejecuta en el servidor para generar las páginas estáticas
+export async function generateStaticParams() {
+  try {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
+    
+    if (!response.ok) {
+      return []
+    }
+    
+    const categories = await response.json()
+    
+    return categories
+      .filter((cat: any) => cat.is_active)
+      .map((category: any) => ({
+        category: category.slug,
+      }))
+  } catch (error) {
+    console.error('Error generating static params for categories:', error)
+    return []
+  }
+}
 
 interface PageProps {
   params: Promise<{ category: string }>
 }
 
-// Función para obtener la URL base
-function getBaseUrl() {
-  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  if (typeof window !== 'undefined') return window.location.origin
-  return 'http://localhost:3000'
-}
-
 export default async function CategoryPage({ params }: PageProps) {
   const resolvedParams = await params
-  const categorySlug = decodeURIComponent(resolvedParams.category) // Decodificar URL
+  const categorySlug = resolvedParams.category
 
-  console.log(`🔍 Buscando categoría con slug: ${categorySlug}`)
-
-  const baseUrl = getBaseUrl()
-  
+  // Obtener categorías del API
   let categories = []
   try {
-    const response = await fetch(`${baseUrl}/api/categories`, {
-      cache: 'no-store',
-      headers: {
-        'Content-Type': 'application/json',
-      }
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`, {
+      next: { revalidate: 3600 } // Revalidar cada hora
     })
     
-    if (!response.ok) {
-      console.error(`❌ Error fetching categories: ${response.status}`)
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (response.ok) {
+      categories = await response.json()
     }
-    
-    categories = await response.json()
-    console.log(`✅ Categorías cargadas: ${categories.length}`)
-    console.log(`📋 Slugs disponibles: ${categories.map((c: any) => c.slug).join(', ')}`)
-    
   } catch (error) {
-    console.error('❌ Error fetching categories:', error)
-    notFound()
+    console.error('Error fetching categories:', error)
   }
 
-  // Buscar categoría por slug (case-sensitive)
+  // Encontrar la categoría por slug
   const category = categories.find((cat: any) => 
-    cat.slug === categorySlug && cat.is_active === true
+    cat.slug === categorySlug && cat.is_active
   )
 
   if (!category) {
-    console.log(`❌ Categoría no encontrada para slug: ${categorySlug}`)
     notFound()
   }
-
-  console.log(`✅ Categoría encontrada: ${category.name} (ID: ${category.id})`)
 
   return (
     <div className="min-h-screen bg-background">
@@ -71,7 +65,6 @@ export default async function CategoryPage({ params }: PageProps) {
         <CategoryBreadcrumb
           items={[
             { name: "Inicio", href: "/" },
-            { name: "Todos los Productos", href: "/filtro" },
             { name: category.name, href: `/filtro/${category.slug}` },
           ]}
         />
@@ -80,13 +73,7 @@ export default async function CategoryPage({ params }: PageProps) {
           <p className="text-muted-foreground mb-8">
             {category.description || `Explora nuestra selección de ${category.name.toLowerCase()}`}
           </p>
-          <Suspense fallback={
-            <div className="flex justify-center items-center py-20">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-            </div>
-          }>
-            <ProductGrid category={category.name} />
-          </Suspense>
+          <ProductGrid category={category.name} />
         </div>
       </main>
       <Footer />
@@ -94,39 +81,30 @@ export default async function CategoryPage({ params }: PageProps) {
   )
 }
 
-// Metadata dinámica
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const resolvedParams = await params
-  const categorySlug = decodeURIComponent(resolvedParams.category)
-  const baseUrl = getBaseUrl()
+  const categorySlug = resolvedParams.category
 
+  let categories = []
   try {
-    const response = await fetch(`${baseUrl}/api/categories`, { 
-      cache: 'no-store' 
-    })
-    
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
     if (response.ok) {
-      const categories = await response.json()
-      const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
-      
-      if (category) {
-        return {
-          title: `${category.name} - Zorro Lúdico`,
-          description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
-          openGraph: {
-            title: `${category.name} - Zorro Lúdico`,
-            description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
-            type: 'website',
-          }
-        }
-      }
+      categories = await response.json()
     }
   } catch (error) {
     console.error('Error fetching categories for metadata:', error)
   }
 
+  const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
+
+  if (!category) {
+    return {
+      title: 'Categoría No Encontrada',
+    }
+  }
+
   return {
-    title: 'Categoría - Zorro Lúdico',
-    description: 'Explora nuestros productos por categoría',
+    title: `${category.name} - Nuestra Tienda`,
+    description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
   }
 }

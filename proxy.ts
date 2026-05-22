@@ -42,24 +42,71 @@ const publicApiRoutes = [
 
 // Función para verificar si una ruta de API específica es pública
 function isPublicApiRoute(pathname: string, method: string): boolean {
-  // Endpoints públicos exactos
-  if (publicApiRoutes.some(route => pathname === route)) {
-    console.log('📌 API pública exacta:', pathname)
+
+  // ============================================
+  // AUTH APIs
+  // ============================================
+
+  if (pathname.startsWith('/api/auth/')) {
     return true
   }
-  
-  // Endpoints con subrutas (ej: /api/banners/image/xxx)
-  if (pathname.startsWith('/api/banners/')) {
-    console.log('📌 API pública (banners):', pathname)
-    return true
-  }
-  
-  // Endpoint de órdenes: GET es público (para order-success)
-  if (pathname.match(/^\/api\/orders\/\d+$/)) {
-    console.log('📌 API pública (order):', pathname)
+
+  // ============================================
+  // PRODUCTS APIs (PUBLIC GET ONLY)
+  // ============================================
+
+  if (pathname.startsWith('/api/products')) {
     return method === 'GET'
   }
-  
+
+  // ============================================
+  // CATEGORIES APIs (PUBLIC GET ONLY)
+  // ============================================
+
+  if (pathname.startsWith('/api/categories')) {
+    return method === 'GET'
+  }
+
+  // ============================================
+  // BANNERS APIs (PUBLIC GET ONLY)
+  // ============================================
+
+  if (pathname.startsWith('/api/banners')) {
+    return method === 'GET'
+  }
+
+  // ============================================
+  // PAYMENT RESPONSE (TRANSBANK)
+  // ============================================
+
+  if (pathname === '/api/payment/response') {
+    return true
+  }
+
+  // ============================================
+  // SHIPPING RATE
+  // ============================================
+
+  if (pathname === '/api/shipping/rate') {
+    return true
+  }
+
+  // ============================================
+  // SIMPLEFACTURA PDF
+  // ============================================
+
+  if (pathname.startsWith('/api/simplefactura/pdf')) {
+    return true
+  }
+
+  // ============================================
+  // PUBLIC ORDERS (GET ONLY)
+  // ============================================
+
+  if (pathname.match(/^\/api\/orders\/\d+$/)) {
+    return method === 'GET'
+  }
+
   return false
 }
 
