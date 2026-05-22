@@ -1,8 +1,7 @@
-// app/order-success/OrderSuccessContent.tsx
 "use client"
 
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +19,6 @@ import {
   Mail
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
 
 interface Order {
@@ -37,23 +35,38 @@ interface Order {
   customer_rut?: string
   boleta_folio?: string
   boleta_emitida?: number
+  shipping_address?: {
+    street: string
+    commune_name: string
+    region_name: string
+  }
+  items?: Array<{
+    id: number
+    product_name: string
+    product_price: number
+    quantity: number
+    subtotal: number
+  }>
 }
 
 interface BoletaInfo {
   success: boolean
   folio?: string
   data?: any
+  pdfUrl?: string
 }
 
 export default function OrderSuccessContent() {
   const { clearCart, items } = useCartStore()
 
   const searchParams = useSearchParams()
+  const router = useRouter()
+
   const status = searchParams.get('status')
   const orderId = searchParams.get('orderId')
   const message = searchParams.get('message')
 
-  const router = useRouter()
+  const [mounted, setMounted] = useState(false)
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(false)
@@ -64,78 +77,88 @@ export default function OrderSuccessContent() {
   const [descargandoPDF, setDescargandoPDF] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
     if (!status && !orderId) {
       router.push('/')
       return
     }
 
     if (orderId) {
-      fetchOrder(orderId)
+      fetchOrderFromMySQL(orderId)
     }
-  }, [orderId, status])
+  }, [mounted, orderId, status, router])
 
   useEffect(() => {
+    if (!mounted) return
+
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
+      console.log('🛒 Limpiando carrito local')
+
       clearCart()
       setCartClearedLocal(true)
+
+      window.dispatchEvent(new CustomEvent('payment-complete'))
+      window.dispatchEvent(new CustomEvent('stock-update'))
     }
-  }, [status, items.length])
+  }, [mounted, status, items.length, clearCart, cartClearedLocal])
 
-  const fetchOrder = async (id: string) => {
-    console.log('🚀 fetchOrder iniciado:', id)
-
+  const fetchOrderFromMySQL = async (id: string) => {
     try {
-        setLoading(true)
-        setError(null)
+      setLoading(true)
+      setError(null)
 
-        const response = await fetch(`/api/orders/${id}`, {
+      console.log('📦 Consultando orden:', id)
+
+      const response = await fetch(`/api/orders/${id}`, {
+        method: 'GET',
+        credentials: 'include',
         cache: 'no-store'
-        })
+      })
 
-        console.log('📡 response status:', response.status)
+      console.log('📡 Status API:', response.status)
 
-        if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-        }
+      const contentType = response.headers.get('content-type')
 
+      console.log('📡 Content-Type:', contentType)
+
+      if (!contentType?.includes('application/json')) {
         const text = await response.text()
 
-        console.log('📄 raw response:', text)
+        console.error('❌ La API devolvió HTML:', text.substring(0, 500))
 
-        let data
+        throw new Error('La API devolvió HTML en vez de JSON')
+      }
 
-        try {
-        data = JSON.parse(text)
-        } catch (jsonError) {
-        console.error('❌ JSON inválido:', jsonError)
-        throw new Error('La API devolvió JSON inválido')
-        }
+      const data = await response.json()
 
-        console.log('✅ data:', data)
+      console.log('📦 Datos orden:', data)
 
-        setOrder(data)
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cargar la orden')
+      }
 
-        if (
-        data &&
-        data.boleta_emitida === 1 &&
-        data.boleta_folio
-        ) {
+      if (data.boleta_emitida === 1 && data.boleta_info?.folio) {
         setBoletaInfo({
-            success: true,
-            folio: data.boleta_folio,
-            data: data.boleta_info || null
+          success: true,
+          folio: data.boleta_info.folio,
+          data: data.boleta_info
         })
-        }
+      }
 
+      setOrder(data)
     } catch (err: any) {
-        console.error('❌ fetchOrder ERROR:', err)
+      console.error('❌ Error cargando orden:', err)
 
-        setError(err.message || 'Error cargando orden')
+      setError(err.message || 'No se pudo cargar la orden')
     } finally {
-        console.log('🏁 fetchOrder finalizado')
-        setLoading(false)
+      setLoading(false)
     }
-    }
+  }
 
   const descargarPDF = async () => {
     const folio = boletaInfo?.folio || order?.boleta_folio
@@ -145,10 +168,12 @@ export default function OrderSuccessContent() {
     try {
       setDescargandoPDF(true)
 
-      const response = await fetch(`/api/simplefactura/pdf?folio=${folio}`)
+      const response = await fetch(
+        `/api/simplefactura/pdf?folio=${folio}`
+      )
 
       if (!response.ok) {
-        throw new Error('Error descargando PDF')
+        throw new Error('No se pudo descargar el PDF')
       }
 
       const blob = await response.blob()
@@ -156,19 +181,21 @@ export default function OrderSuccessContent() {
       const url = window.URL.createObjectURL(blob)
 
       const a = document.createElement('a')
+
       a.href = url
       a.download = `boleta-${folio}.pdf`
 
       document.body.appendChild(a)
+
       a.click()
 
       document.body.removeChild(a)
 
       window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('❌ Error descargando PDF:', err)
 
-    } catch (error) {
-      console.error(error)
-      alert('No se pudo descargar el PDF')
+      alert('Error descargando PDF')
     } finally {
       setDescargandoPDF(false)
     }
@@ -188,7 +215,7 @@ export default function OrderSuccessContent() {
         return {
           icon: CheckCircle,
           title: '¡Pago Exitoso!',
-          description: 'Tu pedido fue procesado correctamente.',
+          description: 'Tu pedido ha sido procesado correctamente.',
           color: 'text-green-600',
           bgColor: 'bg-green-100',
           badge: (
@@ -202,7 +229,7 @@ export default function OrderSuccessContent() {
         return {
           icon: XCircle,
           title: 'Pago Cancelado',
-          description: 'Has cancelado el pago.',
+          description: 'Has cancelado el proceso de pago.',
           color: 'text-yellow-600',
           bgColor: 'bg-yellow-100',
           badge: (
@@ -212,10 +239,27 @@ export default function OrderSuccessContent() {
           )
         }
 
+      case 'error':
+        return {
+          icon: XCircle,
+          title: 'Error en el Pago',
+          description:
+            message === 'payment_failed'
+              ? 'El pago no pudo ser procesado.'
+              : 'Ha ocurrido un error.',
+          color: 'text-red-600',
+          bgColor: 'bg-red-100',
+          badge: (
+            <Badge className="bg-red-100 text-red-800">
+              Error
+            </Badge>
+          )
+        }
+
       default:
         return {
           icon: Clock,
-          title: 'Procesando',
+          title: 'Procesando...',
           description: 'Estamos procesando tu pedido.',
           color: 'text-blue-600',
           bgColor: 'bg-blue-100',
@@ -228,125 +272,150 @@ export default function OrderSuccessContent() {
     }
   }
 
+  if (!mounted) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto" />
+      </div>
+    )
+  }
+
   const statusConfig = getStatusConfig()
   const StatusIcon = statusConfig.icon
+
+  const boletaFolio =
+    boletaInfo?.folio || order?.boleta_folio
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-2xl mx-auto">
         <Card>
-
           <CardHeader className="text-center">
-
-            <div className={`mx-auto w-16 h-16 rounded-full ${statusConfig.bgColor} flex items-center justify-center mb-4`}>
-              <StatusIcon className={`w-8 h-8 ${statusConfig.color}`} />
+            <div
+              className={`mx-auto w-16 h-16 rounded-full ${statusConfig.bgColor} flex items-center justify-center mb-4`}
+            >
+              <StatusIcon
+                className={`w-8 h-8 ${statusConfig.color}`}
+              />
             </div>
 
-            <CardTitle className="text-2xl">
+            <CardTitle className="text-2xl font-bold">
               {statusConfig.title}
             </CardTitle>
 
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mt-2">
               {statusConfig.description}
             </p>
 
             {statusConfig.badge}
-
           </CardHeader>
 
           <CardContent className="space-y-6">
-
             {loading && (
-              <div className="text-center">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+              <div className="text-center py-4">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                <p>Cargando pedido...</p>
               </div>
             )}
 
             {error && (
-              <div className="text-red-500 text-center">
-                {error}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-red-700 text-sm text-center">
+                  {error}
+                </p>
               </div>
             )}
 
             {order && (
               <div className="border rounded-lg p-4">
-                <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Pedido
+                  Detalles del Pedido
                 </h3>
 
                 <div className="space-y-2 text-sm">
-
                   <div className="flex justify-between">
                     <span>Número:</span>
-                    <span>{order.order_number}</span>
+                    <span className="font-mono">
+                      {order.order_number}
+                    </span>
                   </div>
 
                   <div className="flex justify-between">
                     <span>Total:</span>
                     <span>
-                        ${(order.total || 0).toLocaleString('es-CL')}
+                      $
+                      {order.total.toLocaleString('es-CL')}
                     </span>
                   </div>
-
                 </div>
               </div>
             )}
 
-            {boletaInfo?.folio && (
-              <div className="border rounded-lg p-4 bg-blue-50">
-
-                <h3 className="font-semibold flex items-center gap-2 mb-4">
+            {status === 'success' && boletaFolio && (
+              <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+                <h3 className="font-semibold mb-2 flex items-center gap-2 text-blue-800">
                   <FileText className="w-4 h-4" />
                   Boleta Electrónica
                 </h3>
 
-                <div className="flex justify-between mb-4">
-                  <span>Folio:</span>
-                  <span className="font-bold">{boletaInfo.folio}</span>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span>Folio:</span>
+
+                    <span className="font-mono font-bold">
+                      {boletaFolio}
+                    </span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={verPDF}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      Ver
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={descargarPDF}
+                      disabled={descargandoPDF}
+                    >
+                      {descargandoPDF ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4 mr-2" />
+                      )}
+
+                      Descargar
+                    </Button>
+                  </div>
                 </div>
-
-                <div className="flex gap-2">
-
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={verPDF}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Ver PDF
-                  </Button>
-
-                  <Button
-                    className="flex-1"
-                    onClick={descargarPDF}
-                    disabled={descargandoPDF}
-                  >
-                    {descargandoPDF ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4 mr-2" />
-                    )}
-
-                    Descargar
-                  </Button>
-
-                </div>
-
               </div>
             )}
 
-            <div className="flex justify-center">
+            <div className="flex justify-center gap-4 pt-4">
               <Link href="/">
                 <Button>
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Volver a la tienda
                 </Button>
               </Link>
+
+              {(status === 'cancelled' ||
+                status === 'error') && (
+                <Link href="/checkout">
+                  <Button variant="outline">
+                    Reintentar Pago
+                  </Button>
+                </Link>
+              )}
             </div>
-
           </CardContent>
-
         </Card>
       </div>
     </div>
