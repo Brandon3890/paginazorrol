@@ -13,11 +13,19 @@ interface PageProps {
   params: Promise<{ category: string }>
 }
 
-// Función para obtener la URL base
+// Función para obtener la URL base (importante para el servidor)
 function getBaseUrl() {
-  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  if (typeof window !== 'undefined') return window.location.origin
+  // En orden de prioridad
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  // Para desarrollo local
   return 'http://localhost:3000'
 }
 
@@ -28,11 +36,15 @@ export default async function CategoryPage({ params }: PageProps) {
   console.log(`🔍 Buscando categoría con slug: ${categorySlug}`)
 
   const baseUrl = getBaseUrl()
+  console.log(`📍 Base URL: ${baseUrl}`)
   
   let categories = []
   try {
-    // Intentar primero con fetch absoluto
-    const response = await fetch(`${baseUrl}/api/categories`, {
+    // Usar URL absoluta SIEMPRE en el servidor
+    const apiUrl = `${baseUrl}/api/categories`
+    console.log(`📡 Fetching: ${apiUrl}`)
+    
+    const response = await fetch(apiUrl, {
       method: 'GET',
       cache: 'no-store',
       headers: {
@@ -44,49 +56,37 @@ export default async function CategoryPage({ params }: PageProps) {
     
     if (!response.ok) {
       console.error(`❌ Error fetching categories: ${response.status}`)
-      
-      // Si es 403 o 401, puede ser problema de autenticación
-      if (response.status === 403 || response.status === 401) {
-        console.log('⚠️ Error de autenticación, intentando con ruta relativa...')
-        // Intentar con ruta relativa como fallback
-        const fallbackResponse = await fetch('/api/categories', {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        
-        if (!fallbackResponse.ok) {
-          throw new Error(`HTTP error! status: ${fallbackResponse.status}`)
-        }
-        
-        categories = await fallbackResponse.json()
-      } else {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-    } else {
-      categories = await response.json()
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
     
+    categories = await response.json()
     console.log(`✅ Categorías cargadas: ${categories.length}`)
-    console.log(`📋 Slugs disponibles: ${categories.map((c: any) => c.slug).join(', ')}`)
+    
+    if (categories.length > 0) {
+      console.log(`📋 Slugs disponibles: ${categories.map((c: any) => c.slug).join(', ')}`)
+    }
     
   } catch (error) {
     console.error('❌ Error fetching categories:', error)
-    // No llamar a notFound() aquí, intentar mostrar mensaje de error
+    // Mostrar error amigable en lugar de 404
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="container mx-auto px-4 py-8">
           <div className="text-center py-20">
-            <h1 className="text-2xl font-bold text-red-600 mb-4">Error al cargar categorías</h1>
+            <h1 className="text-2xl font-bold text-red-600 mb-4">Error al cargar productos</h1>
             <p className="text-gray-600 mb-4">
               No se pudieron cargar las categorías. Por favor, intenta de nuevo más tarde.
             </p>
             <p className="text-sm text-gray-500">
               Error: {error instanceof Error ? error.message : 'Error desconocido'}
             </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+            >
+              Reintentar
+            </button>
           </div>
         </main>
         <Footer />
@@ -134,4 +134,36 @@ export default async function CategoryPage({ params }: PageProps) {
       <Footer />
     </div>
   )
+}
+
+// Metadata dinámica
+export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
+  const resolvedParams = await params
+  const categorySlug = decodeURIComponent(resolvedParams.category)
+  const baseUrl = getBaseUrl()
+
+  try {
+    const response = await fetch(`${baseUrl}/api/categories`, { 
+      cache: 'no-store' 
+    })
+    
+    if (response.ok) {
+      const categories = await response.json()
+      const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
+      
+      if (category) {
+        return {
+          title: `${category.name} - Zorro Lúdico`,
+          description: category.description || `Descubre nuestra selección de ${category.name.toLowerCase()}`,
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching categories for metadata:', error)
+  }
+
+  return {
+    title: 'Categoría - Zorro Lúdico',
+    description: 'Explora nuestros productos por categoría',
+  }
 }
