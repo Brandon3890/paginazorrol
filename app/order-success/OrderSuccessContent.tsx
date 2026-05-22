@@ -82,34 +82,60 @@ export default function OrderSuccessContent() {
   }, [status, items.length])
 
   const fetchOrder = async (id: string) => {
+    console.log('🚀 fetchOrder iniciado:', id)
+
     try {
-      setLoading(true)
+        setLoading(true)
+        setError(null)
 
-      const response = await fetch(`/api/orders/${id}`)
-
-      if (!response.ok) {
-        throw new Error('Error cargando orden')
-      }
-
-      const data = await response.json()
-
-      setOrder(data)
-
-      if (data && data.boleta_emitida === 1 && data.boleta_folio ) {
-        setBoletaInfo({
-          success: true,
-          folio: data.boleta_folio,
-          data: data.boleta_info
+        const response = await fetch(`/api/orders/${id}`, {
+        cache: 'no-store'
         })
-      }
 
-    } catch (err) {
-      console.error(err)
-      setError('No se pudo cargar la orden')
+        console.log('📡 response status:', response.status)
+
+        if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+        }
+
+        const text = await response.text()
+
+        console.log('📄 raw response:', text)
+
+        let data
+
+        try {
+        data = JSON.parse(text)
+        } catch (jsonError) {
+        console.error('❌ JSON inválido:', jsonError)
+        throw new Error('La API devolvió JSON inválido')
+        }
+
+        console.log('✅ data:', data)
+
+        setOrder(data)
+
+        if (
+        data &&
+        data.boleta_emitida === 1 &&
+        data.boleta_folio
+        ) {
+        setBoletaInfo({
+            success: true,
+            folio: data.boleta_folio,
+            data: data.boleta_info || null
+        })
+        }
+
+    } catch (err: any) {
+        console.error('❌ fetchOrder ERROR:', err)
+
+        setError(err.message || 'Error cargando orden')
     } finally {
-      setLoading(false)
+        console.log('🏁 fetchOrder finalizado')
+        setLoading(false)
     }
-  }
+    }
 
   const descargarPDF = async () => {
     const folio = boletaInfo?.folio || order?.boleta_folio
