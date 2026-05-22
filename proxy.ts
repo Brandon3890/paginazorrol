@@ -23,7 +23,7 @@ const publicRoutes = [
   '/products', 
   '/product', 
   '/cart',
-  '/order-success'  // Página de éxito pública
+  '/order-success'  
 ]
 
 // Endpoints API públicos (solo lectura)
@@ -32,9 +32,12 @@ const publicApiRoutes = [
   '/api/auth/register', 
   '/api/auth/logout',
   '/api/auth/verify',
-  '/api/payment/response',  // Callback de Webpay (obligatorio)
-  '/api/shipping/rate',     // Cotización de envíos
-  '/api/simplefactura/pdf',  // PDF de boleta
+  '/api/payment/response', 
+  '/api/shipping/rate',     
+  '/api/simplefactura/pdf',  
+  '/api/banners',           
+  '/api/categories',        
+  '/api/products',         
 ]
 
 // Función para verificar si una ruta de API específica es pública
@@ -42,6 +45,11 @@ function isPublicApiRoute(pathname: string, method: string): boolean {
   // Endpoints públicos exactos
   if (publicApiRoutes.some(route => pathname === route)) {
     return true
+  }
+  
+  // Endpoints con subrutas (ej: /api/banners/image/xxx)
+  if (pathname.startsWith('/api/banners/')) {
+    return true  // ✅ Todas las rutas de banners son públicas
   }
   
   // Endpoint de órdenes: GET es público (para order-success), otros métodos requieren auth
@@ -126,8 +134,14 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Verificar si es una API pública (no requiere auth)
+  if (isPublicApiRoute(pathname, method)) {
+    console.log('✅ API pública:', { pathname, method })
+    return response
+  }
+
   // Rate limiting general para API (excepto públicas)
-  if (pathname.startsWith('/api/') && !isPublicApiRoute(pathname, method)) {
+  if (pathname.startsWith('/api/')) {
     const limitResult = apiRateLimiter.attempt(`api_${clientIP}`)
     if (!limitResult.allowed) {
       return NextResponse.json(
@@ -135,12 +149,6 @@ export async function proxy(request: NextRequest) {
         { status: 429 }
       )
     }
-  }
-
-  // Verificar si es una API pública (no requiere auth)
-  if (isPublicApiRoute(pathname, method)) {
-    console.log('✅ API pública:', { pathname, method })
-    return response
   }
 
   // Verificar autenticación para el resto
