@@ -506,46 +506,34 @@ export default function OrderSuccessContent() {
 
                     {boletaFolio && (
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between border-b pb-2">
-                        <span className="text-muted-foreground">Folio:</span>
-                        <span className="font-mono font-medium">{boletaFolio}</span>
-                        </div>
-
                         <div className="flex gap-3">
-                        <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={verPDF}
-                        >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Ver PDF
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={descargarPDF}
-                            disabled={descargandoPDF}
-                        >
-                            {descargandoPDF ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                            <Download className="w-4 h-4 mr-2" />
-                            )}
-                            Descargar PDF
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={reenviarEmail}
-                            disabled={reenviandoEmail}
-                        >
-                            {reenviandoEmail ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                            <Mail className="w-4 h-4 mr-2" />
-                            )}
-                            Reenviar Email
-                        </Button>
+                            <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={descargarPDF}
+                                disabled={descargandoPDF}
+                            >
+                                {descargandoPDF ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                )}
+                                Descargar PDF
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={reenviarEmail}
+                                disabled={reenviandoEmail}
+                            >
+                                {reenviandoEmail ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Mail className="w-4 h-4 mr-2" />
+                                )}
+                                Reenviar Email
+                            </Button>
                         </div>
                     </div>
                     )}
