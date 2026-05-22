@@ -1,4 +1,5 @@
 // proxy.ts
+
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -15,6 +16,8 @@ import {
 } from '@/lib/security-headers'
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!)
+
+const isDev = process.env.NODE_ENV === 'development'
 
 // ============================================
 // RUTAS PROTEGIDAS
@@ -51,6 +54,7 @@ const publicRoutes = [
 // ============================================
 
 function getClientIP(request: NextRequest): string {
+
   const forwardedFor = request.headers.get('x-forwarded-for')
 
   if (forwardedFor) {
@@ -67,12 +71,22 @@ function getClientIP(request: NextRequest): string {
 }
 
 // ============================================
-// VERIFICAR SI API ES PÚBLICA
+// LIMPIAR RUTAS PARA LOGS
+// ============================================
+
+function cleanLogPath(pathname: string): string {
+
+  return pathname
+    .replace(/\/image\/.*$/, '/image')
+    .replace(/\/\d+$/, '/:id')
+}
+
+// ============================================
+// APIs PÚBLICAS
 // ============================================
 
 function isPublicApiRoute(pathname: string, method: string): boolean {
 
-  // APIs públicas
   const publicApiPrefixes = [
     '/api/products',
     '/api/categories',
@@ -80,19 +94,17 @@ function isPublicApiRoute(pathname: string, method: string): boolean {
     '/api/payment/response',
   ]
 
-  // APIs públicas por prefijo
+  // APIs públicas
   if (publicApiPrefixes.some(route => pathname.startsWith(route))) {
-    console.log('✅ API pública:', pathname)
     return true
   }
 
   // Auth pública
   if (pathname.startsWith('/api/auth/')) {
-    console.log('✅ API auth pública:', pathname)
     return true
   }
 
-  // GET público para órdenes
+  // GET público órdenes
   if (pathname.match(/^\/api\/orders\/\d+$/)) {
     return method === 'GET'
   }
@@ -101,17 +113,17 @@ function isPublicApiRoute(pathname: string, method: string): boolean {
 }
 
 // ============================================
-// VERIFICAR SI REQUIERE AUTH
+// REQUIERE AUTH
 // ============================================
 
 function requiresAuth(pathname: string): boolean {
 
-  // Rutas públicas
+  // Públicas
   if (publicRoutes.some(route => pathname === route)) {
     return false
   }
 
-  // Permitir subrutas públicas
+  // Subrutas públicas
   if (pathname.startsWith('/filtro')) {
     return false
   }
@@ -124,17 +136,18 @@ function requiresAuth(pathname: string): boolean {
     return false
   }
 
-  // Rutas protegidas
+  // Protegidas
   return protectedRoutes.some(route =>
     pathname.startsWith(route)
   )
 }
 
 // ============================================
-// VERIFICAR ADMIN
+// ADMIN
 // ============================================
 
 function isAdminRoute(pathname: string): boolean {
+
   return adminRoutes.some(route =>
     pathname.startsWith(route)
   )
@@ -150,12 +163,20 @@ export async function proxy(request: NextRequest) {
   const method = request.method
   const clientIP = getClientIP(request)
 
-  console.log(`🔍 Proxy: ${method} ${pathname}`)
+  const cleanPath = cleanLogPath(pathname)
+
+  // ============================================
+  // LOGS SOLO EN DESARROLLO
+  // ============================================
+
+  if (isDev) {
+    console.log(`  ${method} ${cleanPath}`)
+  }
 
   const response = NextResponse.next()
 
   // ============================================
-  // HEADERS DE SEGURIDAD
+  // HEADERS SEGURIDAD
   // ============================================
 
   const securityHeaders = getSecurityHeaders()
@@ -164,7 +185,10 @@ export async function proxy(request: NextRequest) {
     response.headers.set(key, value)
   })
 
+  // ============================================
   // CSP SOLO HTML
+  // ============================================
+
   if (
     !pathname.startsWith('/api/') &&
     !pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|webp)$/)
@@ -184,7 +208,11 @@ export async function proxy(request: NextRequest) {
   const isPublicApi = isPublicApiRoute(pathname, method)
 
   if (pathname.startsWith('/api/') && isPublicApi) {
-    console.log('✅ API pública permitida:', pathname)
+
+    if (isDev) {
+      console.log(`  Pública: ${cleanPath}`)
+    }
+
     return response
   }
 
@@ -194,9 +222,14 @@ export async function proxy(request: NextRequest) {
 
   if (pathname === '/api/auth/login') {
 
-    const limitResult = loginRateLimiter.attempt(`login_${clientIP}`)
+    const limitResult =
+      loginRateLimiter.attempt(`login_${clientIP}`)
 
     if (!limitResult.allowed) {
+
+      console.warn('  Rate limit login:', {
+        ip: clientIP
+      })
 
       return NextResponse.json(
         {
@@ -214,11 +247,20 @@ export async function proxy(request: NextRequest) {
   // RATE LIMIT API PRIVADA
   // ============================================
 
-  if (pathname.startsWith('/api/') && !isPublicApi) {
+  if (
+    pathname.startsWith('/api/') &&
+    !isPublicApi
+  ) {
 
-    const limitResult = apiRateLimiter.attempt(`api_${clientIP}`)
+    const limitResult =
+      apiRateLimiter.attempt(`api_${clientIP}`)
 
     if (!limitResult.allowed) {
+
+      console.warn('Rate limit API:', {
+        ip: clientIP,
+        path: cleanPath
+      })
 
       return NextResponse.json(
         {
@@ -233,14 +275,17 @@ export async function proxy(request: NextRequest) {
   }
 
   // ============================================
-  // VERIFICAR AUTENTICACIÓN
+  // AUTH
   // ============================================
 
-  const token = request.cookies.get('auth_token')?.value
+  const token =
+    request.cookies.get('auth_token')?.value
 
-  const needsAuth = requiresAuth(pathname)
+  const needsAuth =
+    requiresAuth(pathname)
 
-  const isAdmin = isAdminRoute(pathname)
+  const isAdmin =
+    isAdminRoute(pathname)
 
   const requiresApiAuth =
     pathname.startsWith('/api/') &&
@@ -258,9 +303,12 @@ export async function proxy(request: NextRequest) {
 
     if (!token) {
 
-      console.log('❌ No autorizado - Sin token:', pathname)
+      console.warn('❌ No autorizado:', {
+        path: cleanPath,
+        ip: clientIP
+      })
 
-      // APIs → JSON
+      // APIs
       if (pathname.startsWith('/api/')) {
 
         return NextResponse.json(
@@ -273,8 +321,9 @@ export async function proxy(request: NextRequest) {
         )
       }
 
-      // Páginas → Redirect
-      const loginUrl = new URL('/login', request.url)
+      // Redirect páginas
+      const loginUrl =
+        new URL('/login', request.url)
 
       loginUrl.searchParams.set('from', pathname)
 
@@ -282,7 +331,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // ============================================
-    // VALIDAR TOKEN
+    // VALIDAR JWT
     // ============================================
 
     try {
@@ -303,6 +352,10 @@ export async function proxy(request: NextRequest) {
 
         if (!adminLimitResult.allowed) {
 
+          console.warn('  Rate limit admin:', {
+            userId: payload.userId
+          })
+
           return NextResponse.json(
             {
               success: false,
@@ -314,12 +367,12 @@ export async function proxy(request: NextRequest) {
           )
         }
 
-        // Verificar rol admin
+        // Verificar rol
         if (payload.role !== 'admin') {
 
-          console.log('❌ Acceso admin denegado:', {
-            path: pathname,
-            userId: payload.userId
+          console.warn('❌ Acceso admin denegado:', {
+            userId: payload.userId,
+            path: cleanPath
           })
 
           return NextResponse.redirect(
@@ -329,12 +382,13 @@ export async function proxy(request: NextRequest) {
       }
 
       // ============================================
-      // AGREGAR HEADERS A APIs
+      // HEADERS APIs
       // ============================================
 
       if (pathname.startsWith('/api/')) {
 
-        const requestHeaders = new Headers(request.headers)
+        const requestHeaders =
+          new Headers(request.headers)
 
         requestHeaders.set(
           'x-user-id',
@@ -366,13 +420,13 @@ export async function proxy(request: NextRequest) {
     } catch (error) {
 
       console.error('❌ Token inválido:', {
-        path: pathname,
+        path: cleanPath,
         error: error instanceof Error
           ? error.message
           : 'Unknown error'
       })
 
-      // API → JSON
+      // APIs
       if (pathname.startsWith('/api/')) {
 
         return NextResponse.json(
@@ -385,10 +439,11 @@ export async function proxy(request: NextRequest) {
         )
       }
 
-      // Página → redirect
-      const redirectResponse = NextResponse.redirect(
-        new URL('/login', request.url)
-      )
+      // Redirect páginas
+      const redirectResponse =
+        NextResponse.redirect(
+          new URL('/login', request.url)
+        )
 
       redirectResponse.cookies.delete('auth_token')
 
