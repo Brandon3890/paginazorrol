@@ -2,6 +2,10 @@ import { Header } from "@/components/header"
 import { CategoryBreadcrumb } from "@/components/category-breadcrumb"
 import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
+import { Suspense } from "react"
+
+// Forzar renderizado dinámico para producción
+export const dynamic = 'force-dynamic'
 
 export default function FiltroPage() {
   return (
@@ -19,7 +23,9 @@ export default function FiltroPage() {
           <p className="text-muted-foreground mb-8">
             Explora nuestra completa colección de productos
           </p>
-          <ProductGrid />
+          <Suspense fallback={<div>Cargando productos...</div>}>
+            <ProductGrid />
+          </Suspense>
         </div>
       </main>
       <Footer />

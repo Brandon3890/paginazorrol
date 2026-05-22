@@ -27,6 +27,7 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false)
 
   const router = useRouter()
   const pathname = usePathname()
@@ -38,7 +39,11 @@ export function Header() {
 
   useEffect(() => {
     setIsMounted(true)
-    fetchCategories()
+    const loadCategories = async () => {
+      await fetchCategories()
+      setCategoriesLoaded(true)
+    }
+    loadCategories()
   }, [fetchCategories])
 
   const totalItems = isMounted ? getTotalItems() : 0
@@ -51,21 +56,30 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
+  // Filtrar categorías activas y asegurar que tienen slug válido
   const headerCategories = categories
-    .filter(category => category.is_active)
+    .filter(category => category.is_active && category.slug && category.slug.trim() !== '')
     .map(category => ({
       name: category.name,
-      href: `/filtro/${category.slug}`,
+      slug: category.slug,
+      href: `/filtro/${encodeURIComponent(category.slug)}`,
     }))
 
-  // Manejador de búsqueda instantánea - SOLO actualiza el store, NO redirige
+  // Manejador de búsqueda instantánea
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
-    setGlobalSearchQuery(value) // Solo actualiza el store, sin redirigir
+    setGlobalSearchQuery(value)
   }
 
-  // Limpiar búsqueda
+  // Manejar búsqueda al presionar Enter
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      router.push(`/filtro?search=${encodeURIComponent(searchQuery)}`)
+      setSearchExpanded(false)
+    }
+  }
+
   const clearSearch = () => {
     setSearchQuery("")
     setGlobalSearchQuery("")
@@ -77,7 +91,6 @@ export function Header() {
     router.push("/")
   }
 
-  // Obtener iniciales del usuario para el avatar
   const getUserInitials = () => {
     if (!user) return "U"
     const firstName = user.firstName || ""
@@ -88,9 +101,16 @@ export function Header() {
     return firstName ? firstName.charAt(0).toUpperCase() : "U"
   }
 
+  // Debug: Mostrar categorías en consola (solo desarrollo)
+  useEffect(() => {
+    if (categoriesLoaded && headerCategories.length > 0) {
+      console.log("📋 Categorías cargadas en Header:", headerCategories)
+    }
+  }, [categoriesLoaded, headerCategories])
+
   return (
     <div className="sticky top-0 z-50">
-      {/* BANNER DE PÁGINA EN CONSTRUCCIÓN - ROJO - SIN ESPACIO */}
+      {/* BANNER DE PÁGINA EN CONSTRUCCIÓN */}
       <div className="bg-red-600 text-white py-3 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-3">
           <motion.div
@@ -111,12 +131,12 @@ export function Header() {
         </div>
       </div>
 
-      {/* HEADER - SIN BORDE SUPERIOR, PEGADO AL BANNER */}
+      {/* HEADER */}
       <header className="bg-white text-black border-b border-gray-300">
         <div className="max-w-7xl mx-auto px-8 py-6">
           {/* TOP */}
           <div className="flex items-center justify-between gap-6">
-            {/* LOGO - Imagen SVG en lugar de texto */}
+            {/* LOGO */}
             <Link
               href="/"
               onClick={() => setGlobalSearchQuery("")}
@@ -133,7 +153,7 @@ export function Header() {
               </div>
             </Link>
 
-            {/* BUSCADOR DESKTOP - BÚSQUEDA INSTANTÁNEA SIN REDIRECCIÓN */}
+            {/* BUSCADOR DESKTOP */}
             <div className="hidden md:flex flex-1 justify-center">
               <div className="relative w-full max-w-xl">
                 <input
@@ -141,13 +161,10 @@ export function Header() {
                   placeholder="¿Qué estás buscando?"
                   value={searchQuery}
                   onChange={handleSearchChange}
+                  onKeyPress={handleSearchKeyPress}
                   className="w-full bg-transparent border border-gray-400 rounded-full py-3 pl-6 pr-14 text-sm focus:outline-none focus:border-[#E4572E] transition-colors"
                 />
-
-                {/* Línea */}
                 <div className="absolute right-12 top-1/2 -translate-y-1/2 h-6 w-px bg-gray-400"></div>
-
-                {/* Icono de búsqueda (solo decorativo) */}
                 <div className="absolute right-4 top-1/2 -translate-y-1/2">
                   <Search className="w-5 h-5 text-gray-700" />
                 </div>
@@ -165,6 +182,7 @@ export function Header() {
                       placeholder="¿Qué estás buscando?"
                       value={searchQuery}
                       onChange={handleSearchChange}
+                      onKeyPress={handleSearchKeyPress}
                       className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none focus:border-[#E4572E]"
                       autoFocus
                     />
@@ -192,24 +210,17 @@ export function Header() {
                 )}
               </Button>
 
-              {/* USER - Versión mejorada con indicador visual de sesión */}
+              {/* USER */}
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="relative group"
-                    >
-                      {/* Anillo de estado - indicador de sesión activa */}
+                    <Button variant="ghost" size="icon" className="relative group">
                       <div className="absolute -top-1 -right-1">
                         <div className="relative">
                           <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                           <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full animate-ping opacity-75"></div>
                         </div>
                       </div>
-                      
-                      {/* Avatar con iniciales */}
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-sm font-bold">
                         {getUserInitials()}
                       </div>
@@ -218,7 +229,6 @@ export function Header() {
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="px-3 py-2 bg-gradient-to-r from-[#E4572E]/10 to-transparent">
                       <div className="flex items-center gap-3">
-                        {/* Avatar grande en el dropdown */}
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-md font-bold">
                           {getUserInitials()}
                         </div>
@@ -276,11 +286,7 @@ export function Header() {
               ) : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-black hover:bg-gray-100 transition-colors"
-                    >
+                    <Button variant="ghost" size="icon" className="text-black hover:bg-gray-100 transition-colors">
                       <User className="w-6 h-6" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -317,8 +323,8 @@ export function Header() {
             </div>
           </div>
 
-          {/* NAV */}
-          <nav className="hidden lg:flex flex items-center justify-between mt-6 gap-6 text-sm font-semibold tracking-wide">
+          {/* NAV DESKTOP */}
+          <nav className="hidden lg:flex items-center justify-between mt-6 gap-6 text-sm font-semibold tracking-wide">
             {navItems.map((item) => {
               if (item.hasDropdown) {
                 return (
@@ -328,12 +334,27 @@ export function Header() {
                         {item.name}
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      {headerCategories.map((cat) => (
-                        <DropdownMenuItem key={cat.name} asChild>
-                          <Link href={cat.href}>{cat.name}</Link>
-                        </DropdownMenuItem>
-                      ))}
+                    <DropdownMenuContent className="min-w-[200px]">
+                      {!categoriesLoaded ? (
+                        <div className="px-2 py-4 text-center text-sm text-gray-500">
+                          Cargando categorías...
+                        </div>
+                      ) : headerCategories.length > 0 ? (
+                        headerCategories.map((cat) => (
+                          <DropdownMenuItem key={cat.slug} asChild>
+                            <Link 
+                              href={cat.href}
+                              className="cursor-pointer hover:text-[#E4572E] transition-colors"
+                            >
+                              {cat.name}
+                            </Link>
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-4 text-center text-sm text-gray-500">
+                          No hay categorías disponibles
+                        </div>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )
@@ -357,7 +378,6 @@ export function Header() {
         <SheetContent side="left" className="w-80">
           <SheetTitle>Menú</SheetTitle>
           
-          {/* Mostrar información de usuario en mobile si está autenticado */}
           {isAuthenticated && (
             <div className="mt-4 p-3 bg-gradient-to-r from-[#E4572E]/10 to-transparent rounded-lg">
               <div className="flex items-center gap-3">
@@ -377,7 +397,6 @@ export function Header() {
           )}
           
           <div className="mt-4 flex flex-col gap-4">
-            {/* PRODUCTOS con submenú */}
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setMobileProductsOpen(!mobileProductsOpen)}
@@ -393,23 +412,29 @@ export function Header() {
               
               {mobileProductsOpen && (
                 <div className="ml-4 flex flex-col gap-2">
-                  {headerCategories.map((cat) => (
-                    <Link
-                      key={cat.name}
-                      href={cat.href}
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        setMobileProductsOpen(false);
-                      }}
-                      className="text-sm text-gray-600 hover:text-[#E4572E] transition-colors"
-                    >
-                      {cat.name}
-                    </Link>
-                  ))}
+                  {!categoriesLoaded ? (
+                    <div className="text-sm text-gray-500">Cargando...</div>
+                  ) : headerCategories.length > 0 ? (
+                    headerCategories.map((cat) => (
+                      <Link
+                        key={cat.slug}
+                        href={cat.href}
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setMobileProductsOpen(false);
+                        }}
+                        className="text-sm text-gray-600 hover:text-[#E4572E] transition-colors"
+                      >
+                        {cat.name}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No hay categorías</div>
+                  )}
                 </div>
               )}
             </div>
-            {/* QUIÉNES SOMOS */}
+            
             <Link 
               href="/quienes-somos" 
               onClick={() => setMobileMenuOpen(false)}
@@ -418,7 +443,6 @@ export function Header() {
               QUIÉNES SOMOS
             </Link>
 
-            {/* CONTACTO */}
             <Link 
               href="/contacto" 
               onClick={() => setMobileMenuOpen(false)}
@@ -427,7 +451,6 @@ export function Header() {
               CONTACTO
             </Link>
 
-            {/* Opciones de usuario en mobile si está autenticado */}
             {isAuthenticated && (
               <>
                 <div className="border-t border-gray-200 my-2"></div>
