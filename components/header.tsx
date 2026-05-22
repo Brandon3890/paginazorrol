@@ -46,7 +46,7 @@ export function Header() {
   const [mobileProductsOpen, setMobileProductsOpen] = useState(false)
 
   const navItems = [
-    { name: "PRODUCTOS", href: "/productos", hasDropdown: true },
+    { name: "PRODUCTOS", href: "/filtro", hasDropdown: true },
     { name: "QUIÉNES SOMOS", href: "/quienes-somos", hasDropdown: false },
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
