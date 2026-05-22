@@ -517,8 +517,6 @@ export default function OrdersPage() {
                               className="flex justify-between"
                               variants={{ hidden: { opacity: 0, x: -5 }, visible: { opacity: 1, x: 0 } }}
                             >
-                              <span className="text-muted-foreground">IVA (19%):</span>
-                              <span>${order.tax.toLocaleString('es-CL')}</span>
                             </motion.div>
                             <Separator />
                             <motion.div 
