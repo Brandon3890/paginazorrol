@@ -449,10 +449,6 @@ export default function OrderDetailPage() {
                     <span className="text-muted-foreground">Envío:</span>
                     <span>{order.shipping === 0 ? "Gratis" : formatCLP(order.shipping)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">IVA (19%):</span>
-                    <span>{formatCLP(order.tax)}</span>
-                  </div>
                   <Separator />
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
