@@ -188,13 +188,12 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
 
         const buffer = Buffer.concat(chunks);
 
-        console.log('📊 STATUS PDF:', res.statusCode);
-        console.log('📊 HEADERS PDF:', res.headers);
+
 
         const text = buffer.toString('utf8');
 
-        console.log('📄 RESPUESTA PDF RAW:');
-        console.log(text.substring(0, 2000));
+
+        console.log('📄 PDF recibido correctamente');
 
         // Si es PDF real
         if (
