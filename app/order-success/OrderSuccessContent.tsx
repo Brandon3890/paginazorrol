@@ -95,7 +95,7 @@ export default function OrderSuccessContent() {
 
       setOrder(data)
 
-      if (data.boleta_emitida === 1 && data.boleta_folio) {
+      if (data && data.boleta_emitida === 1 && data.boleta_folio ) {
         setBoletaInfo({
           success: true,
           folio: data.boleta_folio,
@@ -258,7 +258,9 @@ export default function OrderSuccessContent() {
 
                   <div className="flex justify-between">
                     <span>Total:</span>
-                    <span>${order.total.toLocaleString('es-CL')}</span>
+                    <span>
+                        ${(order.total || 0).toLocaleString('es-CL')}
+                    </span>
                   </div>
 
                 </div>

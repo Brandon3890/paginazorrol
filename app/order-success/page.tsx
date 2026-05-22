@@ -1,19 +1,21 @@
-// app/order-success/page.tsx
 "use client"
 
-import { Suspense } from 'react'
-import OrderSuccessContent from './OrderSuccessContent'
+import dynamic from 'next/dynamic'
 
-export default function OrderSuccessPage() {
-  return (
-    <Suspense fallback={
+const OrderSuccessContent = dynamic(
+  () => import('./OrderSuccessContent'),
+  {
+    ssr: false,
+    loading: () => (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto text-center">
-          <p>Cargando...</p>
+          <p>Cargando pedido...</p>
         </div>
       </div>
-    }>
-      <OrderSuccessContent />
-    </Suspense>
-  )
+    )
+  }
+)
+
+export default function OrderSuccessPage() {
+  return <OrderSuccessContent />
 }
