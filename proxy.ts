@@ -1,4 +1,3 @@
-// middleware.ts 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -15,62 +14,99 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!)
 const protectedRoutes = ['/checkout', '/profile', '/orders']
 const adminRoutes = ['/admin', '/api/admin']
 
-// Rutas públicas de órdenes (si las hay)
-const publicOrderRoutes = ['/order-success'] // Esta ruta debe ser pública
+// Rutas públicas (sin autenticación)
+const publicRoutes = [
+  '/', 
+  '/login', 
+  '/register', 
+  '/products', 
+  '/product', 
+  '/cart',
+  '/order-success'  // Página de éxito pública
+]
+
+// Endpoints API públicos (solo lectura)
+const publicApiRoutes = [
+  '/api/auth/login',
+  '/api/auth/register', 
+  '/api/auth/logout',
+  '/api/auth/verify',
+  '/api/payment/response',  // Callback de Webpay (obligatorio)
+  '/api/shipping/rate',     // Cotización de envíos
+  '/api/simplefactura/pdf',  // PDF de boleta
+]
+
+// Función para verificar si una ruta de API específica es pública
+function isPublicApiRoute(pathname: string, method: string): boolean {
+  // Endpoints públicos exactos
+  if (publicApiRoutes.some(route => pathname === route)) {
+    return true
+  }
+  
+  // Endpoint de órdenes: GET es público (para order-success), otros métodos requieren auth
+  if (pathname.match(/^\/api\/orders\/\d+$/)) {
+    return method === 'GET'  // Solo GET es público
+  }
+  
+  // Listado de órdenes: solo para usuarios autenticados
+  if (pathname === '/api/orders' && method === 'GET') {
+    return false  // Requiere autenticación
+  }
+  
+  return false
+}
 
 // Obtener IP real del cliente 
 function getClientIP(request: NextRequest): string {
-  // En producción, usar x-forwarded-for
   const forwardedFor = request.headers.get('x-forwarded-for')
   if (forwardedFor) {
     return forwardedFor.split(',')[0].trim()
   }
   
-  // En desarrollo, usar x-real-ip o la IP de la conexión
   const realIP = request.headers.get('x-real-ip')
   if (realIP) {
     return realIP
   }
   
-  // Fallback para desarrollo
   return '127.0.0.1'
 }
 
-// Obtener User Agent
 function getUserAgent(request: NextRequest): string {
   return request.headers.get('user-agent') || 'unknown'
 }
 
-// Verificar si una ruta requiere autenticación
 function requiresAuth(pathname: string): boolean {
-  // Si es una ruta pública de órdenes, no requiere auth
-  if (publicOrderRoutes.some(route => pathname.startsWith(route))) {
+  // Rutas públicas no requieren auth
+  if (publicRoutes.some(route => pathname === route)) {
+    return false
+  }
+  if (publicRoutes.some(route => pathname.startsWith(route + '?'))) {
     return false
   }
   
-  // Si es una ruta protegida, requiere auth
+  // Rutas protegidas
   return protectedRoutes.some(route => pathname.startsWith(route))
 }
 
-// Verificar si es ruta de admin
 function isAdminRoute(pathname: string): boolean {
   return adminRoutes.some(route => pathname.startsWith(route))
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const method = request.method
   const clientIP = getClientIP(request)
   const userAgent = getUserAgent(request)
   
   const response = NextResponse.next()
 
-  // Aplicar headers de seguridad globales
+  // Headers de seguridad
   const securityHeaders = getSecurityHeaders()
   Object.entries(securityHeaders).forEach(([key, value]) => {
     response.headers.set(key, value)
   })
 
-  // CSP headers solo para páginas HTML
+  // CSP solo para páginas HTML
   if (!pathname.startsWith('/api/') && !pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg)$/)) {
     const cspHeaders = getCSPHeaders()
     Object.entries(cspHeaders).forEach(([key, value]) => {
@@ -81,62 +117,44 @@ export async function proxy(request: NextRequest) {
   // Rate limiting para login
   if (pathname === '/api/auth/login') {
     const limitResult = loginRateLimiter.attempt(`login_${clientIP}`)
-    
     if (!limitResult.allowed) {
-      console.log('🚫 Rate limit excedido para login:', {
-        ip: clientIP,
-        userAgent: userAgent.substring(0, 50),
-        path: pathname
-      })
-      
       return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Demasiados intentos de login. Intenta nuevamente en 30 minutos.',
-          retryAfter: Math.ceil((limitResult.resetTime - Date.now()) / 1000)
-        },
-        { 
-          status: 429,
-          headers: {
-            'Retry-After': Math.ceil((limitResult.resetTime - Date.now()) / 1000).toString()
-          }
-        }
-      )
-    }
-  }
-
-  // Rate limiting general para API
-  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/')) {
-    const limitResult = apiRateLimiter.attempt(`api_${clientIP}`)
-    
-    if (!limitResult.allowed) {
-      console.log('🚫 Rate limit excedido para API:', {
-        ip: clientIP,
-        path: pathname
-      })
-      
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Demasiadas peticiones. Intenta nuevamente más tarde.' 
-        },
+        { success: false, message: 'Demasiados intentos. Intenta en 30 minutos.' },
         { status: 429 }
       )
     }
   }
 
-  // Verificación de autenticación para rutas protegidas
+  // Rate limiting general para API (excepto públicas)
+  if (pathname.startsWith('/api/') && !isPublicApiRoute(pathname, method)) {
+    const limitResult = apiRateLimiter.attempt(`api_${clientIP}`)
+    if (!limitResult.allowed) {
+      return NextResponse.json(
+        { success: false, message: 'Demasiadas peticiones.' },
+        { status: 429 }
+      )
+    }
+  }
+
+  // Verificar si es una API pública (no requiere auth)
+  if (isPublicApiRoute(pathname, method)) {
+    console.log('✅ API pública:', { pathname, method })
+    return response
+  }
+
+  // Verificar autenticación para el resto
   const token = request.cookies.get('auth_token')?.value
   const needsAuth = requiresAuth(pathname)
   const isAdmin = isAdminRoute(pathname)
 
-  if (needsAuth || isAdmin) {
+  if (needsAuth || isAdmin || pathname.startsWith('/api/')) {
     if (!token) {
-      console.log('🔐 Redirigiendo al login desde:', {
-        path: pathname,
-        ip: clientIP
-      })
+      // Si es API, devolver 401
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
       
+      // Si es página, redirigir a login
       const loginUrl = new URL('/login', request.url)
       loginUrl.searchParams.set('from', pathname)
       return NextResponse.redirect(loginUrl)
@@ -145,90 +163,43 @@ export async function proxy(request: NextRequest) {
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET)
       
-      // Rate limiting para administradores
       if (isAdmin) {
         const adminLimitResult = adminRateLimiter.attempt(`admin_${payload.userId}`)
-        
         if (!adminLimitResult.allowed) {
-          console.log('🚫 Rate limit excedido para admin:', {
-            email: payload.email,
-            userId: payload.userId,
-            path: pathname
-          })
-          
           return NextResponse.json(
-            { 
-              success: false, 
-              message: 'Demasiadas acciones administrativas. Espera un momento.' 
-            },
+            { success: false, message: 'Demasiadas acciones. Espera un momento.' },
             { status: 429 }
           )
         }
 
-        // Verificar rol de administrador
         if (payload.role !== 'admin') {
-          console.log('❌ Intento de acceso admin no autorizado:', {
-            email: payload.email,
-            userId: payload.userId,
-            path: pathname,
-            ip: clientIP
-          })
-          
           return NextResponse.redirect(new URL('/unauthorized', request.url))
         }
       }
 
-      // Agregar headers de usuario para las APIs
+      // Agregar headers de usuario para APIs
       if (pathname.startsWith('/api/')) {
         const requestHeaders = new Headers(request.headers)
         requestHeaders.set('x-user-id', String(payload.userId))
         requestHeaders.set('x-user-email', String(payload.email))
         requestHeaders.set('x-user-role', String(payload.role))
-        requestHeaders.set('x-client-ip', clientIP)
 
         return NextResponse.next({
           request: { headers: requestHeaders },
         })
       }
 
-      // Para rutas de órdenes, verificar que el usuario pueda acceder a la orden específica
-      if (pathname.startsWith('/orders/mysql/')) {
-        // El acceso a órdenes específicas se maneja en el componente/page
-        // Aquí solo verificamos que esté autenticado
-        console.log('📦 Acceso a orden MySQL:', {
-          userId: payload.userId,
-          path: pathname,
-          ip: clientIP
-        })
-      }
-
     } catch (error) {
-      console.error('❌ Token verification failed:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        ip: clientIP,
-        path: pathname
-      })
+      console.error('❌ Token inválido:', { path: pathname })
       
-      // Token inválido, limpiar cookie y redirigir
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Token inválido' }, { status: 401 })
+      }
+      
       const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
       redirectResponse.cookies.delete('auth_token')
-      
-      // También aplicar headers de seguridad a la respuesta de redirección
-      Object.entries(securityHeaders).forEach(([key, value]) => {
-        redirectResponse.headers.set(key, value)
-      })
-      
       return redirectResponse
     }
-  }
-
-  // Log de peticiones importantes (opcional)
-  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
-    console.log('👨‍💼 Acceso admin:', {
-      path: pathname,
-      ip: clientIP,
-      timestamp: new Date().toISOString()
-    })
   }
 
   return response
@@ -236,11 +207,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admin/:path*',
-    '/checkout/:path*', 
-    '/orders/:path*',
-    '/profile/:path*',
-    '/api/:path*',
-    '/order-success' 
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
