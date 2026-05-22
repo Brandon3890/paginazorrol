@@ -17,7 +17,11 @@ export async function POST(
     }
 
     const { id } = await params;
-    const orderId = id;
+    const orderId = parseInt(id);
+
+    if (isNaN(orderId)) {
+      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 });
+    }
 
     // Obtener datos de la orden (sin JOIN con order_items para evitar duplicados)
     const orderData = await query(
@@ -58,15 +62,52 @@ export async function POST(
       );
     }
 
-    // Verificar que la orden tiene una boleta emitida
-    if (!order.boleta_folio) {
+    console.log('📋 Orden encontrada:', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      boletaFolio: order.boleta_folio,
+      boletaId: order.boleta_id,
+      boletaEmitida: order.boleta_emitida
+    });
+
+    // Verificar si la orden tiene boleta - Buscar en múltiples lugares
+    let boletaFolio = order.boleta_folio;
+    
+    // Si no tiene boleta_folio en orders, buscar en tabla boletas
+    if (!boletaFolio && order.boleta_id) {
+      const boletaData = await query(
+        `SELECT folio FROM boletas WHERE id = ? AND order_id = ?`,
+        [order.boleta_id, orderId]
+      ) as any[];
+      
+      if (boletaData.length > 0) {
+        boletaFolio = boletaData[0].folio;
+        console.log('✅ Boleta encontrada en tabla boletas:', boletaFolio);
+      }
+    }
+
+    // Si aún no hay folio, intentar buscar por order_id directamente
+    if (!boletaFolio) {
+      const boletaData = await query(
+        `SELECT folio FROM boletas WHERE order_id = ?`,
+        [orderId]
+      ) as any[];
+      
+      if (boletaData.length > 0) {
+        boletaFolio = boletaData[0].folio;
+        console.log('✅ Boleta encontrada por order_id:', boletaFolio);
+      }
+    }
+
+    if (!boletaFolio) {
+      console.error('❌ No se encontró boleta para la orden:', orderId);
       return NextResponse.json(
-        { error: 'Esta orden aún no tiene una boleta electrónica emitida' },
+        { error: 'Esta orden aún no tiene una boleta electrónica emitida. Por favor contacta a soporte.' },
         { status: 400 }
       );
     }
 
-    // Obtener TODOS los productos de la orden (por separado)
+    // Obtener TODOS los productos de la orden
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -85,17 +126,15 @@ export async function POST(
       );
     }
 
-    console.log('📦 Productos encontrados en la orden:', orderItems.length);
-    orderItems.forEach((item, idx) => {
-      console.log(`   ${idx + 1}. ${item.product_name} x${item.quantity} = $${item.product_price}`);
-    });
+    console.log('📦 Productos encontrados:', orderItems.length);
+    console.log('📄 Folio de boleta a usar:', boletaFolio);
 
     // Calcular el IVA incluido correctamente
     const subtotalConIVA = parseFloat(order.subtotal);
     const subtotalNeto = Math.round(subtotalConIVA / 1.19);
     const ivaIncluido = subtotalConIVA - subtotalNeto;
 
-    // Preparar datos para el email - CON TODOS LOS PRODUCTOS
+    // Preparar datos para el email
     const emailData = {
       orderNumber: order.order_number,
       customerName: `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() || 'Cliente',
@@ -104,7 +143,9 @@ export async function POST(
       orderDate: new Date(order.created_at).toLocaleDateString('es-CL', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       }),
       paymentMethod: "Transbank Webpay",
       items: orderItems.map((item: any) => ({
@@ -135,23 +176,26 @@ export async function POST(
     };
 
     console.log('📧 Reenviando email con boleta para orden:', order.order_number);
-    console.log('   Folio boleta:', order.boleta_folio);
-    console.log('   Total productos a incluir:', emailData.items.length);
+    console.log('   Folio boleta:', boletaFolio);
+    console.log('   Email cliente:', order.customer_email);
     
     try {
       // Obtener el PDF de la boleta
-      console.log('📄 Descargando PDF de boleta folio:', order.boleta_folio);
-      const pdfUint8Array = await obtenerPDFSimpleFactura(order.boleta_folio);
+      console.log('📄 Descargando PDF de boleta folio:', boletaFolio);
+      const pdfUint8Array = await obtenerPDFSimpleFactura(Number(boletaFolio));
       const pdfBuffer = Buffer.from(pdfUint8Array);
       
+      console.log('✅ PDF obtenido, tamaño:', pdfBuffer.length, 'bytes');
+      
       // Enviar email con la boleta PDF adjunta
-      const emailSent = await sendBoletaEmail(emailData, pdfBuffer, order.boleta_folio);
+      const emailSent = await sendBoletaEmail(emailData, pdfBuffer, String(boletaFolio));
       
       if (emailSent) {
+        console.log('✅ Email reenviado exitosamente');
         return NextResponse.json({
           success: true,
-          message: `Email con boleta reenviado exitosamente. ${orderItems.length} producto(s) incluido(s).`,
-          boleta: { folio: order.boleta_folio },
+          message: `Email con boleta reenviado exitosamente a ${order.customer_email}. Folio: ${boletaFolio}`,
+          boleta: { folio: boletaFolio },
           productsCount: orderItems.length
         });
       } else {
@@ -161,10 +205,10 @@ export async function POST(
         );
       }
       
-    } catch (pdfError) {
+    } catch (pdfError: any) {
       console.error('❌ Error obteniendo PDF o enviando email:', pdfError);
       return NextResponse.json(
-        { error: 'Error al obtener la boleta PDF o enviar el email' },
+        { error: `Error al obtener la boleta PDF: ${pdfError.message}` },
         { status: 500 }
       );
     }

@@ -1,7 +1,6 @@
 // app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 // GET - Público para order-success
 export async function GET(
@@ -36,11 +35,17 @@ export async function GET(
 
     const order = orders[0]
 
-    // Obtener items
+    // Obtener items de la orden CON IMÁGENES
     const orderItems = await query(
-      `SELECT * FROM order_items WHERE order_id = ?`,
+      `SELECT oi.*, p.image as product_image
+       FROM order_items oi
+       LEFT JOIN products p ON oi.product_id = p.id
+       WHERE oi.order_id = ?`,
       [orderId]
     ) as any[]
+
+    console.log('📦 Items encontrados:', orderItems.length)
+    console.log('🖼️ Primer item imagen:', orderItems[0]?.product_image)
 
     const orderWithItems = {
       id: order.id,
@@ -70,7 +75,8 @@ export async function GET(
         product_name: item.product_name,
         product_price: parseFloat(item.product_price),
         quantity: item.quantity,
-        subtotal: parseFloat(item.subtotal)
+        subtotal: parseFloat(item.subtotal),
+        image_url: item.product_image || null  // ← Agregar imagen aquí
       }))
     }
 
@@ -91,21 +97,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = await getUserIdFromRequest(request)
+    // Verificar token desde cookie
+    const token = request.cookies.get('auth_token')?.value
     
-    if (!userId) {
+    if (!token) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar admin
-    const users = await query(
-      `SELECT role FROM users WHERE id = ?`,
-      [userId]
-    ) as any[]
-
-    const user = users.length > 0 ? users[0] : null
+    const { jwtVerify } = await import('jose')
+    const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!)
+    const { payload } = await jwtVerify(token, JWT_SECRET)
     
-    if (!user || user.role !== 'admin') {
+    if (payload.role !== 'admin') {
       return NextResponse.json({ error: 'No tienes permisos' }, { status: 403 })
     }
 
@@ -122,6 +125,7 @@ export async function PATCH(
     return NextResponse.json({ success: true })
 
   } catch (error) {
+    console.error('Error en PATCH:', error)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }

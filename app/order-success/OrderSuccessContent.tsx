@@ -444,24 +444,41 @@ export default function OrderSuccessContent() {
 
                 {/* Lista de productos */}
                 {order.items && order.items.length > 0 && (
-                  <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold flex items-center gap-2 mb-4">
-                      <Package className="w-4 h-4" />
-                      Productos
-                    </h3>
-                    <div className="space-y-3">
-                      {order.items.map((item) => (
-                        <div key={item.id} className="flex justify-between text-sm">
-                          <div>
-                            <span className="font-medium">{item.product_name}</span>
-                            <span className="text-muted-foreground ml-2">x{item.quantity}</span>
-                          </div>
-                          <span>${(item.product_price * item.quantity).toLocaleString('es-CL')}</span>
+                    <div className="border rounded-lg p-4">
+                        <h3 className="font-semibold flex items-center gap-2 mb-4">
+                        <Package className="w-4 h-4" />
+                        Productos
+                        </h3>
+                        <div className="space-y-3">
+                        {order.items.map((item) => (
+                            <div key={item.id} className="flex gap-3 items-center">
+                            {/* Imagen del producto */}
+                            {item.image_url && (
+                                <div className="w-12 h-12 relative flex-shrink-0">
+                                <img 
+                                    src={item.image_url} 
+                                    alt={item.product_name}
+                                    className="w-full h-full object-cover rounded"
+                                    onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                />
+                                </div>
+                            )}
+                            <div className="flex-1">
+                                <div className="flex justify-between">
+                                <span className="font-medium">{item.product_name}</span>
+                                <span>${(item.product_price * item.quantity).toLocaleString('es-CL')}</span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                Cantidad: {item.quantity} × ${item.product_price.toLocaleString('es-CL')}
+                                </div>
+                            </div>
+                            </div>
+                        ))}
                         </div>
-                      ))}
                     </div>
-                  </div>
-                )}
+                    )}
 
                 {/* Boleta electrónica */}
                 {order.boleta_folio && (
