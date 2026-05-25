@@ -8,7 +8,7 @@ import { useCategoryStore } from "@/lib/category-store"
 // Esta función se ejecuta en el servidor para generar las páginas estáticas
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/categories`)
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
     
     if (!response.ok) {
       return []
@@ -38,7 +38,7 @@ export default async function CategoryPage({ params }: PageProps) {
   // Obtener categorías del API
   let categories = []
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/categories`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`, {
       next: { revalidate: 3600 } // Revalidar cada hora
     })
     
@@ -87,7 +87,7 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
 
   let categories = []
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/categories`)
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
     if (response.ok) {
       categories = await response.json()
     }
