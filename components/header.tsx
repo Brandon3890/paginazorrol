@@ -53,11 +53,18 @@ export function Header() {
 
   // Filtrar categorías activas
   const headerCategories = categories
-    .filter(category => category.is_active && category.slug && category.slug.trim() !== '')
+    .filter(category => category.is_active)
     .map(category => ({
       name: category.name,
       slug: category.slug,
-      href: `/filtro/${encodeURIComponent(category.slug)}`,
+      href: `/filtro/${category.slug}`,
+      subcategories: category.subcategories
+        ?.filter(sub => sub.is_active)
+        .map(sub => ({
+          name: sub.name,
+          slug: sub.slug,
+          href: `/filtro/${category.slug}/${sub.slug}`
+        })) || []
     }))
 
   // Manejador de búsqueda instantánea
