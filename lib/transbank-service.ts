@@ -87,6 +87,7 @@ class TransbankService {
       )
 
       console.log('✅ Transacción creada exitosamente')
+      console.log('🔑 TOKEN:', response.data.token)
       return response.data
     } catch (error: any) {
       console.error('❌ Error creando transacción Webpay:', {
