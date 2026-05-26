@@ -1,4 +1,3 @@
-// app/products/[id]/page.tsx - COMPLETO CON BOTÓN ANIMADO
 "use client"
 
 import { useEffect, useState, use, useRef } from "react"

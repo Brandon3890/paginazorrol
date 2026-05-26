@@ -4,29 +4,10 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
-// FORZAR MODO DINÁMICO - Esta es la solución
+// ✅ Forzar modo dinámico - CORREGIDO
 export const dynamic = 'force-dynamic'
-
-export async function generateStaticParams() {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/categories`)
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const categories = await response.json()
-    
-    return categories
-      .filter((cat: any) => cat.is_active)
-      .map((category: any) => ({
-        category: category.slug,
-      }))
-  } catch (error) {
-    console.error('Error generating static params for categories:', error)
-    return []
-  }
-}
+// ✅ Deshabilitar generación estática
+export const dynamicParams = true
 
 interface PageProps {
   params: Promise<{ category: string }>
@@ -40,16 +21,18 @@ export default async function CategoryPage({ params }: PageProps) {
   
   let categories = []
   try {
-    // ✅ ELIMINADO cache: 'no-store' - ya no es necesario
     const response = await fetch(`${baseUrl}/api/categories`, {
-      next: { revalidate: 3600 } // Solo revalidación cada hora
+      next: { revalidate: 3600 }
     })
     
     if (response.ok) {
       categories = await response.json()
+    } else {
+      console.error('Error fetching categories:', response.status)
     }
   } catch (error) {
     console.error('Error fetching categories:', error)
+    // No retornar notFound aún, intentar continuar
   }
 
   const category = categories.find((cat: any) => 
@@ -83,6 +66,7 @@ export default async function CategoryPage({ params }: PageProps) {
   )
 }
 
+// ✅ Metadata debe ser async pero no necesita dynamic
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const resolvedParams = await params
   const categorySlug = resolvedParams.category

@@ -4,36 +4,9 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
-// FORZAR MODO DINÁMICO - Esta es la solución
+// ✅ Forzar modo dinámico
 export const dynamic = 'force-dynamic'
-
-export async function generateStaticParams() {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/categories`)
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const categories = await response.json()
-    
-    const params = categories
-      .filter((cat: any) => cat.is_active)
-      .flatMap((category: any) =>
-        category.subcategories
-          .filter((sub: any) => sub.is_active)
-          .map((subcategory: any) => ({
-            category: category.slug,
-            subcategory: subcategory.slug,
-          }))
-      )
-    
-    return params
-  } catch (error) {
-    console.error('Error generating static params for subcategories:', error)
-    return []
-  }
-}
+export const dynamicParams = true
 
 interface PageProps {
   params: Promise<{ category: string; subcategory: string }>
@@ -47,7 +20,6 @@ export default async function SubcategoryPage({ params }: PageProps) {
   
   let categories = []
   try {
-    // ✅ ELIMINADO cache: 'no-store' y cache: 'no-store'
     const response = await fetch(`${baseUrl}/api/categories`, {
       next: { revalidate: 3600 }
     })
