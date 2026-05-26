@@ -4,10 +4,7 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
-// ✅ Forzar modo dinámico - CORREGIDO
 export const dynamic = 'force-dynamic'
-// ✅ Deshabilitar generación estática
-export const dynamicParams = true
 
 interface PageProps {
   params: Promise<{ category: string }>
@@ -17,26 +14,31 @@ export default async function CategoryPage({ params }: PageProps) {
   const resolvedParams = await params
   const categorySlug = resolvedParams.category
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+  // ✅ En el servidor, usar localhost, no el dominio externo
+  const isServer = typeof window === 'undefined'
+  const baseUrl = isServer 
+    ? 'http://localhost:3000'  // En servidor, llamada interna
+    : process.env.NEXT_PUBLIC_BASE_URL || ''  // En cliente, usar dominio público
   
   let categories = []
   try {
+    console.log(`🔍 Fetching categories desde: ${baseUrl}/api/categories`)
     const response = await fetch(`${baseUrl}/api/categories`, {
-      next: { revalidate: 3600 }
+      next: { revalidate: 3600 },
+      // ✅ Importante: no usar cache: 'no-store'
     })
     
     if (response.ok) {
       categories = await response.json()
     } else {
-      console.error('Error fetching categories:', response.status)
+      console.error(`❌ Error ${response.status} fetching categories`)
     }
   } catch (error) {
-    console.error('Error fetching categories:', error)
-    // No retornar notFound aún, intentar continuar
+    console.error('❌ Error fetching categories:', error)
   }
 
   const category = categories.find((cat: any) => 
-    cat.slug === categorySlug && cat.is_active
+    cat.slug === categorySlug && cat.is_active === 1
   )
 
   if (!category) {
@@ -66,12 +68,12 @@ export default async function CategoryPage({ params }: PageProps) {
   )
 }
 
-// ✅ Metadata debe ser async pero no necesita dynamic
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const resolvedParams = await params
   const categorySlug = resolvedParams.category
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+  // ✅ Metadata también usa localhost en servidor
+  const baseUrl = 'http://localhost:3000'
   
   let categories = []
   try {
@@ -83,12 +85,10 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
     console.error('Error fetching categories for metadata:', error)
   }
 
-  const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active)
+  const category = categories.find((cat: any) => cat.slug === categorySlug && cat.is_active === 1)
 
   if (!category) {
-    return {
-      title: 'Categoría No Encontrada',
-    }
+    return { title: 'Categoría No Encontrada' }
   }
 
   return {
