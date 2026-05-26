@@ -4,10 +4,9 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
-// Esta función se ejecuta en el servidor para generar las páginas estáticas
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/categories`)
     
     if (!response.ok) {
       return []
@@ -41,11 +40,13 @@ export default async function SubcategoryPage({ params }: PageProps) {
   const resolvedParams = await params
   const { category: categorySlug, subcategory: subcategorySlug } = resolvedParams
 
-  // Obtener categorías del API
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+  
   let categories = []
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`, {
-      next: { revalidate: 3600 } // Revalidar cada hora
+    const response = await fetch(`${baseUrl}/api/categories`, {
+      next: { revalidate: 3600 },
+      cache: 'no-store'
     })
     
     if (response.ok) {
@@ -55,7 +56,6 @@ export default async function SubcategoryPage({ params }: PageProps) {
     console.error('Error fetching categories:', error)
   }
 
-  // Encontrar la categoría y subcategoría
   const category = categories.find((cat: any) => 
     cat.slug === categorySlug && cat.is_active
   )
@@ -102,9 +102,11 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   const resolvedParams = await params
   const { category: categorySlug, subcategory: subcategorySlug } = resolvedParams
 
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
+  
   let categories = []
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/categories`)
+    const response = await fetch(`${baseUrl}/api/categories`)
     if (response.ok) {
       categories = await response.json()
     }
@@ -122,7 +124,7 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   }
 
   return {
-    title: `${subcategory.name} - ${category.name} - Nuestra Tienda`,
+    title: `${subcategory.name} - ${category.name} - Zorro Lúdico`,
     description: subcategory.description || `Descubre nuestra selección de ${subcategory.name.toLowerCase()} en ${category.name.toLowerCase()}`,
   }
 }
