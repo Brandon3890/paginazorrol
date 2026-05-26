@@ -4,6 +4,9 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
+// FORZAR MODO DINÁMICO - Esta es la solución
+export const dynamic = 'force-dynamic'
+
 export async function generateStaticParams() {
   try {
     const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/categories`)
@@ -44,9 +47,9 @@ export default async function SubcategoryPage({ params }: PageProps) {
   
   let categories = []
   try {
+    // ✅ ELIMINADO cache: 'no-store' y cache: 'no-store'
     const response = await fetch(`${baseUrl}/api/categories`, {
-      next: { revalidate: 3600 },
-      cache: 'no-store'
+      next: { revalidate: 3600 }
     })
     
     if (response.ok) {
