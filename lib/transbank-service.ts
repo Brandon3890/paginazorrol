@@ -120,6 +120,8 @@ class TransbankService {
         status: response.data.status,
         response_code: response.data.response_code,
         authorization_code: response.data.authorization_code,
+        payment_type_code: response.data.payment_type_code,
+        installments_number: response.data.installments_number,
         amount: `$${response.data.amount?.toLocaleString('es-CL')}`
       })
 
