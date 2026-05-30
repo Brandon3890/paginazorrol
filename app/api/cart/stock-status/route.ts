@@ -97,7 +97,6 @@ export async function POST(request: NextRequest) {
           [userId, item.id, item.quantity, expiresAt]
         )
 
-        console.log(`✅ Reserva creada: usuario ${userId}, producto ${item.id}, ${item.quantity} unid.`)
       }
 
       if (errors.length > 0) {
@@ -116,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     } else if (action === 'release') {
       // LIBERAR STOCK: Devolver a products y eliminar reservas
-      console.log('🔄 Procesando liberación de stock para usuario:', userId)
+      console.log('Procesando liberación de stock:')
       
       // Obtener reservas del usuario
       const [reservations] = await query(
@@ -125,7 +124,7 @@ export async function POST(request: NextRequest) {
       ) as any[]
 
       if (reservations && reservations.length > 0) {
-        console.log(`📦 Encontradas ${reservations.length} reservas para liberar:`, reservations)
+        console.log(` Encontradas ${reservations.length} reservas para liberar:`, reservations)
         
         // Devolver stock a cada producto
         for (const res of reservations) {
@@ -137,7 +136,7 @@ export async function POST(request: NextRequest) {
             [res.quantity, res.product_id]
           ) as any
           
-          console.log(`📈 Stock devuelto para producto ${res.product_id}: +${res.quantity} unidades. Filas afectadas: ${result.affectedRows}`)
+          console.log(`Stock devuelto para producto ${res.product_id}: +${res.quantity} unidades. Filas afectadas: ${result.affectedRows}`)
         }
 
         // Eliminar las reservas
@@ -145,9 +144,9 @@ export async function POST(request: NextRequest) {
           'DELETE FROM stock_reservations WHERE user_id = ?',
           [userId]
         )
-        console.log(`🗑️ Reservas eliminadas para usuario ${userId}`)
+        console.log(`Reservas eliminadas para usuario ${userId}`)
       } else {
-        console.log('ℹ️ No hay reservas para liberar')
+        console.log('ℹNo hay reservas para liberar')
       }
 
       return NextResponse.json({
@@ -174,7 +173,7 @@ export async function POST(request: NextRequest) {
     )
 
   } catch (error: any) {
-    console.error('❌ Error en reserva de stock:', error)
+    console.error('Error en reserva de stock:', error)
     return NextResponse.json(
       { error: 'Error interno: ' + error.message },
       { status: 500 }

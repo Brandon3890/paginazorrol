@@ -9,7 +9,7 @@ import { emitirBoletaSimpleFactura, obtenerPDFSimpleFactura } from '@/lib/simple
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
   try {
 
-    console.log('📄 Obteniendo PDF directamente desde SimpleFactura');
+    console.log('Obteniendo PDF');
 
     const pdfUint8Array = await obtenerPDFSimpleFactura(Number(folio));
 
@@ -17,7 +17,7 @@ async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
 
   } catch (error: any) {
 
-    console.error('❌ Error obteniendo PDF:', error.message);
+    console.error(' Error obteniendo PDF:', error.message);
 
     return null;
   }
@@ -26,7 +26,7 @@ async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
 // Función auxiliar para emitir boleta
 async function emitirBoleta(orderId: number) {
   try {
-    console.log('📄 Iniciando emisión de boleta para orden:', orderId);
+    console.log('Iniciando emisión de boleta para orden:', orderId);
     
     // Obtener datos de la orden
     const orderData = await query(
@@ -96,7 +96,7 @@ async function emitirBoleta(orderId: number) {
     );
 
     if (result.status === 200) {
-      console.log('✅ Boleta emitida exitosamente. Folio:', result.data.folio);
+      console.log('Boleta emitida exitosamente.');
 
       return {
         success: true,
@@ -108,7 +108,7 @@ async function emitirBoleta(orderId: number) {
     }
 
   } catch (error: any) {
-    console.error('❌ Error en emitirBoleta:', error.message);
+    console.error('Error en emitirBoleta:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -119,14 +119,14 @@ export async function POST(request: NextRequest) {
     const token_ws = formData.get('token_ws') as string
     const TBK_TOKEN = formData.get('TBK_TOKEN') as string
 
-    console.log('🔄 Respuesta de Webpay recibida:', { 
+    console.log('Respuesta de Webpay recibida:', { 
       token_ws: token_ws ? `PRESENTE (${token_ws.substring(0, 10)}...)` : 'AUSENTE', 
       TBK_TOKEN: TBK_TOKEN ? `PRESENTE (${TBK_TOKEN.substring(0, 10)}...)` : 'AUSENTE' 
     })
 
     // CASO 1: Pago cancelado por el usuario
     if (TBK_TOKEN && !token_ws) {
-      console.log('❌ Pago ABORTADO por el usuario con TBK_TOKEN:', TBK_TOKEN)
+      console.log('Pago ABORTADO por el usuario con TBK_TOKEN:')
       
       const orders = await query(
         `SELECT * FROM orders WHERE transbank_session_id = ?`,
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     // CASO 2: Pago exitoso
     if (token_ws && !TBK_TOKEN) {
-      console.log('💰 Procesando pago EXITOSO con token_ws')
+      console.log(' Procesando pago EXITOSO con token_ws')
       
       try {
         const commitResponse = await transbankService.commitTransaction(token_ws)
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
         if (transbankService.isTransactionApproved(commitResponse)) {
           
           if (order.payment_status !== 'paid') {
-            console.log('✅ Procesando pago exitoso - DESCONTANDO STOCK')
+            console.log('Procesando pago exitoso - DESCONTANDO STOCK')
             
             // Descontar stock
             const orderItems = await query(
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
             );
 
             // ========== EMITIR BOLETA ==========
-            console.log('📄 Emitiendo boleta electrónica...');
+            console.log('Emitiendo boleta electrónica...');
             const resultadoBoleta = await emitirBoleta(order.id);
             
             let pdfBuffer = null;
@@ -216,17 +216,17 @@ export async function POST(request: NextRequest) {
             
             if (resultadoBoleta.success) {
               folio = resultadoBoleta.folio;
-              console.log('✅ Boleta emitida, folio:', folio);
+              console.log('Boleta emitida, folio:', folio);
               
               // Obtener el PDF de la boleta
               pdfBuffer = await obtenerPDFBoleta(folio);
               if (pdfBuffer) {
-                console.log('✅ PDF de boleta obtenido correctamente');
+                console.log('PDF de boleta obtenido correctamente');
               } else {
-                console.warn('⚠️ No se pudo obtener el PDF de la boleta');
+                console.warn('No se pudo obtener el PDF de la boleta');
               }
             } else {
-              console.error('⚠️ Error emitiendo boleta:', resultadoBoleta.error);
+              console.error('Error emitiendo boleta:', resultadoBoleta.error);
             }
 
             // ========== ENVIAR EMAIL CON BOLETA ==========
@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
                 // Enviar email con la boleta PDF (los 3 argumentos requeridos)
                 if (pdfBuffer && folio) {
                   await sendBoletaEmail(emailData, pdfBuffer, folio);
-                  console.log('📧 Email con boleta PDF enviado a:', firstItem.customer_email);
+                  console.log(' Email con boleta PDF enviado a:', firstItem.customer_email);
                 } else {
                   // Si no hay PDF, enviar solo confirmación sin boleta
                   console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
@@ -313,7 +313,7 @@ export async function POST(request: NextRequest) {
                 }
               }
             } catch (emailError) {
-              console.error('❌ Error enviando email:', emailError);
+              console.error('Error enviando email:', emailError);
             }
           }
 
@@ -346,7 +346,7 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log('✅ Pago APROBADO para orden:', order.id)
+          console.log('Pago APROBADO')
 
           return NextResponse.redirect(
             new URL(
@@ -387,13 +387,13 @@ export async function POST(request: NextRequest) {
     }
 
     // CASO 3: Tokens inválidos
-    console.error('❌ Tokens inválidos o ausentes')
+    console.error('Tokens inválidos o ausentes')
     return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/order-success?status=error&message=invalid_tokens`
     )
 
   } catch (error: any) {
-    console.error('❌ Error CRÍTICO:', error)
+    console.error('Error CRÍTICO:', error)
     return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/order-success?status=error&message=processing_error`
     )

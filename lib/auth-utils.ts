@@ -9,23 +9,22 @@ export async function getUserIdFromRequest(request: NextRequest): Promise<number
     const token = authHeader?.replace('Bearer ', '') || request.cookies.get('auth_token')?.value
 
     if (!token) {
-      console.log('❌ No token found in request')
+      console.log('No token found in request')
       return null
     }
 
     const { payload } = await jwtVerify(token, JWT_SECRET)
     
     if (!payload.userId) {
-      console.log('❌ No userId in token payload')
+      console.log('No user Id in token payload')
       return null
     }
 
     const userId = Number(payload.userId)
-    console.log('✅ User ID from token:', userId)
     return userId
 
   } catch (error) {
-    console.error('❌ Error verifying token:', error)
+    console.error('Error verifying token:', error)
     return null
   }
 }

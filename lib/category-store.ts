@@ -64,13 +64,13 @@ export const useCategoryStore = create<CategoryStore>()(
       fetchCategories: async (force = false) => {
         // Si ya están cargadas y no se fuerza, no hacer nada
         if (get().categoriesLoaded && !force) {
-          console.log('📦 Categorías ya cargadas, omitiendo fetch')
+          console.log('Categorías ya cargadas, omitiendo fetch')
           return
         }
 
         set({ loading: true, error: null })
         try {
-          console.log('🔄 Fetching categories...')
+          console.log('Fetching categories...')
           const response = await fetch('/api/categories')
           
           if (!response.ok) {
@@ -175,7 +175,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           // Recargar categorías después de crear
           await get().fetchCategories(true)
-          console.log('✅ Categoría creada exitosamente')
+          console.log('Categoría creada exitosamente')
         } catch (error) {
           console.error('Error creating category:', error)
           set({ error: (error as Error).message })
@@ -295,7 +295,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          console.log('✅ Subcategoría creada exitosamente')
+          console.log('Subcategoría creada exitosamente')
         } catch (error) {
           console.error('Error creating subcategory:', error)
           set({ error: (error as Error).message })

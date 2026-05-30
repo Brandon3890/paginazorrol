@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const order = orders[0]
     
-    console.log('📋 Orden original:', {
+    console.log('Orden original:', {
       id: order.id,
       currentOrderNumber: order.order_number,
       currentStatus: order.status
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const sessionId = transbankService.generateSessionId()
     const returnUrl = `${process.env.NEXTAUTH_URL}/api/payment/response`
 
-    console.log('🎯 COMPARACIÓN DE NÚMEROS:', {
+    console.log('COMPARACIÓN DE NÚMEROS:', {
       'Nuestro Order Number': newOrderNumber,
       'Transbank Buy Order': transbankBuyOrder,
       '¿Son diferentes?': newOrderNumber !== transbankBuyOrder,
@@ -76,11 +76,6 @@ export async function POST(request: NextRequest) {
       [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, orderId]
     ) as any
 
-    console.log('✅ Orden actualizada en BD:', {
-      affectedRows: updateResult.affectedRows,
-      newOrderNumber: newOrderNumber,
-      orderId: orderId
-    })
 
     // VERIFICACIÓN FINAL - Leer la orden actualizada
     const updatedOrders = await query(
@@ -90,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     if (updatedOrders.length > 0) {
       const updatedOrder = updatedOrders[0]
-      console.log('🔍 VERIFICACIÓN FINAL:', {
+      console.log('VERIFICACIÓN FINAL:', {
         'Número de Orden (Nuestro)': updatedOrder.order_number,
         'Buy Order (Transbank)': updatedOrder.transbank_buy_order,
         '¿SON DIFERENTES?': updatedOrder.order_number !== updatedOrder.transbank_buy_order,
@@ -107,7 +102,7 @@ export async function POST(request: NextRequest) {
       return_url: returnUrl
     })
 
-    console.log('✅ Transacción Webpay creada exitosamente')
+    console.log('Transacción Webpay creada exitosamente')
 
     return NextResponse.json({
       success: true,
@@ -120,7 +115,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('❌ Error creando transacción Webpay:', error)
+    console.error('Error creando transacción Webpay:', error)
     return NextResponse.json(
       { 
         error: 'Error interno del servidor al crear transacción',

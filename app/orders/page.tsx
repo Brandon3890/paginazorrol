@@ -83,19 +83,19 @@ export default function OrdersPage() {
       setLoading(true)
       setError(null)
       
-      console.log('📦 Fetching orders from MySQL for user')
+      console.log('Fetching orders from MySQL for user')
       const response = await fetch('/api/orders')
       
       if (response.ok) {
         const ordersData = await response.json()
-        console.log('✅ Orders data received:', ordersData.length, 'orders')
+        console.log('Orders data received:', ordersData.length, 'orders')
         setOrders(ordersData)
       } else {
         const errorData = await response.json()
         setError(errorData.error || 'Error al cargar las órdenes')
       }
     } catch (error) {
-      console.error('❌ Error fetching orders:', error)
+      console.error('Error fetching orders:', error)
       setError('No se pudieron cargar los pedidos. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)

@@ -110,15 +110,14 @@ export async function GET(request: NextRequest) {
 
     }
 
-    console.log('📄 Obteniendo PDF folio:', folioNumero);
+    console.log('Obteniendo PDF folio');
 
     // =========================
     // OBTENER PDF
     // =========================
     const pdfUint8Array = await obtenerPDFSimpleFactura(folioNumero);
 
-    console.log('✅ PDF obtenido');
-    console.log('📦 Bytes PDF:', pdfUint8Array.length);
+    console.log('PDF obtenido');
 
     // =========================
     // CONVERTIR A BUFFER

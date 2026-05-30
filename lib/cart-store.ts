@@ -109,13 +109,13 @@ export const useCartStore = create<CartStore>()(
       // ============ MÉTODOS DEL CARRITO ============
       
       addItem: (product) => {
-        console.log('🛒 addItem llamado con:', product)
+        console.log('addItem llamado con:', product)
         
         const hasCheckout = get().checkoutActive && get().checkoutExpiresAt
         const hasExpired = get().checkAndClearExpiredCheckout()
         
         if (hasCheckout && !hasExpired) {
-          console.log('⚠️ Checkout activo detectado, se actualizará la reserva después')
+          console.log('Checkout activo detectado, se actualizará la reserva después')
         }
 
         const items = get().items
@@ -124,7 +124,7 @@ export const useCartStore = create<CartStore>()(
         if (existingItem) {
           const newQuantity = existingItem.quantity + 1
           if (newQuantity > product.stock) {
-            console.warn(`⚠️ No hay suficiente stock para ${product.name}. Stock disponible: ${product.stock}`)
+            console.warn(`No hay suficiente stock para ${product.name}. Stock disponible: ${product.stock}`)
             return
           }
           
@@ -133,10 +133,10 @@ export const useCartStore = create<CartStore>()(
               item.id === product.id ? { ...item, quantity: newQuantity } : item
             ),
           })
-          console.log('✅ Producto existente, cantidad actualizada a:', newQuantity)
+          console.log('Producto existente, cantidad actualizada a:', newQuantity)
         } else {
           if (product.stock < 1) {
-            console.warn(`⚠️ No hay stock disponible para ${product.name}`)
+            console.warn(` No hay stock disponible para ${product.name}`)
             return
           }
           
@@ -161,10 +161,10 @@ export const useCartStore = create<CartStore>()(
           set({
             items: [...items, newItem],
           })
-          console.log('✅ Nuevo producto agregado con dimensiones:', newItem)
+          console.log('Nuevo producto agregado con dimensiones:', newItem)
         }
         
-        console.log('📦 Estado actual del carrito:', get().items)
+        console.log('Estado actual del carrito:', get().items)
       },
 
       removeItem: (id) => {
@@ -172,13 +172,13 @@ export const useCartStore = create<CartStore>()(
         const hasExpired = get().checkAndClearExpiredCheckout()
         
         if (hasCheckout && !hasExpired) {
-          console.log('⚠️ Checkout activo detectado, se actualizará la reserva después')
+          console.log('Checkout activo detectado, se actualizará la reserva después')
         }
         
         set({
           items: get().items.filter((item) => item.id !== id),
         })
-        console.log('🗑️ Producto eliminado')
+        console.log('Producto eliminado')
       },
 
       updateQuantity: (id, quantity) => {
@@ -186,7 +186,7 @@ export const useCartStore = create<CartStore>()(
         const hasExpired = get().checkAndClearExpiredCheckout()
         
         if (hasCheckout && !hasExpired) {
-          console.log('⚠️ Checkout activo detectado, se actualizará la reserva después')
+          console.log('Checkout activo detectado, se actualizará la reserva después')
         }
 
         if (quantity <= 0) {
@@ -197,7 +197,7 @@ export const useCartStore = create<CartStore>()(
         const items = get().items
         const item = items.find(i => i.id === id)
         if (item && quantity > item.stock) {
-          console.warn(`⚠️ No hay suficiente stock para ${item.name}. Stock disponible: ${item.stock}`)
+          console.warn(`No hay suficiente stock para ${item.name}. Stock disponible: ${item.stock}`)
           return
         }
 
@@ -206,7 +206,7 @@ export const useCartStore = create<CartStore>()(
             item.id === id ? { ...item, quantity } : item
           ),
         })
-        console.log(`🔄 Cantidad actualizada para producto ${id}: ${quantity}`)
+        console.log(`Cantidad actualizada para producto ${id}: ${quantity}`)
       },
 
       clearCart: () => {
@@ -222,10 +222,10 @@ export const useCartStore = create<CartStore>()(
         
         if (get().checkoutActive) {
           set({ checkoutActive: false, checkoutExpiresAt: null })
-          console.log('🛒 Checkout desactivado porque se vació el carrito')
+          console.log('Checkout desactivado porque se vació el carrito')
         }
         
-        console.log('🗑️ Carrito vaciado')
+        console.log('Carrito vaciado')
       },
 
       forceClearCart: () => {
@@ -240,7 +240,6 @@ export const useCartStore = create<CartStore>()(
           selectedChilexpressOption: null,
           shippingCost: 0,
         })
-        console.log('🗑️ Carrito forzado a vaciarse y checkout reiniciado')
       },
 
       resetCartAfterCheckout: () => {
@@ -256,7 +255,6 @@ export const useCartStore = create<CartStore>()(
           chilexpressOptions: [],
           selectedChilexpressOption: null,
         })
-        console.log('🔄 Carrito completamente reiniciado después de checkout')
       },
 
       getTotalItems: () => {
@@ -395,7 +393,7 @@ export const useCartStore = create<CartStore>()(
           checkoutExpiresAt: expiresAt,
           isOpen: false 
         })
-        console.log('🛒 Checkout iniciado, expira:', expiresAt)
+        console.log('Checkout iniciado, expira:', expiresAt)
       },
 
       endCheckout: () => {
@@ -403,7 +401,7 @@ export const useCartStore = create<CartStore>()(
           checkoutActive: false, 
           checkoutExpiresAt: null 
         })
-        console.log('🛒 Checkout finalizado')
+        console.log('Checkout finalizado')
       },
 
       checkAndClearExpiredCheckout: () => {
@@ -419,7 +417,7 @@ export const useCartStore = create<CartStore>()(
             checkoutActive: false, 
             checkoutExpiresAt: null,
           })
-          console.log('⏰ Checkout expirado y limpiado')
+          console.log('Checkout expirado y limpiado')
           return true
         }
         
@@ -456,7 +454,7 @@ export const useCartStore = create<CartStore>()(
         }
         
         try {
-          console.log('🔄 Actualizando reserva de stock después de cambio en carrito...')
+          console.log('Actualizando reserva de stock después de cambio en carrito...')
           
           const response = await fetch('/api/cart/reserve-stock', {
             method: 'POST',
@@ -474,7 +472,7 @@ export const useCartStore = create<CartStore>()(
           const data = await response.json()
           
           if (!response.ok) {
-            console.error('❌ Error actualizando reserva:', data.error)
+            console.error('Error actualizando reserva:', data.error)
             if (data.errors) {
               console.error('Detalles:', data.errors)
             }
@@ -483,12 +481,12 @@ export const useCartStore = create<CartStore>()(
           
           if (data.expiresAt) {
             set({ checkoutExpiresAt: data.expiresAt })
-            console.log('✅ Reserva actualizada, nueva expiración:', data.expiresAt)
+            console.log('Reserva actualizada, nueva expiración:', data.expiresAt)
           }
           
           return true
         } catch (error) {
-          console.error('❌ Error en updateReservationAfterCartChange:', error)
+          console.error('Error en updateReservationAfterCartChange:', error)
           return false
         }
       },
@@ -504,10 +502,8 @@ export const useCartStore = create<CartStore>()(
             if (now > expiresAt) {
               state.checkoutActive = false
               state.checkoutExpiresAt = null
-              console.log('🔄 Checkout expirado limpiado durante hidratación')
             }
           }
-          console.log('🛒 Carrito hidratado desde localStorage:', state.items)
         }
       },
     }

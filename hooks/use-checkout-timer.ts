@@ -48,7 +48,6 @@ export const useCheckoutTimer = () => {
       setHasReserved(true)
       reservationAttempted.current = true
       
-      console.log('⏰ Checkout existente detectado, tiempo restante:', Math.floor(timeLeftMs/1000), 'segundos')
     }
   }, [checkoutExpiresAt, hasActiveCheckout])
 
@@ -104,7 +103,7 @@ export const useCheckoutTimer = () => {
       })
 
       if (response.ok) {
-        console.log('✅ Stock liberado para usuario:', user.id)
+        console.log('Stock liberado para usuario')
         setHasReserved(false)
         reservationAttempted.current = false
         endCheckout()
@@ -133,7 +132,7 @@ export const useCheckoutTimer = () => {
       })
 
       if (response.ok) {
-        console.log('✅ Compra confirmada para usuario:', user.id)
+        console.log('Compra confirmada para usuario:', user.id)
         setHasReserved(false)
         reservationAttempted.current = false
         endCheckout()
@@ -156,7 +155,7 @@ export const useCheckoutTimer = () => {
     endCheckout()
     
     toast({
-      title: "⏰ Tiempo agotado",
+      title: "Tiempo agotado",
       description: "El tiempo para completar la compra ha expirado. Puedes volver a intentarlo cuando quieras.",
       variant: "destructive",
       duration: 5000,
@@ -180,12 +179,12 @@ export const useCheckoutTimer = () => {
   useEffect(() => {
     const createReservation = async () => {
       if (purchaseConfirmed.current) {
-        console.log('⏭️ Compra ya confirmada, omitiendo nueva reserva')
+        console.log('Compra ya confirmada, omitiendo nueva reserva')
         return
       }
 
       if (hasActiveCheckout()) {
-        console.log('⏭️ Checkout ya activo, omitiendo nueva reserva')
+        console.log('Checkout ya activo, omitiendo nueva reserva')
         return
       }
 
@@ -197,7 +196,6 @@ export const useCheckoutTimer = () => {
       setIsReserving(true)
 
       try {
-        console.log('🔄 Creando reserva de stock...')
         const response = await fetch('/api/cart/reserve-stock', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -241,7 +239,6 @@ export const useCheckoutTimer = () => {
             const now = new Date()
             const timeLeftMs = Math.max(0, expiresAtDate.getTime() - now.getTime())
             setTimeLeft(timeLeftMs)
-            console.log('✅ Stock reservado hasta:', data.expiresAt)
           }
         }
       } catch (error) {

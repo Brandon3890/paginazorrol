@@ -84,11 +84,8 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 
     const postData = JSON.stringify(datosBoleta);
 
-    // 🔥 ENDPOINT CORRECTO
+    // ENDPOINT CORRECTO
     const path = `/invoiceV2/${sucursalEncoded}`;
-
-    console.log('📡 URL:', `https://api.simplefactura.cl${path}`);
-    console.log('🔑 Token:', config.token ? 'OK' : 'VACÍO');
 
     const options = {
       method: 'POST',
@@ -107,10 +104,8 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
       res.on('data', chunk => data += chunk);
 
       res.on('end', () => {
-        console.log('📊 Status:', res.statusCode);
-        console.log('📄 RAW:', data.substring(0, 300));
 
-        // 🚨 DETECTAR HTML (ERROR REAL)
+        // DETECTAR HTML (ERROR REAL)
         if (!data || data.trim().startsWith('<')) {
           return reject(new Error(`❌ API devolvió HTML (endpoint incorrecto o error servidor)`));
         }
@@ -143,7 +138,6 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
 // OBTENER PDF 
 // ===============================
 export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array> {
-  console.log('📄 TOKEN:', config.token ? 'OK' : 'FALTA TOKEN');
   return new Promise((resolve, reject) => {
 
     const postData = JSON.stringify({
@@ -158,10 +152,11 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
       }
     });
 
-    console.log('📄 Intentando obtener PDF...');
-    console.log('📄 Folio:', folio);
-    console.log('📄 Ambiente:', config.ambiente);
-    console.log('📄 Sucursal:', config.sucursal);
+    /*
+    console.log('Intentando obtener PDF...');
+    console.log('Folio:', folio);
+    console.log('Ambiente:', config.ambiente);
+    console.log('Sucursal:', config.sucursal);*/
 
     const options = {
       method: 'POST',
@@ -193,7 +188,7 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
         const text = buffer.toString('utf8');
 
 
-        console.log('📄 PDF recibido correctamente');
+        console.log('PDF recibido correctamente');
 
         // Si es PDF real
         if (
@@ -202,7 +197,7 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
           buffer[2] === 0x44 &&
           buffer[3] === 0x46
         ) {
-          console.log('✅ PDF válido');
+          console.log('PDF válido');
           return resolve(new Uint8Array(buffer));
         }
 
@@ -211,14 +206,14 @@ export async function obtenerPDFSimpleFactura(folio: number): Promise<Uint8Array
 
           const json = JSON.parse(text);
 
-          console.log('📄 JSON PDF:', json);
+          console.log('JSON PDF:', json);
 
           // Si viene base64
           if (json.data?.pdf) {
 
             const pdfBuffer = Buffer.from(json.data.pdf, 'base64');
 
-            console.log('✅ PDF Base64 convertido');
+            console.log('PDF Base64 convertido');
 
             return resolve(new Uint8Array(pdfBuffer));
           }

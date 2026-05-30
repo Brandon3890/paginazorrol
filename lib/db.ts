@@ -4,9 +4,9 @@ import mysql from 'mysql2/promise'
 const dbConfig = {
   host: process.env.MYSQL_HOST || 'localhost',
   port: parseInt(process.env.MYSQL_PORT || '3306'),
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'tienda_juegos',
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  database: process.env.MYSQL_DATABASE,
   waitForConnections: true,
   connectionLimit: 20,
   queueLimit: 0,
@@ -25,15 +25,15 @@ try {
   // Verificar la conexión
   pool.getConnection()
     .then((connection) => {
-      console.log('✅ Database connected successfully');
+      console.log('Database connected successfully');
       connection.release();
     })
     .catch((error) => {
-      console.error('❌ Database connection failed:', error);
+      console.error('Database connection failed:', error);
     });
   
 } catch (error) {
-  console.error('❌ Failed to create database pool:', error);
+  console.error('Failed to create database pool:', error);
   throw error;
 }
 
@@ -58,13 +58,13 @@ export async function query(sql: string, params: any[] = []) {
     const duration = Date.now() - startTime;
     
     if (duration > 1000) {
-      console.log(`⚠️ Slow query (${duration}ms):`, sql.substring(0, 100));
+      console.log(`Slow query (${duration}ms):`, sql.substring(0, 100));
     }
     
     return rows;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`❌ Query error after ${duration}ms:`, error);
+    console.error(`Query error after ${duration}ms:`, error);
     throw error;
   } finally {
     if (connection) {
@@ -85,13 +85,13 @@ export async function querySimple(sql: string, params: any[] = []) {
     const duration = Date.now() - startTime;
     
     if (duration > 1000) {
-      console.log(`⚠️ Slow query (${duration}ms):`, sql.substring(0, 100));
+      console.log(`Slow query (${duration}ms):`, sql.substring(0, 100));
     }
     
     return rows;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`❌ Query error after ${duration}ms:`, error);
+    console.error(`Query error after ${duration}ms:`, error);
     throw error;
   } finally {
     if (connection) {
@@ -116,9 +116,9 @@ export async function queryExecute(sql: string, params: any[] = []): Promise<mys
 export async function closePool() {
   try {
     await pool.end();
-    console.log('✅ Database pool closed');
+    console.log('Bases de datos cerrado');
   } catch (error) {
-    console.error('❌ Error closing database pool:', error);
+    console.error('Error al cerrar bases de datos:', error);
   }
 }
 

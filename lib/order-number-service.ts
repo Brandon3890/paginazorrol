@@ -11,7 +11,6 @@ class OrderNumberService {
     // Formato: ORD-YYYYMMDD-HHMMSS-SSS-NNN
     const orderNumber = `ORD-${dateStr}-${this.formatTime(now)}-${sequentialNumber.toString().padStart(3, '0')}`
     
-    console.log('📝 OrderNumber generado:', orderNumber)
     return orderNumber
   }
 
@@ -53,7 +52,6 @@ class OrderNumberService {
     // Formato más corto: ORD-YYYYMMDD-NNN
     const orderNumber = `ORD-${dateStr}-${sequentialNumber.toString().padStart(4, '0')}`
     
-    console.log('📝 OrderNumber simple generado:', orderNumber)
     return orderNumber
   }
 
@@ -66,7 +64,6 @@ class OrderNumberService {
     // Formato: ORD-TIMESTAMP-RANDOM
     const orderNumber = `ORD-${timestamp}-${random}`
     
-    console.log('📝 OrderNumber con timestamp generado:', orderNumber)
     return orderNumber
   }
 

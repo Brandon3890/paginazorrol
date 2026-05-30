@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { cliente, productos, total, ordenId, ordenNumero } = body;
 
-    console.log('📄 Emitiendo boleta para orden:', ordenId);
+    console.log('   Emitiendo boleta para orden:', ordenId);
     console.log('   Cliente:', cliente.nombre, cliente.rut);
     console.log('   Productos:', productos.length);
     console.log('   Total:', total);
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     ) as any[];
 
     if (boletaExistente.length > 0) {
-      console.log('📋 Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
+      console.log('Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
       return NextResponse.json({
         success: true,
         folio: boletaExistente[0].folio,
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
         ]
       ) as any;
 
-      console.log('✅ Boleta guardada en BD con folio:', resultado.data.folio);
+      console.log('Boleta guardada en BD con folio:', resultado.data.folio);
 
       // Actualizar la orden con la boleta
       await query(
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
 
       // ========== ENVIAR EMAIL CON BOLETA PDF ==========
       try {
-        console.log('📧 Descargando PDF para enviar por email...');
+        console.log('Descargando PDF para enviar por email...');
         const pdfUint8Array = await obtenerPDFSimpleFactura(resultado.data.folio);
         
         // Convertir Uint8Array a Buffer para el email
@@ -223,10 +223,10 @@ export async function POST(request: NextRequest) {
           };
 
           await sendBoletaEmail(emailData, pdfBuffer, resultado.data.folio);
-          console.log('✅ Email con boleta enviado a:', order.customer_email);
+          console.log('Email con boleta enviado a:', order.customer_email);
         }
       } catch (emailError) {
-        console.error('❌ Error enviando email con boleta:', emailError);
+        console.error('Error enviando email con boleta:', emailError);
         // No fallar la emisión si falla el email
       }
 
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error: any) {
-    console.error('❌ Error en emitir-boleta:', error.message);
+    console.error('Error en emitir-boleta:', error.message);
     return NextResponse.json(
       { success: false, error: error.message || 'Error interno' },
       { status: 500 }

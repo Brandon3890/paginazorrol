@@ -67,13 +67,6 @@ export async function verifyInternalRequest(request: NextRequest): Promise<boole
     return true;
   }
   
-  console.warn('⚠️ Acceso denegado - Petición no autorizada:', {
-    host,
-    referer,
-    userAgent: userAgent.substring(0, 100),
-    hasToken: !!internalToken
-  });
-  
   return false;
 }
 
@@ -144,14 +137,12 @@ export async function protectApiRoute(request: NextRequest): Promise<NextRespons
   
   // 1. APIs públicas (no requieren nada)
   if (isPublicApi(pathname)) {
-    console.log('🔓 API pública permitida:', pathname);
     return null;
   }
   
   // 2. Verificar token interno (protección contra acceso directo)
   const isInternal = await verifyInternalRequest(request);
   if (!isInternal) {
-    console.warn('🚫 Acceso denegado a API:', pathname);
     return NextResponse.json(
       { error: 'Acceso no autorizado', message: 'Esta API solo puede ser consumida internamente' },
       { status: 403 }
@@ -162,7 +153,6 @@ export async function protectApiRoute(request: NextRequest): Promise<NextRespons
   if (requiresUserAuth(pathname)) {
     const user = await verifyUserAuth(request);
     if (!user) {
-      console.warn('🔐 API requiere autenticación:', pathname);
       return NextResponse.json(
         { error: 'No autenticado', message: 'Inicia sesión para acceder a este recurso' },
         { status: 401 }
@@ -171,16 +161,15 @@ export async function protectApiRoute(request: NextRequest): Promise<NextRespons
     
     // Verificar rol admin para APIs de admin
     if (pathname.startsWith('/api/admin') && user.role !== 'admin') {
-      console.warn('👑 Acceso admin denegado para usuario:', user.userId);
+      console.warn('Acceso denegado');
       return NextResponse.json(
         { error: 'Acceso denegado', message: 'Se requieren privilegios de administrador' },
         { status: 403 }
       );
     }
     
-    console.log(`✅ Usuario autenticado: ${user.userId} (${user.role}) - ${pathname}`);
+    console.log(`Usuario autenticado`);
   }
   
-  console.log('✅ API protegida permitida:', pathname);
   return null;
 }

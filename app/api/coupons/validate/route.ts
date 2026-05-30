@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`🔍 Validating coupon: ${code}`, { items: items.length });
+    console.log(`Validating coupon: ${code}`, { items: items.length });
 
     // Consulta para validar el cupón
     const coupons = await query(`
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       if (items && items.length > 0) {
         const categoryIds = coupon.category_ids ? coupon.category_ids.split(',').map((id: string) => parseInt(id)) : [];
         
-        console.log('🛒 Validando cupón de categoría:', {
+        console.log('Validando cupón de categoría:', {
           categoryIds,
           cartItems: items.map((item: any) => ({
             id: item.id,

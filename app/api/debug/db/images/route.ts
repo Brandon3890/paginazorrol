@@ -35,7 +35,7 @@ export async function GET() {
       results.imagesInPublic = [];
     }
 
-    console.log('📸 Image debug results:', results);
+    console.log('Image debug results:', results);
     
     return NextResponse.json(results);
     

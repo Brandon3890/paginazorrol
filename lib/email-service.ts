@@ -4,7 +4,6 @@ import nodemailer from 'nodemailer';
 const createTransporter = () => {
   // Si no hay configuración SMTP, usar un transporter de desarrollo
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
-    console.log(' Usando transporter de desarrollo (sin envío real)');
     return nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
@@ -386,7 +385,7 @@ Contáctanos en soporte@ludicagames.com
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
+    console.log('Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
     return true;
 
   } catch (error) {

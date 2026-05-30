@@ -1,4 +1,3 @@
-// components/product-grid.tsx
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
@@ -120,7 +119,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
 
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('🔄 Refrescando productos automáticamente...')
       fetchProducts({ force: true })
     }, 30000)
     return () => clearInterval(interval)
@@ -129,7 +127,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('👁️ Pestaña visible, refrescando productos...')
         fetchProducts({ force: true })
       }
     }
@@ -139,11 +136,9 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
 
   useEffect(() => {
     const handlePaymentComplete = () => {
-      console.log('💰 Evento payment-complete recibido, refrescando productos...')
       fetchProducts({ force: true })
     }
     const handleStockUpdate = () => {
-      console.log('📦 Evento stock-update recibido, refrescando productos...')
       fetchProducts({ force: true })
     }
     window.addEventListener('payment-complete', handlePaymentComplete)

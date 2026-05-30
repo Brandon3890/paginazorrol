@@ -42,10 +42,10 @@ class TransbankService {
     
     if (process.env.TRANSBANK_ENVIRONMENT === 'production') {
       this.baseURL = 'https://webpay3g.transbank.cl'
-      console.log('🚀 Transbank en modo PRODUCCIÓN')
+      console.log('Transbank en modo PRODUCCIÓN')
     } else {
       this.baseURL = 'https://webpay3gint.transbank.cl'
-      console.log('🧪 Transbank en modo INTEGRACIÓN')
+      console.log('Transbank en modo INTEGRACIÓN')
     }
   }
 
@@ -59,7 +59,7 @@ class TransbankService {
 
   async createTransaction(transactionData: TransbankTransaction): Promise<TransbankResponse> {
     try {
-      console.log('🔄 Creando transacción Webpay:', {
+      console.log('Creando transacción Webpay:', {
         ...transactionData,
         amount: `$${transactionData.amount.toLocaleString('es-CL')}`
       })
@@ -86,13 +86,11 @@ class TransbankService {
         }
       )
 
-      console.log('✅ Transacción creada exitosamente')
-      console.log('🔑 TOKEN:', response.data.token)
+      console.log('Transacción creada exitosamente')
       return response.data
     } catch (error: any) {
-      console.error('❌ Error creando transacción Webpay:', {
+      console.error('Error creando transacción Webpay:', {
         status: error.response?.status,
-        data: error.response?.data,
         message: error.message
       })
       throw new Error(`Error al crear transacción Webpay: ${error.response?.data?.error_message || error.message}`)
@@ -100,9 +98,7 @@ class TransbankService {
   }
 
   async commitTransaction(token: string): Promise<TransbankCommitResponse> {
-    try {
-      console.log('🔄 Confirmando transacción Webpay con token:', token)
-      
+    try {      
       if (!token || token.length < 10) {
         throw new Error('Token de transacción inválido')
       }
@@ -116,19 +112,18 @@ class TransbankService {
         }
       )
       
-      console.log('✅ Transacción confirmada:', {
+      /*console.log('Transacción confirmada:', {
         status: response.data.status,
         response_code: response.data.response_code,
         authorization_code: response.data.authorization_code,
         payment_type_code: response.data.payment_type_code,
         installments_number: response.data.installments_number,
         amount: `$${response.data.amount?.toLocaleString('es-CL')}`
-      })
+      })*/
 
       return response.data
     } catch (error: any) {
-      console.error('❌ Error confirmando transacción Webpay:', {
-        token: token,
+      console.error('Error confirmando transacción Webpay:', {
         status: error.response?.status,
         data: error.response?.data,
         message: error.message
@@ -138,9 +133,7 @@ class TransbankService {
   }
 
   async getTransactionStatus(token: string) {
-    try {
-      console.log('🔍 Consultando estado de transacción:', token)
-      
+    try {      
       const response = await axios.get(
         `${this.baseURL}/rswebpaytransaction/api/webpay/v1.2/transactions/${token}`,
         {
@@ -148,11 +141,6 @@ class TransbankService {
           timeout: 15000
         }
       )
-      
-      console.log('📊 Estado de transacción:', {
-        status: response.data.status,
-        response_code: response.data.response_code
-      })
       
       return response.data
     } catch (error: any) {
@@ -166,14 +154,12 @@ class TransbankService {
     const timestamp = Date.now().toString()
     const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0')
     const buyOrder = `TBK${timestamp}${random}`.slice(0, 26)
-    console.log('📝 BuyOrder ÚNICO generado para Transbank:', buyOrder)
     return buyOrder
   }
 
   // Generar session_id único
   generateSessionId(): string {
     const sessionId = `SES${Date.now()}${Math.random().toString(36).substr(2, 15)}`.slice(0, 61)
-    console.log('📝 SessionId ÚNICO generado:', sessionId)
     return sessionId
   }
 
@@ -182,7 +168,6 @@ class TransbankService {
     const timestamp = Date.now().toString()
     const random = Math.random().toString(36).substr(2, 9)
     const orderNumber = `ORD-${timestamp}-${random}`.toUpperCase()
-    console.log('📝 OrderNumber ÚNICO generado:', orderNumber)
     return orderNumber
   }
 
@@ -193,11 +178,11 @@ class TransbankService {
       commitResponse.response_code === 0
     )
     
-    console.log('✅ Validación de transacción:', {
+    /*console.log(Validación de transacción:', {
       status: commitResponse.status,
       response_code: commitResponse.response_code,
       approved: isApproved
-    })
+    })*/
     
     return isApproved
   }

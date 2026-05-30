@@ -295,7 +295,7 @@ export async function PUT(
     }
 
     // Actualizar relaciones - siempre procesar incluso si están vacíos
-    console.log('📋 Actualizando relaciones:', {
+    console.log('Actualizando relaciones:', {
       categories,
       subcategories, 
       products,

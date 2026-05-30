@@ -3,7 +3,6 @@ import { query } from '@/lib/db';
 
 export async function GET() {
   try {
-    console.log('🔍 Fetching coupons from database...');
 
     // Consulta para obtener todos los cupones con sus relaciones
     const coupons = await query(`
@@ -141,12 +140,12 @@ export async function GET() {
       };
     });
 
-    console.log(`✅ Found ${processedCoupons.length} coupons`);
+    console.log(`Found ${processedCoupons.length} coupons`);
 
     return NextResponse.json(processedCoupons);
 
   } catch (error) {
-    console.error('❌ ERROR in coupons API:', error);
+    console.error('ERROR in coupons API:', error);
     
     return NextResponse.json(
       { 

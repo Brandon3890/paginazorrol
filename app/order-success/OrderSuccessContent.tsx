@@ -1,4 +1,3 @@
-// app/order-success/OrderSuccessContent.tsx
 "use client"
 
 import { useEffect, useState } from 'react'
@@ -82,7 +81,7 @@ export default function OrderSuccessContent() {
   // EFECTO PARA LIMPIAR CARRITO
   useEffect(() => {
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
-      console.log('🛒 Limpiando carrito local - pago exitoso confirmado')
+      console.log('Limpiando carrito local - pago exitoso confirmado')
       clearCart()
       setCartClearedLocal(true)
       
@@ -107,7 +106,7 @@ export default function OrderSuccessContent() {
       // Verificar si ya se emitió para esta orden (evitar duplicados)
       const emittedKey = `boleta_${order.id}`
       if (sessionStorage.getItem(emittedKey)) {
-        console.log('⏭️ Boleta ya emitida para esta orden')
+        console.log('⏭Boleta ya emitida para esta orden')
         return
       }
 
@@ -115,7 +114,7 @@ export default function OrderSuccessContent() {
       setBoletaError(null)
 
       try {
-        console.log('📄 Emitiendo boleta para orden:', order.id)
+        console.log('Emitiendo boleta para orden:', order.id)
         
         // Limpiar RUT - si es inválido, usar consumidor final
         let rutCliente = order.customer_rut || '55555555-5'
@@ -124,7 +123,7 @@ export default function OrderSuccessContent() {
         
         // Si el RUT no es válido, usar consumidor final
         if (rutCliente === '11111111-2' || !rutCliente.match(/^[0-9]+-[0-9Kk]$/)) {
-          console.log('⚠️ RUT inválido, usando consumidor final')
+          console.log('RUT inválido, usando consumidor final')
           rutCliente = '55555555-5'
           nombreCliente = 'Consumidor'
           apellidoCliente = 'Final'
@@ -171,7 +170,6 @@ export default function OrderSuccessContent() {
             description: `Boleta electrónica folio ${resultado.folio} generada correctamente`,
           })
           
-          console.log('✅ Boleta emitida con folio:', resultado.folio)
         } else {
           setBoletaError(resultado.error || 'Error al emitir boleta')
           console.error('Error emitiendo boleta:', resultado)
@@ -201,10 +199,9 @@ export default function OrderSuccessContent() {
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('📦 Orden cargada:', {
+        console.log('Orden cargada:', {
           id: orderData.id,
           boleta_emitida: orderData.boleta_emitida,
-          boleta_folio: orderData.boleta_folio
         })
         
         // Si ya tiene boleta, mostrarla

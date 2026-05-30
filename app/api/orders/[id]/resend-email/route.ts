@@ -62,7 +62,7 @@ export async function POST(
       );
     }
 
-    console.log('📋 Orden encontrada:', {
+    console.log('Orden encontrada:', {
       orderId: order.id,
       orderNumber: order.order_number,
       boletaFolio: order.boleta_folio,
@@ -82,7 +82,6 @@ export async function POST(
       
       if (boletaData.length > 0) {
         boletaFolio = boletaData[0].folio;
-        console.log('✅ Boleta encontrada en tabla boletas:', boletaFolio);
       }
     }
 
@@ -95,7 +94,6 @@ export async function POST(
       
       if (boletaData.length > 0) {
         boletaFolio = boletaData[0].folio;
-        console.log('✅ Boleta encontrada por order_id:', boletaFolio);
       }
     }
 
@@ -125,9 +123,6 @@ export async function POST(
         { status: 400 }
       );
     }
-
-    console.log('📦 Productos encontrados:', orderItems.length);
-    console.log('📄 Folio de boleta a usar:', boletaFolio);
 
     // Calcular el IVA incluido correctamente
     const subtotalConIVA = parseFloat(order.subtotal);
@@ -175,23 +170,21 @@ export async function POST(
       }
     };
 
-    console.log('📧 Reenviando email con boleta para orden:', order.order_number);
+    console.log('   Reenviando email con boleta para orden:', order.order_number);
     console.log('   Folio boleta:', boletaFolio);
     console.log('   Email cliente:', order.customer_email);
     
     try {
       // Obtener el PDF de la boleta
-      console.log('📄 Descargando PDF de boleta folio:', boletaFolio);
       const pdfUint8Array = await obtenerPDFSimpleFactura(Number(boletaFolio));
       const pdfBuffer = Buffer.from(pdfUint8Array);
       
-      console.log('✅ PDF obtenido, tamaño:', pdfBuffer.length, 'bytes');
       
       // Enviar email con la boleta PDF adjunta
       const emailSent = await sendBoletaEmail(emailData, pdfBuffer, String(boletaFolio));
       
       if (emailSent) {
-        console.log('✅ Email reenviado exitosamente');
+        console.log('Email reenviado exitosamente');
         return NextResponse.json({
           success: true,
           message: `Email con boleta reenviado exitosamente a ${order.customer_email}. Folio: ${boletaFolio}`,
@@ -206,7 +199,7 @@ export async function POST(
       }
       
     } catch (pdfError: any) {
-      console.error('❌ Error obteniendo PDF o enviando email:', pdfError);
+      console.error('Error obteniendo PDF o enviando email:', pdfError);
       return NextResponse.json(
         { error: `Error al obtener la boleta PDF: ${pdfError.message}` },
         { status: 500 }
@@ -214,7 +207,7 @@ export async function POST(
     }
 
   } catch (error: any) {
-    console.error('❌ Error reenviando email de orden:', error);
+    console.error('Error reenviando email de orden:', error);
     return NextResponse.json(
       { error: error.message || 'Error interno del servidor' },
       { status: 500 }

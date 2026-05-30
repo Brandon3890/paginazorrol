@@ -9,6 +9,7 @@ export function getSecurityHeaders() {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
   }
   
+  // Solo en producción
   if (isProduction) {
     headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
   }
@@ -17,15 +18,31 @@ export function getSecurityHeaders() {
 }
 
 export function getCSPHeaders() {
-  // CSP unificado que funciona tanto en desarrollo como en producción
+  // CSP más permisivo para desarrollo
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  
+  if (isDevelopment) {
+    return {
+      'Content-Security-Policy': 
+        "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:3000; " +
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "img-src 'self' data: blob: https:; " +
+        "connect-src 'self' http://localhost:3000; " +
+        "frame-ancestors 'none';"
+    }
+  }
+  
+  // CSP estricto para producción
   return {
     'Content-Security-Policy': 
-      "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; " +
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http:; " +
+      "default-src 'self'; " +
+      "script-src 'self'; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-      "font-src 'self' https://fonts.gstatic.com data:; " +
-      "img-src 'self' data: blob: https: http:; " +
-      "connect-src 'self' https: http: ws: wss:; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "img-src 'self' data: https:; " +
+      "connect-src 'self' https://api.webpay.com; " +
       "frame-ancestors 'none';"
   }
 }

@@ -45,7 +45,7 @@ export const useCouponStore = create<CouponStore>()(
       fetchCoupons: async () => {
         set({ loading: true, error: null });
         try {
-          console.log('🔄 Fetching coupons from API...');
+          console.log('Fetching coupons from API...');
           const response = await fetch('/api/coupons');
           
           if (!response.ok) {
