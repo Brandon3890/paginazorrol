@@ -3,6 +3,14 @@ import { FaInstagram, FaYoutube, FaFacebook } from "react-icons/fa"
 import Link from "next/link"  
 
 export function Footer() {
+  // Categorías estáticas desde la base de datos (solo estas 4)
+  const categories = [
+    { name: "Juegos de Mesa", slug: "juegos-mesa" },
+    { name: "TCG", slug: "tcg" },
+    { name: "Puzzles", slug: "puzzles" },
+    { name: "Rol", slug: "rol" }
+  ]
+
   return (
     <footer className="bg-black text-white mt-20">
       <div className="max-w-7xl mx-auto px-6 py-16">
@@ -25,14 +33,20 @@ export function Footer() {
         {/* Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
 
-          {/* Productos */}
+          {/* Productos - Categorías desde BD */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Productos</h3>
             <ul className="space-y-2 text-gray-300 text-sm">
-              <li className="hover:text-white cursor-pointer">Juegos de Mesa</li>
-              <li className="hover:text-white cursor-pointer">Juegos de Rol</li>
-              <li className="hover:text-white cursor-pointer">Juegos de Cartas</li>
-              <li className="hover:text-white cursor-pointer">Accesorios</li>
+              {categories.map((category) => (
+                <li key={category.slug}>
+                  <Link 
+                    href={`/filtro/${category.slug}`}
+                    className="hover:text-white transition-colors cursor-pointer"
+                  >
+                    {category.name}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
