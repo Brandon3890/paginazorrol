@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster"
 import { Suspense } from "react"
 import { Modern_Antiqua, Poppins } from "next/font/google"
 import { BackToTop } from "@/components/back-to-top" 
-import { AuthGuard } from "@/components/auth-guard"
 import "./globals.css"
 
 // Fuentes
@@ -38,11 +37,9 @@ export default function RootLayout({
     <html lang="es" className={`${modernAntiqua.variable} ${poppins.variable}`}>
       <body className="font-poppins">
         <Suspense fallback={null}>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
+          {children}
           <Toaster />
-          <BackToTop />
+           <BackToTop />
         </Suspense>
       </body>
     </html>
