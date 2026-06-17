@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Eye, Mail } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
@@ -23,8 +23,13 @@ interface Order {
   customer_last_name?: string
   customer_phone?: string
   customer_rut?: string
-  boleta_folio?: string
   boleta_emitida?: number
+  boleta_info?: {
+    folio: string
+    monto_total: number
+    fecha_emision: string
+    estado_sii: string
+  }
   shipping_address?: {
     street: string
     commune_name: string
@@ -36,7 +41,6 @@ interface Order {
     product_price: number
     quantity: number
     subtotal: number
-    image_url?: string
   }>
 }
 
@@ -46,26 +50,25 @@ interface BoletaInfo {
   data?: any
 }
 
-export default function OrderSuccessContent() {
+export default function OrderSuccessPage() {
   const { clearCart, items } = useCartStore()
-  const { toast } = useToast()
   const searchParams = useSearchParams()
   const status = searchParams.get('status')
   const orderId = searchParams.get('orderId')
   const message = searchParams.get('message')
   const router = useRouter()
+  const { toast } = useToast()
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cartClearedLocal, setCartClearedLocal] = useState(false)
   
-  // Estados para la boleta
   const [boletaInfo, setBoletaInfo] = useState<BoletaInfo | null>(null)
   const [emitiendoBoleta, setEmitiendoBoleta] = useState(false)
   const [boletaError, setBoletaError] = useState<string | null>(null)
   const [descargandoPDF, setDescargandoPDF] = useState(false)
-  const [reenviandoEmail, setReenviandoEmail] = useState(false)
+  const [resendingEmail, setResendingEmail] = useState(false)
 
   useEffect(() => {
     if (!status && !orderId) {
@@ -78,7 +81,6 @@ export default function OrderSuccessContent() {
     }
   }, [orderId, status, router])
 
-  // EFECTO PARA LIMPIAR CARRITO
   useEffect(() => {
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
       console.log('Limpiando carrito local - pago exitoso confirmado')
@@ -90,23 +92,15 @@ export default function OrderSuccessContent() {
     }
   }, [status, items.length, clearCart, cartClearedLocal])
 
-  // EFECTO PARA EMITIR BOLETA AUTOMÁTICAMENTE
   useEffect(() => {
     const emitirBoleta = async () => {
-      // Solo emitir si:
-      // 1. El pago fue exitoso
-      // 2. Tenemos la orden cargada
-      // 3. No hemos emitido la boleta aún
-      // 4. No estamos en proceso de emisión
-      // 5. La orden no tiene boleta ya emitida
       if (status !== 'success' || !order || boletaInfo || emitiendoBoleta || order.boleta_emitida === 1) {
         return
       }
 
-      // Verificar si ya se emitió para esta orden (evitar duplicados)
       const emittedKey = `boleta_${order.id}`
       if (sessionStorage.getItem(emittedKey)) {
-        console.log('⏭Boleta ya emitida para esta orden')
+        console.log('Boleta ya emitida para esta orden')
         return
       }
 
@@ -116,14 +110,12 @@ export default function OrderSuccessContent() {
       try {
         console.log('Emitiendo boleta para orden:', order.id)
         
-        // Limpiar RUT - si es inválido, usar consumidor final
         let rutCliente = order.customer_rut || '55555555-5'
         let nombreCliente = order.customer_first_name || 'Consumidor'
         let apellidoCliente = order.customer_last_name || 'Final'
         
-        // Si el RUT no es válido, usar consumidor final
         if (rutCliente === '11111111-2' || !rutCliente.match(/^[0-9]+-[0-9Kk]$/)) {
-          console.log('RUT inválido, usando consumidor final')
+          console.log('RUT invalido, usando consumidor final')
           rutCliente = '55555555-5'
           nombreCliente = 'Consumidor'
           apellidoCliente = 'Final'
@@ -162,33 +154,27 @@ export default function OrderSuccessContent() {
             data: resultado.data
           })
           
-          // Marcar como emitida
           sessionStorage.setItem(`boleta_${order.id}`, 'true')
           
-          toast({
-            title: "Boleta emitida",
-            description: `Boleta electrónica folio ${resultado.folio} generada correctamente`,
-          })
-          
+          console.log('Boleta emitida con folio:', resultado.folio)
         } else {
           setBoletaError(resultado.error || 'Error al emitir boleta')
           console.error('Error emitiendo boleta:', resultado)
         }
       } catch (error: any) {
-        setBoletaError('Error de conexión al emitir boleta')
+        setBoletaError('Error de conexion al emitir boleta')
         console.error('Error:', error)
       } finally {
         setEmitiendoBoleta(false)
       }
     }
 
-    // Pequeño delay para evitar rate limit
     const timer = setTimeout(() => {
       emitirBoleta()
     }, 1000)
 
     return () => clearTimeout(timer)
-  }, [status, order, boletaInfo, emitiendoBoleta, toast])
+  }, [status, order, boletaInfo, emitiendoBoleta])
 
   const fetchOrderFromMySQL = async (id: string) => {
     try {
@@ -202,13 +188,13 @@ export default function OrderSuccessContent() {
         console.log('Orden cargada:', {
           id: orderData.id,
           boleta_emitida: orderData.boleta_emitida,
+          boleta_info: orderData.boleta_info
         })
         
-        // Si ya tiene boleta, mostrarla
-        if (orderData.boleta_emitida === 1 && orderData.boleta_folio) {
+        if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
           setBoletaInfo({
             success: true,
-            folio: orderData.boleta_folio,
+            folio: orderData.boleta_info.folio,
             data: orderData.boleta_info
           })
         }
@@ -220,19 +206,19 @@ export default function OrderSuccessContent() {
       }
     } catch (error) {
       console.error('Error fetching order:', error)
-      setError('No se pudo cargar la información del pedido')
+      setError('No se pudo cargar la informacion del pedido')
     } finally {
       setLoading(false)
     }
   }
 
   const descargarPDF = async () => {
-    const folio = boletaInfo?.folio || order?.boleta_folio
+    const folio = boletaInfo?.folio || order?.boleta_info?.folio
     if (!folio) {
       toast({
-        title: "Error",
-        description: "No hay boleta disponible para descargar",
-        variant: "destructive"
+        title: "Boleta no disponible",
+        description: "Aun no se ha generado la boleta electronica",
+        variant: "destructive",
       })
       return
     }
@@ -254,80 +240,71 @@ export default function OrderSuccessContent() {
         
         toast({
           title: "PDF descargado",
-          description: `Boleta folio ${folio} descargada correctamente`,
+          description: `Boleta N° ${folio} descargada exitosamente`,
+          duration: 3000,
         })
       } else {
         const errorData = await response.json()
         toast({
           title: "Error",
-          description: errorData.error || 'Error al descargar PDF',
-          variant: "destructive"
+          description: errorData.error || "Error al descargar PDF",
+          variant: "destructive",
         })
       }
     } catch (error) {
       console.error('Error descargando PDF:', error)
       toast({
         title: "Error",
-        description: "Error al descargar el PDF",
-        variant: "destructive"
+        description: "No se pudo descargar el PDF",
+        variant: "destructive",
       })
     } finally {
       setDescargandoPDF(false)
     }
   }
 
-  const verPDF = () => {
-    const folio = boletaInfo?.folio || order?.boleta_folio
-    if (!folio) {
+  const handleResendEmail = async () => {
+    if (!order) {
       toast({
         title: "Error",
-        description: "No hay boleta disponible",
-        variant: "destructive"
+        description: "No se encontro la informacion de la orden",
+        variant: "destructive",
       })
       return
     }
-    window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
-  }
-
-  const reenviarEmail = async () => {
-    if (!order?.id) {
-      toast({
-        title: "Error",
-        description: "No se encontró información de la orden",
-        variant: "destructive"
-      })
-      return
-    }
-
-    setReenviandoEmail(true)
+    
+    setResendingEmail(true)
     try {
       const response = await fetch(`/api/orders/${order.id}/resend-email`, {
-        method: 'POST'
+        method: 'POST',
       })
-      
-      const resultado = await response.json()
-      
-      if (response.ok && resultado.success) {
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
         toast({
           title: "Email reenviado",
-          description: resultado.message || "El email ha sido reenviado correctamente",
+          description: data.message || "El email de confirmacion ha sido reenviado exitosamente",
+          duration: 5000,
         })
       } else {
         toast({
           title: "Error",
-          description: resultado.error || "No se pudo reenviar el email",
-          variant: "destructive"
+          description: data.error || "No se pudo reenviar el email",
+          variant: "destructive",
+          duration: 5000,
         })
       }
     } catch (error) {
       console.error('Error reenviando email:', error)
       toast({
         title: "Error",
-        description: "Error de conexión al reenviar el email",
-        variant: "destructive"
+        description: "No se pudo reenviar el email. Intentalo de nuevo.",
+        variant: "destructive",
+        duration: 5000,
       })
     } finally {
-      setReenviandoEmail(false)
+      setResendingEmail(false)
     }
   }
 
@@ -336,7 +313,7 @@ export default function OrderSuccessContent() {
       case 'success':
         return {
           icon: CheckCircle,
-          title: '¡Pago Exitoso!',
+          title: 'Pago Exitoso',
           description: 'Tu pedido ha sido procesado correctamente.',
           color: 'text-green-600',
           bgColor: 'bg-green-100',
@@ -358,7 +335,7 @@ export default function OrderSuccessContent() {
           description: message === 'payment_failed' 
             ? 'El pago no pudo ser procesado. Por favor intenta nuevamente.'
             : message === 'order_not_found'
-            ? 'No se pudo encontrar la información de tu pedido.'
+            ? 'No se pudo encontrar la informacion de tu pedido.'
             : 'Ha ocurrido un error inesperado.',
           color: 'text-red-600',
           bgColor: 'bg-red-100',
@@ -378,7 +355,7 @@ export default function OrderSuccessContent() {
 
   const statusConfig = getStatusConfig()
   const StatusIcon = statusConfig.icon
-  const boletaFolio = boletaInfo?.folio || order?.boleta_folio
+  const tieneBoleta = boletaInfo?.folio || order?.boleta_info?.folio
 
   if (!status) {
     return (
@@ -406,7 +383,7 @@ export default function OrderSuccessContent() {
             {status === 'success' && cartClearedLocal && (
               <div className="mt-2 flex items-center justify-center gap-2 text-sm text-green-600">
                 <ShoppingCart className="w-4 h-4" />
-                <span>Carrito limpiado automáticamente</span>
+                <span>Carrito limpiado automaticamente</span>
               </div>
             )}
           </CardHeader>
@@ -420,7 +397,7 @@ export default function OrderSuccessContent() {
                 </h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Número de Pedido:</span>
+                    <span className="text-muted-foreground">Numero de Pedido:</span>
                     <span className="font-mono">{order.order_number}</span>
                   </div>
                   <div className="flex justify-between">
@@ -431,117 +408,73 @@ export default function OrderSuccessContent() {
               </div>
             )}
 
-            {/* Lista de productos con imágenes */}
-            {order?.items && order.items.length > 0 && (
+            {status === 'success' && tieneBoleta && (
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Productos
+                  <FileText className="w-4 h-4" />
+                  Boleta Electronica
                 </h3>
-                <div className="space-y-3">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex gap-3 items-center">
-                      {item.image_url && (
-                        <div className="w-12 h-12 relative flex-shrink-0 bg-gray-100 rounded overflow-hidden">
-                          <img 
-                            src={item.image_url} 
-                            alt={item.product_name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-sm">{item.product_name}</span>
-                          <span className="font-medium">${(item.product_price * item.quantity).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.quantity} × ${item.product_price.toLocaleString('es-CL')}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={descargarPDF}
+                    disabled={descargandoPDF}
+                  >
+                    {descargandoPDF ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Descargar Boleta
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleResendEmail}
+                    disabled={resendingEmail}
+                  >
+                    {resendingEmail ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4 mr-2" />
+                    )}
+                    Reenviar Email
+                  </Button>
                 </div>
+                
+                {boletaInfo?.folio && (
+                  <p className="text-xs text-muted-foreground text-center mt-3">
+                  </p>
+                )}
               </div>
             )}
 
-            {/* SECCIÓN DE BOLETA ELECTRÓNICA */}
-            {status === 'success' && (
-                <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Boleta Electrónica
-                    </h3>
-                    
-                    {emitiendoBoleta && (
-                    <div className="flex items-center justify-center gap-2 py-4">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
-                    </div>
-                    )}
+            {status === 'success' && !tieneBoleta && emitiendoBoleta && (
+              <div className="border rounded-lg p-4 text-center">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+                <p className="text-sm text-muted-foreground">Generando boleta electronica...</p>
+              </div>
+            )}
 
-                    {boletaError && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
-                        <p className="text-xs text-yellow-800 mb-2">
-                        ⚠️ {boletaError}
-                        </p>
-                        <Button 
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                            setBoletaInfo(null)
-                            setBoletaError(null)
-                        }}
-                        >
-                        Reintentar
-                        </Button>
-                    </div>
-                    )}
-
-                    {boletaFolio && (
-                    <div className="space-y-3">
-                        <div className="flex gap-3">
-                            <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={descargarPDF}
-                                disabled={descargandoPDF}
-                            >
-                                {descargandoPDF ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Download className="w-4 h-4 mr-2" />
-                                )}
-                                Descargar PDF
-                            </Button>
-
-                            <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={reenviarEmail}
-                                disabled={reenviandoEmail}
-                            >
-                                {reenviandoEmail ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Mail className="w-4 h-4 mr-2" />
-                                )}
-                                Reenviar Email
-                            </Button>
-                        </div>
-                    </div>
-                    )}
-
-                    {!boletaFolio && !emitiendoBoleta && !boletaError && (
-                    <p className="text-sm text-muted-foreground">
-                        Generando boleta electrónica...
-                    </p>
-                    )}
-                </div>
-                )}
+            {status === 'success' && !tieneBoleta && !emitiendoBoleta && boletaError && (
+              <div className="border rounded-lg p-4 text-center">
+                <p className="text-sm text-red-600 mb-2">Error al generar la boleta</p>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => {
+                    setBoletaInfo(null)
+                    setBoletaError(null)
+                    setEmitiendoBoleta(false)
+                  }}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            )}
 
             {loading && (
               <div className="text-center py-4">
@@ -553,15 +486,6 @@ export default function OrderSuccessContent() {
             {error && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <p className="text-sm text-yellow-800 text-center">{error}</p>
-                <div className="flex justify-center mt-3">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => orderId && fetchOrderFromMySQL(orderId)}
-                  >
-                    Reintentar
-                  </Button>
-                </div>
               </div>
             )}
 

@@ -15,11 +15,10 @@ import {
   X, 
   Loader2, 
   Edit,
-  Filter,
   Users,
   Search,
-  Download,
-  RefreshCw
+  RefreshCw,
+  User
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -55,6 +54,7 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  is_guest?: boolean
   shipping_address?: {
     street: string
     commune_name: string
@@ -81,13 +81,12 @@ const statusOptions = [
   { value: "cancelled", label: "Cancelado" },
 ]
 
-const paymentStatusOptions = [
-  { value: "all", label: "Todos los pagos" },
-  { value: "pending", label: "Pago pendiente" },
-  { value: "paid", label: "Pagado" },
-  { value: "failed", label: "Pago fallido" },
-  { value: "refunded", label: "Reembolsado" },
-]
+// Función para calcular Neto e IVA desde un monto que ya incluye IVA
+const calculateTaxBreakdown = (amountWithIVA: number) => {
+  const neto = Math.round(amountWithIVA / 1.19)
+  const iva = amountWithIVA - neto
+  return { neto, iva }
+}
 
 export default function AdminOrdersPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuthStore()
@@ -99,11 +98,18 @@ export default function AdminOrdersPage() {
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null)
   const [selectedStatus, setSelectedStatus] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all")
   const [searchTerm, setSearchTerm] = useState<string>("")
   const [refreshing, setRefreshing] = useState(false)
 
   const isAdmin = user?.role === "admin"
+
+  const formatPrice = (price: number) => {
+    if (isNaN(price) || price === undefined || price === null) return '$0'
+    return '$' + price.toLocaleString('es-CL', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    })
+  }
 
   useEffect(() => {
     if (authLoading) return
@@ -126,19 +132,17 @@ export default function AdminOrdersPage() {
       setLoading(true)
       setError(null)
       
-      console.log('📦 Fetching all orders for admin')
       const response = await fetch('/api/admin/orders/all')
       
       if (response.ok) {
         const ordersData = await response.json()
-        console.log('✅ Orders data received:', ordersData.length, 'orders')
         setOrders(ordersData)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || 'Error al cargar las órdenes')
+        setError(errorData.error || 'Error al cargar las ordenes')
       }
     } catch (error) {
-      console.error('❌ Error fetching orders:', error)
+      console.error('Error fetching orders:', error)
       setError('No se pudieron cargar los pedidos. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)
@@ -162,7 +166,6 @@ export default function AdminOrdersPage() {
       })
 
       if (response.ok) {
-        // Actualizar el estado local
         setOrders(prevOrders =>
           prevOrders.map(order =>
             order.id === orderId ? { ...order, status: newStatus } : order
@@ -179,7 +182,6 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // Función para construir URLs completas de imágenes
   const getImageUrl = (imagePath: string | undefined) => {
     if (!imagePath) return "/placeholder.svg"
     
@@ -198,26 +200,23 @@ export default function AdminOrdersPage() {
     return "/placeholder.svg"
   }
 
-  // Filtrar y buscar órdenes
   const filteredOrders = orders.filter(order => {
     const matchesStatus = statusFilter === "all" || order.status === statusFilter
-    const matchesPaymentStatus = paymentStatusFilter === "all" || order.payment_status === paymentStatusFilter
     const matchesSearch = searchTerm === "" || 
       order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       `${order.customer_first_name} ${order.customer_last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_phone?.toLowerCase().includes(searchTerm.toLowerCase())
     
-    return matchesStatus && matchesPaymentStatus && matchesSearch
+    return matchesStatus && matchesSearch
   })
 
   const sortedOrders = filteredOrders.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
 
-  // Estadísticas
   const totalOrders = orders.length
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0)
+  const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0)
   const pendingOrders = orders.filter(order => order.status === 'pending').length
   const paidOrders = orders.filter(order => order.payment_status === 'paid').length
 
@@ -226,7 +225,7 @@ export default function AdminOrdersPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Verificando autenticación...</p>
+          <p className="text-muted-foreground">Verificando autenticacion...</p>
         </div>
       </div>
     )
@@ -243,7 +242,7 @@ export default function AdminOrdersPage() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <X className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h1 className="text-2xl font-bold text-red-800 mb-2">Acceso Denegado</h1>
-            <p className="text-red-600 mb-6">No tienes permisos para acceder a esta página.</p>
+            <p className="text-red-600 mb-6">No tienes permisos para acceder a esta pagina.</p>
             <Link href="/orders">
               <Button>
                 Volver a Mis Pedidos
@@ -286,29 +285,36 @@ export default function AdminOrdersPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-4">
             <Link href="/admin">
-            <Button variant="ghost" className="mb-4">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Volver al Dashboard
-            </Button>
-          </Link>
+              <Button variant="ghost" className="mb-4">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Volver al Dashboard
+              </Button>
+            </Link>
           </div>
           
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold">Gestión de Pedidos</h1>
+              <h1 className="text-2xl lg:text-3xl font-bold">Gestion de Pedidos</h1>
               <p className="text-muted-foreground">Administra y revisa todos los pedidos del sistema</p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
+              <Button 
+                variant="outline" 
+                onClick={refreshOrders} 
+                disabled={refreshing}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Actualizando...' : 'Actualizar'}
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-6">
@@ -326,7 +332,7 @@ export default function AdminOrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Ingresos Totales</p>
-                  <p className="text-2xl font-bold">${totalRevenue.toLocaleString('es-CL')}</p>
+                  <p className="text-2xl font-bold">{formatPrice(totalRevenue)}</p>
                 </div>
                 <Users className="w-8 h-8 text-green-500" />
               </div>
@@ -356,16 +362,14 @@ export default function AdminOrdersPage() {
           </Card>
         </div>
 
-        {/* Filtros y Búsqueda */}
         <div className="mb-6 space-y-4">
           <div className="flex flex-col lg:flex-row gap-4">
-            {/* Búsqueda */}
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <input
                   type="text"
-                  placeholder="Buscar por número de pedido, cliente, email o teléfono..."
+                  placeholder="Buscar por numero de pedido, cliente, email o telefono..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
@@ -373,7 +377,6 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            {/* Filtros */}
             <div className="flex flex-col sm:flex-row gap-2">
               <select 
                 value={statusFilter}
@@ -386,7 +389,6 @@ export default function AdminOrdersPage() {
                   </option>
                 ))}
               </select>
-              
             </div>
           </div>
           
@@ -395,7 +397,6 @@ export default function AdminOrdersPage() {
           </div>
         </div>
 
-        {/* Orders List */}
         {sortedOrders.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
@@ -404,16 +405,15 @@ export default function AdminOrdersPage() {
                 No hay pedidos
               </h3>
               <p className="text-muted-foreground mb-6">
-                {searchTerm || statusFilter !== "all" || paymentStatusFilter !== "all" 
+                {searchTerm || statusFilter !== "all" 
                   ? "No se encontraron pedidos que coincidan con los filtros aplicados." 
-                  : "Cuando los usuarios realicen compras, aparecerán aquí"}
+                  : "Cuando los usuarios realicen compras, apareceran aqui"}
               </p>
-              {(searchTerm || statusFilter !== "all" || paymentStatusFilter !== "all") && (
+              {(searchTerm || statusFilter !== "all") && (
                 <Button 
                   onClick={() => {
                     setSearchTerm("")
                     setStatusFilter("all")
-                    setPaymentStatusFilter("all")
                   }}
                 >
                   Limpiar Filtros
@@ -426,15 +426,29 @@ export default function AdminOrdersPage() {
             {sortedOrders.map((order) => {
               const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
               const StatusIcon = statusInfo.icon
+              const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
               return (
                 <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg lg:text-xl truncate">
-                          Pedido #{order.order_number}
-                        </CardTitle>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <CardTitle className="text-lg lg:text-xl truncate">
+                            Pedido #{order.order_number}
+                          </CardTitle>
+                          {order.is_guest ? (
+                            <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-200 text-xs">
+                              <User className="w-3 h-3 mr-1" />
+                              Invitado
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
+                              <Users className="w-3 h-3 mr-1" />
+                              Cliente
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mt-1">
                           <p className="text-sm text-muted-foreground">
                             {new Date(order.created_at).toLocaleDateString("es-ES", {
@@ -446,10 +460,10 @@ export default function AdminOrdersPage() {
                             })}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Cliente: {order.customer_first_name} {order.customer_last_name}
+                            {order.customer_first_name} {order.customer_last_name}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Email: {order.customer_email}
+                            {order.customer_email}
                           </p>
                         </div>
                       </div>
@@ -471,39 +485,45 @@ export default function AdminOrdersPage() {
                   </CardHeader>
                   
                   <CardContent className="pt-0 space-y-4 lg:space-y-6">
-                    {/* Order Items */}
                     <div className="space-y-3">
                       <h4 className="font-medium text-sm">Productos</h4>
                       {order.items && order.items.length > 0 ? (
-                        order.items.map((item) => (
-                          <div key={item.id} className="flex gap-3 p-2 bg-muted/50 rounded-lg">
-                            <div className="relative w-12 h-12 flex-shrink-0">
-                              <Image
-                                src={getImageUrl(item.image_url)}
-                                alt={item.product_name}
-                                fill
-                                className="object-cover rounded"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  target.src = "/placeholder.svg"
-                                }}
-                              />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm line-clamp-2">{item.product_name}</h4>
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <Badge variant="secondary" className="text-xs">
-                                  {item.category || "General"}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
+                        order.items.map((item) => {
+                          const itemTotal = item.product_price * item.quantity
+                          const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
+                          
+                          return (
+                            <div key={item.id} className="flex gap-3 p-2 bg-muted/50 rounded-lg">
+                              <div className="relative w-12 h-12 flex-shrink-0">
+                                <Image
+                                  src={getImageUrl(item.image_url)}
+                                  alt={item.product_name}
+                                  fill
+                                  className="object-cover rounded"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement
+                                    target.src = "/placeholder.svg"
+                                  }}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm line-clamp-2">{item.product_name}</h4>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <Badge variant="secondary" className="text-xs">
+                                    {item.category || "General"}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-medium">{formatPrice(itemTotal)}</div>
+                                <div className="text-xs text-muted-foreground">{formatPrice(item.product_price)} c/u</div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className="font-medium">${(item.product_price * item.quantity).toLocaleString('es-CL')}</div>
-                              <div className="text-xs text-muted-foreground">${item.product_price.toLocaleString('es-CL')} c/u</div>
-                            </div>
-                          </div>
-                        ))
+                          )
+                        })
                       ) : (
                         <div className="text-center py-4">
                           <p className="text-muted-foreground">No hay productos en esta orden</p>
@@ -513,12 +533,10 @@ export default function AdminOrdersPage() {
 
                     <Separator />
 
-                    {/* Order Summary and Actions */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
-                      {/* Customer and Shipping Info */}
                       <div className="space-y-4">
                         <div>
-                          <h4 className="font-medium mb-2">Información de Envío</h4>
+                          <h4 className="font-medium mb-2">Informacion de Envio</h4>
                           <div className="text-sm text-muted-foreground space-y-1">
                             <p className="font-medium text-foreground">
                               {order.customer_first_name} {order.customer_last_name}
@@ -531,15 +549,14 @@ export default function AdminOrdersPage() {
                                 <p>
                                   {order.shipping_address.commune_name}, {order.shipping_address.region_name}
                                 </p>
-                                <p>Código Postal: {order.shipping_address.postal_code}</p>
+                                <p>Codigo Postal: {order.shipping_address.postal_code}</p>
                               </>
                             ) : (
-                              <p className="text-yellow-600">Dirección no especificada</p>
+                              <p className="text-yellow-600">Direccion no especificada</p>
                             )}
                           </div>
                         </div>
 
-                        {/* Status Editor */}
                         <div>
                           <h4 className="font-medium mb-2">Cambiar Estado</h4>
                           {editingOrderId === order.id ? (
@@ -593,40 +610,42 @@ export default function AdminOrdersPage() {
                         </div>
                       </div>
 
-                      {/* Order Summary */}
                       <div>
                         <h4 className="font-medium mb-2">Resumen del Pedido</h4>
                         <div className="text-sm space-y-2 bg-muted/30 rounded-lg p-4">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span>${order.subtotal.toLocaleString('es-CL')}</span>
+                            <span>{formatPrice(order.subtotal)}</span>
+                          </div>
+                          <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                            <span>Neto (sin IVA):</span>
+                            <span>{formatPrice(subtotalNeto)}</span>
+                          </div>
+                          <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                            <span>IVA (19%):</span>
+                            <span>{formatPrice(subtotalIVA)}</span>
                           </div>
                           {order.discount > 0 && (
                             <div className="flex justify-between text-green-600">
                               <span className="text-muted-foreground">Descuento:</span>
-                              <span>-${order.discount.toLocaleString('es-CL')}</span>
+                              <span>-{formatPrice(order.discount)}</span>
                             </div>
                           )}
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Envío:</span>
+                            <span className="text-muted-foreground">Envio:</span>
                             <span>
-                              {order.shipping === 0 ? "Gratis" : `$${order.shipping.toLocaleString('es-CL')}`}
+                              {order.shipping === 0 ? "Gratis" : formatPrice(order.shipping)}
                             </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">IVA (19%):</span>
-                            <span>${order.tax.toLocaleString('es-CL')}</span>
                           </div>
                           <Separator />
                           <div className="flex justify-between font-medium text-base">
                             <span>Total:</span>
-                            <span>${order.total.toLocaleString('es-CL')}</span>
+                            <span>{formatPrice(order.total)}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Additional Information */}
                     {(order.notes || order.coupon_code) && (
                       <>
                         <Separator />
@@ -639,7 +658,7 @@ export default function AdminOrdersPage() {
                           )}
                           {order.coupon_code && (
                             <div>
-                              <h4 className="font-medium mb-2">Cupón Aplicado</h4>
+                              <h4 className="font-medium mb-2">Cupon Aplicado</h4>
                               <p className="text-sm text-green-600">{order.coupon_code}</p>
                             </div>
                           )}
@@ -647,10 +666,9 @@ export default function AdminOrdersPage() {
                       </>
                     )}
 
-                    {/* Footer Actions */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
                       <div className="text-xs text-muted-foreground">
-                        Última actualización: {new Date(order.updated_at).toLocaleDateString("es-ES", {
+                        Ultima actualizacion: {new Date(order.updated_at).toLocaleDateString("es-ES", {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}

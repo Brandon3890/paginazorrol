@@ -18,7 +18,8 @@ import {
   Mail,
   Phone,
   MapPin,
-  CreditCard
+  CreditCard,
+  Users
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -55,6 +56,7 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  is_guest?: boolean
   shipping_address?: {
     street: string
     commune_name: string
@@ -74,11 +76,18 @@ interface Order {
 }
 
 const statusConfig = {
-  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200" },
-  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200" },
-  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200" },
-  cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
+  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800" },
+  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800" },
+  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800" },
+  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800" },
+  cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800" },
+}
+
+// Función para calcular Neto e IVA desde un monto que ya incluye IVA
+const calculateTaxBreakdown = (amountWithIVA: number) => {
+  const neto = Math.round(amountWithIVA / 1.19)
+  const iva = amountWithIVA - neto
+  return { neto, iva }
 }
 
 export default function AdminOrderDetailPage() {
@@ -90,6 +99,14 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const formatPrice = (price: number) => {
+    if (isNaN(price) || price === undefined || price === null) return '$0'
+    return '$' + price.toLocaleString('es-CL', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    })
+  }
 
   useEffect(() => {
     if (authLoading) return
@@ -112,19 +129,18 @@ export default function AdminOrderDetailPage() {
       setLoading(true)
       setError(null)
       
-      console.log('📦 Fetching order details for admin')
       const response = await fetch(`/api/admin/orders/${orderId}`)
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('✅ Order details received:', orderData)
+        console.log('Order data received:', orderData)
         setOrder(orderData)
       } else {
         const errorData = await response.json()
         setError(errorData.error || 'Error al cargar los detalles del pedido')
       }
     } catch (error) {
-      console.error('❌ Error fetching order details:', error)
+      console.error('Error fetching order details:', error)
       setError('No se pudieron cargar los detalles del pedido. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)
@@ -151,9 +167,9 @@ export default function AdminOrderDetailPage() {
 
   const formatPaymentMethod = (method: string) => {
     switch (method) {
-      case 'transbank': return 'Transbank'
+      case 'transbank': return 'Transbank Webpay'
       case 'cash': return 'Efectivo'
-      default: return method
+      default: return method || 'Transbank Webpay'
     }
   }
 
@@ -162,7 +178,7 @@ export default function AdminOrderDetailPage() {
       case 'VN': return 'Débito'
       case 'VC': return 'Crédito'
       case 'SI': return 'Cuotas'
-      default: return type
+      default: return type || 'No especificado'
     }
   }
 
@@ -260,11 +276,11 @@ export default function AdminOrderDetailPage() {
 
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
+  const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <Link href="/admin/orders" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -273,7 +289,20 @@ export default function AdminOrderDetailPage() {
           
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold">Pedido #{order.order_number}</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl lg:text-3xl font-bold">Pedido #{order.order_number}</h1>
+                {order.is_guest ? (
+                  <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-200">
+                    <User className="w-3 h-3 mr-1" />
+                    Invitado
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
+                    <Users className="w-3 h-3 mr-1" />
+                    Cliente Registrado
+                  </Badge>
+                )}
+              </div>
               <p className="text-muted-foreground">
                 Realizado el {new Date(order.created_at).toLocaleDateString("es-ES", {
                   year: "numeric",
@@ -302,9 +331,7 @@ export default function AdminOrderDetailPage() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-          {/* Columna izquierda - Información del cliente y envío */}
           <div className="xl:col-span-1 space-y-6">
-            {/* Información del Cliente */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -316,7 +343,9 @@ export default function AdminOrderDetailPage() {
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <p className="font-medium">{order.customer_first_name} {order.customer_last_name}</p>
+                    <p className="font-medium">
+                      {order.customer_first_name} {order.customer_last_name}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -332,7 +361,6 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Dirección de Envío */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -367,7 +395,6 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Información de Pago */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -400,10 +427,7 @@ export default function AdminOrderDetailPage() {
                 {order.transbank_info && (
                   <>
                     {order.transbank_info.authorization_code && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Código de autorización:</span>
-                        <span className="font-mono">{order.transbank_info.authorization_code}</span>
-                      </div>
+                      <div ></div>
                     )}
                     {order.transbank_info.payment_type && (
                       <div className="flex justify-between">
@@ -418,10 +442,7 @@ export default function AdminOrderDetailPage() {
                       </div>
                     )}
                     {order.transbank_info.card_number && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Tarjeta:</span>
-                        <span className="font-mono">****{order.transbank_info.card_number}</span>
-                      </div>
+                      <div ></div>
                     )}
                     {order.transbank_info.transaction_date && (
                       <div className="flex justify-between">
@@ -443,9 +464,7 @@ export default function AdminOrderDetailPage() {
             </Card>
           </div>
 
-          {/* Columna derecha - Productos y resumen */}
           <div className="xl:col-span-2 space-y-6">
-            {/* Productos */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Productos</CardTitle>
@@ -453,39 +472,46 @@ export default function AdminOrderDetailPage() {
               <CardContent>
                 <div className="space-y-4">
                   {order.items && order.items.length > 0 ? (
-                    order.items.map((item) => (
-                      <div key={item.id} className="flex gap-4 p-3 bg-muted/30 rounded-lg">
-                        <div className="relative w-16 h-16 flex-shrink-0">
-                          <Image
-                            src={getImageUrl(item.image_url)}
-                            alt={item.product_name}
-                            fill
-                            className="object-cover rounded"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
-                              target.src = "/placeholder.svg"
-                            }}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm lg:text-base line-clamp-2">{item.product_name}</h4>
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <Badge variant="secondary" className="text-xs">
-                              {item.category || "General"}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
+                    order.items.map((item) => {
+                      const itemTotal = item.product_price * item.quantity
+                      const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
+                      
+                      return (
+                        <div key={item.id} className="flex gap-4 p-3 bg-muted/30 rounded-lg">
+                          <div className="relative w-16 h-16 flex-shrink-0">
+                            <Image
+                              src={getImageUrl(item.image_url)}
+                              alt={item.product_name}
+                              fill
+                              className="object-cover rounded"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.src = "/placeholder.svg"
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm lg:text-base line-clamp-2">{item.product_name}</h4>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {item.category || "General"}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-medium text-sm lg:text-base">
+                              {formatPrice(itemTotal)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatPrice(item.product_price)} c/u
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-medium text-sm lg:text-base">
-                            ${(item.product_price * item.quantity).toLocaleString('es-CL')}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            ${item.product_price.toLocaleString('es-CL')} c/u
-                          </div>
-                        </div>
-                      </div>
-                    ))
+                      )
+                    })
                   ) : (
                     <div className="text-center py-8">
                       <Package className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -496,7 +522,6 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Resumen del Pedido */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Resumen del Pedido</CardTitle>
@@ -505,28 +530,32 @@ export default function AdminOrderDetailPage() {
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Subtotal:</span>
-                    <span>${order.subtotal.toLocaleString('es-CL')}</span>
+                    <span>{formatPrice(order.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                    <span>Neto (sin IVA):</span>
+                    <span>{formatPrice(subtotalNeto)}</span>
+                  </div>
+                  <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                    <span>IVA (19%):</span>
+                    <span>{formatPrice(subtotalIVA)}</span>
                   </div>
                   {order.discount > 0 && (
                     <div className="flex justify-between text-green-600">
                       <span className="text-muted-foreground">Descuento:</span>
-                      <span>-${order.discount.toLocaleString('es-CL')}</span>
+                      <span>-{formatPrice(order.discount)}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Envío:</span>
                     <span>
-                      {order.shipping === 0 ? "Gratis" : `$${order.shipping.toLocaleString('es-CL')}`}
+                      {order.shipping === 0 ? "Gratis" : formatPrice(order.shipping)}
                     </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">IVA (19%):</span>
-                    <span>${order.tax.toLocaleString('es-CL')}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-medium text-base">
                     <span>Total:</span>
-                    <span>${order.total.toLocaleString('es-CL')}</span>
+                    <span>{formatPrice(order.total)}</span>
                   </div>
                 </div>
 

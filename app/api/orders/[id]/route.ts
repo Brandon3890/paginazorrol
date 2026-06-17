@@ -1,8 +1,7 @@
-// app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { getUserIdFromRequest } from '@/lib/auth-utils'
 
-// ✅ IMPORTANTE: La función debe llamarse GET (mayúsculas)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,21 +14,36 @@ export async function GET(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // Buscar orden por ID (sin autenticación para order-success)
-    const orders = await query(
-      `SELECT o.*, 
-        u.email as customer_email,
-        u.first_name as customer_first_name,
-        u.last_name as customer_last_name,
-        u.phone as customer_phone,
-        u.rut as customer_rut,
-        b.folio as boleta_folio
-      FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN boletas b ON o.id = b.order_id
-      WHERE o.id = ?`,
-      [orderId]
-    ) as any[]
+    // Intentar obtener userId si existe (para usuarios autenticados)
+    let userId = null
+    try {
+      userId = await getUserIdFromRequest(request)
+    } catch (error) {
+      // Si no hay token, userId se queda como null (invitado)
+      console.log('Usuario no autenticado, accediendo como invitado')
+    }
+
+    // Obtener la orden principal (sin filtrar por user_id para permitir acceso por orderId)
+    let orders
+    if (userId) {
+      // Si hay usuario autenticado, verificar que la orden le pertenezca
+      orders = await query(
+        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE o.id = ? AND o.user_id = ?`,
+        [orderId, userId]
+      ) as any[]
+    } else {
+      // Si es invitado, solo buscar por ID (sin verificar usuario)
+      orders = await query(
+        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE o.id = ?`,
+        [orderId]
+      ) as any[]
+    }
 
     if (orders.length === 0) {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
@@ -37,58 +51,103 @@ export async function GET(
 
     const order = orders[0]
 
-    // Obtener items con imágenes
+    // Obtener los items de la orden
     const orderItems = await query(
-      `SELECT oi.*, p.image as image_url
-       FROM order_items oi
-       LEFT JOIN products p ON oi.product_id = p.id
-       WHERE oi.order_id = ?`,
+      `SELECT * FROM order_items WHERE order_id = ?`,
       [orderId]
     ) as any[]
 
-    // Obtener dirección de envío
+    // Obtener las imágenes de los productos
+    const itemsWithImages = await Promise.all(
+      orderItems.map(async (item: any) => {
+        try {
+          const products = await query(
+            `SELECT image FROM products WHERE id = ?`,
+            [item.product_id]
+          ) as any[]
+          
+          if (products.length > 0) {
+            return {
+              ...item,
+              image_url: products[0].image
+            }
+          }
+        } catch (error) {
+          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+        }
+        
+        return item
+      })
+    )
+
+    // Si hay shipping_address_id, obtener la dirección
     let shippingAddress = undefined
     if (order.shipping_address_id) {
       const addresses = await query(
-        `SELECT street, commune_name, region_name FROM user_addresses WHERE id = ?`,
+        `SELECT street, commune_name, region_name, postal_code, department, delivery_instructions 
+         FROM user_addresses WHERE id = ?`,
         [order.shipping_address_id]
       ) as any[]
       
       if (addresses.length > 0) {
-        shippingAddress = addresses[0]
+        const address = addresses[0]
+        shippingAddress = {
+          street: address.street,
+          commune_name: address.commune_name,
+          region_name: address.region_name,
+          postal_code: address.postal_code,
+          department: address.department,
+          delivery_instructions: address.delivery_instructions
+        }
       }
     }
 
+    // Obtener información de la boleta si existe
+    let boletaInfo = null
+    if (order.boleta_id) {
+      const boletas = await query(
+        `SELECT folio, monto_total, fecha_emision, estado_sii FROM boletas WHERE id = ?`,
+        [order.boleta_id]
+      ) as any[]
+      
+      if (boletas.length > 0) {
+        boletaInfo = boletas[0]
+      }
+    }
+
+    // Combinar datos
     const orderWithItems = {
       id: order.id,
       order_number: order.order_number,
       status: order.status,
       payment_status: order.payment_status,
-      subtotal: parseFloat(order.subtotal),
-      discount: parseFloat(order.discount),
-      shipping: parseFloat(order.shipping),
-      tax: parseFloat(order.tax),
-      total: parseFloat(order.total),
+      subtotal: parseFloat(order.subtotal) || 0,
+      discount: parseFloat(order.discount) || 0,
+      shipping: parseFloat(order.shipping) || 0,
+      tax: parseFloat(order.tax) || 0,
+      total: parseFloat(order.total) || 0,
       notes: order.notes,
       coupon_code: order.coupon_code,
-      customer_email: order.customer_email || '',
-      customer_first_name: order.customer_first_name || '',
-      customer_last_name: order.customer_last_name || '',
-      customer_phone: order.customer_phone || '',
-      customer_rut: order.customer_rut || '55555555-5',
+      shipping_method: order.payment_method,
+      customer_email: order.email || '',
+      customer_first_name: order.first_name || '',
+      customer_last_name: order.last_name || '',
+      customer_phone: order.phone || '',
+      customer_rut: order.rut || '55555555-5',
       boleta_id: order.boleta_id,
       boleta_emitida: order.boleta_emitida || 0,
-      boleta_folio: order.boleta_folio,
+      boleta_info: boletaInfo,
       created_at: order.created_at,
       updated_at: order.updated_at,
-      items: orderItems.map((item: any) => ({
+      items: itemsWithImages.map((item: any) => ({
         id: item.id,
         product_id: item.product_id,
         product_name: item.product_name,
-        product_price: parseFloat(item.product_price),
+        product_price: parseFloat(item.product_price) || 0,
         quantity: item.quantity,
-        subtotal: parseFloat(item.subtotal),
-        image_url: item.image_url
+        subtotal: parseFloat(item.subtotal) || 0,
+        image_url: item.image_url,
+        category: item.category
       })),
       shipping_address: shippingAddress
     }
@@ -104,25 +163,59 @@ export async function GET(
   }
 }
 
-// ✅ También exporta PATCH si lo necesitas para admin
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = await getUserIdFromRequest(request)
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+
+    const users = await query(
+      `SELECT role FROM users WHERE id = ?`,
+      [userId]
+    ) as any[]
+
+    const user = users.length > 0 ? users[0] : null
+    
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'No tienes permisos para actualizar pedidos' }, { status: 403 })
+    }
+
     const { id } = await params
     const orderId = parseInt(id)
+
+    if (isNaN(orderId)) {
+      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
+    }
+
     const body = await request.json()
     const { status } = body
+
+    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+    }
 
     await query(
       `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [status, orderId]
     )
 
-    return NextResponse.json({ success: true })
+    console.log(`Order ${orderId} status updated to ${status}`)
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Estado actualizado correctamente' 
+    })
 
   } catch (error) {
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+    console.error('Error actualizando estado de orden:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    )
   }
 }

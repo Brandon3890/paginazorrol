@@ -111,12 +111,16 @@ const normalizeTags = (tags: any): string[] => {
 };
 
 // Función de migración para limpiar datos corruptos
-const migrateStore = (persistedState: any, version: number) => {  
+const migrateStore = (persistedState: any, version: number) => {
+  console.log('Migrating store from version:', version);
+  
   if (!persistedState || typeof persistedState !== 'object') {
+    console.log('No persisted state or corrupted, returning initial state');
     return { products: [], productsLoaded: false, version: 0, globalSearchQuery: "" };
   }
   
   if (!Array.isArray(persistedState.products)) {
+    console.log('Products is not an array, cleaning...');
     return { 
       ...persistedState,
       products: [],
@@ -143,7 +147,7 @@ const migrateStore = (persistedState: any, version: number) => {
     length: product.length ?? 20,
   }));
   
-  console.log(`Cleaned ${cleanedProducts.length} valid products`);
+  console.log(`🔄 Cleaned ${cleanedProducts.length} valid products`);
   
   return {
     ...persistedState,
@@ -166,17 +170,20 @@ export const useProductStore = create<ProductStore>()(
       
       setGlobalSearchQuery: (query) => {
         set({ globalSearchQuery: query });
+        console.log('🔍 Búsqueda global actualizada:', query);
       },
       
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
         
         if (get().productsLoaded && !force) {
+          console.log('Products already loaded, skipping fetch');
           return;
         }
         
         set({ loading: true, error: null });
         try {
+          console.log('Fetching products from API...', { includeInactive, isAdmin, force });
           
           const params = new URLSearchParams();
           if (isAdmin || includeInactive) {
@@ -187,6 +194,7 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const url = `/api/products?${params.toString()}`;
+          console.log('📡 Fetching from:', url);
           
           const response = await fetch(url);
           
@@ -197,6 +205,7 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const productsData = await response.json();
+          console.log('✅ Products fetched successfully:', productsData.length, 'products');
           
           // Normalizar los tags y añadir brand/genre de cada producto
           const normalizedProducts = productsData.map((product: any) => ({
@@ -210,7 +219,9 @@ export const useProductStore = create<ProductStore>()(
             width: product.width ?? 15,
             length: product.length ?? 20,
           }));
-                    
+          
+          console.log('🏷️ Tags normalizados:', normalizedProducts.map((p: any) => ({ name: p.name, tags: p.tags })));
+          
           const validProducts = Array.isArray(normalizedProducts) ? normalizedProducts : [];
           
           set({ 
@@ -220,8 +231,9 @@ export const useProductStore = create<ProductStore>()(
             error: null 
           });
           
+          console.log('📦 Store updated with', validProducts.length, 'products');
         } catch (error) {
-          console.error('Error in fetchProducts:', error);
+          console.error('❌ Error in fetchProducts:', error);
           set({ 
             error: error instanceof Error ? error.message : 'Error al cargar productos', 
             loading: false 
@@ -231,7 +243,7 @@ export const useProductStore = create<ProductStore>()(
 
       fetchProduct: async (id: number) => {
         try {
-          console.log(`Fetching individual product ${id} from API...`);
+          console.log(`🔄 Fetching individual product ${id} from API...`);
           const response = await fetch(`/api/products/${id}`);
           if (!response.ok) {
             throw new Error(`Error fetching product: ${response.status}`);
@@ -251,7 +263,7 @@ export const useProductStore = create<ProductStore>()(
             length: product.length ?? 20,
           };
           
-          console.log(`Product ${id} fetched successfully:`, {
+          console.log(`✅ Product ${id} fetched successfully:`, {
             name: normalizedProduct.name,
             tags: normalizedProduct.tags,
             brand: normalizedProduct.brand,
@@ -286,6 +298,7 @@ export const useProductStore = create<ProductStore>()(
 
       incrementVersion: () => {
         set(state => ({ version: state.version + 1 }));
+        console.log('📢 Versión incrementada:', get().version);
       },
 
       getRecommendedProducts: (productId: number) => {
@@ -334,6 +347,7 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error updating product');
           }
           
+          console.log('🔄 Recargando productos después de actualizar...');
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -363,10 +377,10 @@ export const useProductStore = create<ProductStore>()(
           }));
           
           get().incrementVersion();
-          console.log(`Product ${id} deactivated successfully`);
+          console.log(`✅ Product ${id} deactivated successfully`);
           
         } catch (error) {
-          console.error(`Error deactivating product ${id}:`, error);
+          console.error(`❌ Error deactivating product ${id}:`, error);
           const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
           set({ error: errorMessage });
           throw error;
@@ -392,7 +406,7 @@ export const useProductStore = create<ProductStore>()(
           }));
           
           get().incrementVersion();
-          console.log(`Product ${id} reactivated successfully`);
+          console.log(`✅ Product ${id} reactivated successfully`);
           
         } catch (error) {
           console.error(`❌ Error reactivating product ${id}:`, error);
@@ -404,7 +418,7 @@ export const useProductStore = create<ProductStore>()(
 
       permanentlyDeleteProduct: async (id: number) => {
         try {
-          console.log(`Attempting to permanently delete product ${id}...`);
+          console.log(`💀 Attempting to permanently delete product ${id}...`);
           const response = await fetch(`/api/products/${id}/permanent`, {
             method: 'DELETE',
           });
@@ -419,7 +433,7 @@ export const useProductStore = create<ProductStore>()(
           }));
           
           get().incrementVersion();
-          console.log(`Product ${id} permanently deleted from local state`);
+          console.log(`✅ Product ${id} permanently deleted from local state`);
           
         } catch (error) {
           console.error(`❌ Error permanently deleting product ${id}:`, error);

@@ -8,6 +8,7 @@ export async function GET(
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
+    const { id: orderId } = await params
     
     if (!userId) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -22,23 +23,22 @@ export async function GET(
     const user = users.length > 0 ? users[0] : null
     
     if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'No tienes permisos para ver esta orden' }, { status: 403 })
+      return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    // IMPORTANTE: Aquí await params para obtener el id
-    const { id } = await params
-    console.log('🔍 Order ID from params:', id)
-    
-    const orderId = parseInt(id)
-
-    if (isNaN(orderId)) {
-      console.error('❌ Invalid order ID:', id)
-      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
-    }
-
-    // Obtener la orden principal con información del usuario
+    // Obtener la orden con datos del usuario
     const orders = await query(
-      `SELECT o.*, u.email, u.first_name, u.last_name, u.phone 
+      `SELECT 
+        o.*, 
+        u.email, 
+        u.first_name, 
+        u.last_name, 
+        u.phone, 
+        u.is_guest,
+        o.transbank_payment_type,
+        o.transbank_installments_number,
+        o.transbank_transaction_date,
+        o.payment_method
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        WHERE o.id = ?`,
@@ -46,110 +46,117 @@ export async function GET(
     ) as any[]
 
     if (orders.length === 0) {
-      console.error('❌ Order not found:', orderId)
-      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Pedido no encontrado' },
+        { status: 404 }
+      )
     }
 
     const order = orders[0]
 
-    // Obtener los items de la orden
+    // Obtener items de la orden
     const orderItems = await query(
-      `SELECT oi.*, p.image, c.name as category_name
-       FROM order_items oi 
-       LEFT JOIN products p ON oi.product_id = p.id 
-       LEFT JOIN categories c ON p.category_id = c.id 
-       WHERE oi.order_id = ?`,
+      `SELECT * FROM order_items WHERE order_id = ?`,
       [orderId]
     ) as any[]
 
-    // Si hay shipping_address_id, obtener la dirección
+    // Obtener imágenes de los productos
+    const itemsWithImages = await Promise.all(
+      orderItems.map(async (item: any) => {
+        try {
+          const products = await query(
+            `SELECT image FROM products WHERE id = ?`,
+            [item.product_id]
+          ) as any[]
+          
+          if (products.length > 0) {
+            return {
+              ...item,
+              image_url: products[0].image
+            }
+          }
+        } catch (error) {
+          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+        }
+        
+        return item
+      })
+    )
+
+    // Obtener dirección de envío si existe
     let shippingAddress = undefined
     if (order.shipping_address_id) {
       const addresses = await query(
-        `SELECT * FROM user_addresses WHERE id = ?`,
+        `SELECT street, commune_name, region_name, postal_code, department, delivery_instructions, title 
+         FROM user_addresses WHERE id = ?`,
         [order.shipping_address_id]
       ) as any[]
       
       if (addresses.length > 0) {
-        const address = addresses[0]
-        shippingAddress = {
-          street: address.street,
-          commune_name: address.commune_name,
-          region_name: address.region_name,
-          postal_code: address.postal_code,
-          department: address.department,
-          delivery_instructions: address.delivery_instructions,
-          title: address.title
-        }
+        shippingAddress = addresses[0]
       }
     }
 
     // Obtener información del cupón si existe
     let couponInfo = null
-    if (order.coupon_id) {
-      const coupons = await query(
-        `SELECT code, discount_percentage, type FROM coupons WHERE id = ?`,
-        [order.coupon_id]
+    if (order.coupon_code) {
+      const coupon = await query(
+        `SELECT code, discount_percentage, type FROM coupons WHERE code = ?`,
+        [order.coupon_code]
       ) as any[]
-      
-      if (coupons.length > 0) {
-        couponInfo = coupons[0]
+      if (coupon.length > 0) {
+        couponInfo = coupon[0]
       }
     }
 
-    // Combinar datos en formato compatible con el frontend
-    const orderWithItems = {
+    // Construir objeto transbank_info
+    const transbankInfo = {
+      authorization_code: order.transbank_authorization_code || null,
+      payment_type: order.transbank_payment_type || null,
+      installments: order.transbank_installments_number !== null && order.transbank_installments_number !== undefined ? order.transbank_installments_number : null,
+      card_number: order.transbank_card_number || null,
+      transaction_date: order.transbank_transaction_date || null
+    }
+
+    const responseOrder = {
       id: order.id,
       order_number: order.order_number,
       status: order.status,
       payment_status: order.payment_status,
-      payment_method: order.payment_method,
-      subtotal: parseFloat(order.subtotal),
-      discount: parseFloat(order.discount),
-      shipping: parseFloat(order.shipping),
-      tax: parseFloat(order.tax),
-      total: parseFloat(order.total),
-      notes: order.notes,
-      coupon_code: order.coupon_code || couponInfo?.code,
+      payment_method: order.payment_method || 'transbank',
+      subtotal: parseFloat(order.subtotal) || 0,
+      discount: parseFloat(order.discount) || 0,
+      shipping: parseFloat(order.shipping) || 0,
+      tax: parseFloat(order.tax) || 0,
+      total: parseFloat(order.total) || 0,
+      notes: order.notes || '',
+      coupon_code: order.coupon_code || '',
       coupon_info: couponInfo,
+      created_at: order.created_at,
+      updated_at: order.updated_at,
       customer_email: order.email || '',
       customer_first_name: order.first_name || '',
       customer_last_name: order.last_name || '',
       customer_phone: order.phone || '',
-      created_at: order.created_at,
-      updated_at: order.updated_at,
-      items: orderItems.map((item: any) => ({
+      is_guest: order.is_guest === 1,
+      items: itemsWithImages.map((item: any) => ({
         id: item.id,
         product_id: item.product_id,
         product_name: item.product_name,
-        product_price: parseFloat(item.product_price),
-        quantity: item.quantity,
-        subtotal: parseFloat(item.subtotal),
-        image_url: item.image,
-        category: item.category_name || 'General'
+        product_price: parseFloat(item.product_price) || 0,
+        quantity: item.quantity || 0,
+        subtotal: parseFloat(item.subtotal) || 0,
+        image_url: item.image_url || '',
+        category: item.category || ''
       })),
       shipping_address: shippingAddress,
-      // Información de Transbank si existe
-      transbank_info: {
-        authorization_code: order.transbank_authorization_code,
-        payment_type: order.transbank_payment_type,
-        installments: order.transbank_installments_number,
-        card_number: order.transbank_card_number,
-        transaction_date: order.transbank_transaction_date
-      }
+      transbank_info: transbankInfo
     }
 
-    console.log('✅ Admin order details loaded successfully:', {
-      orderId: orderWithItems.id,
-      orderNumber: orderWithItems.order_number,
-      customer: `${orderWithItems.customer_first_name} ${orderWithItems.customer_last_name}`,
-      itemsCount: orderWithItems.items.length
-    })
-
-    return NextResponse.json(orderWithItems)
+    return NextResponse.json(responseOrder)
 
   } catch (error) {
-    console.error('❌ Error obteniendo detalles de orden para admin:', error)
+    console.error('Error obteniendo detalles del pedido:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
@@ -163,6 +170,7 @@ export async function PATCH(
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
+    const { id: orderId } = await params
     
     if (!userId) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -180,36 +188,33 @@ export async function PATCH(
       return NextResponse.json({ error: 'No tienes permisos para actualizar pedidos' }, { status: 403 })
     }
 
-    // IMPORTANTE: Aquí await params para obtener el id
-    const { id } = await params
-    const orderId = parseInt(id)
-
-    if (isNaN(orderId)) {
-      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
-    }
-
     const body = await request.json()
     const { status } = body
 
-    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
-      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+    if (!status) {
+      return NextResponse.json(
+        { error: 'El estado es requerido' },
+        { status: 400 }
+      )
     }
 
-    // Actualizar el estado de la orden
+    const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: 'Estado no valido' },
+        { status: 400 }
+      )
+    }
+
     await query(
-      `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [status, orderId]
     )
 
-    console.log(`✅ Order ${orderId} status updated to ${status}`)
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Estado actualizado correctamente' 
-    })
+    return NextResponse.json({ success: true, message: 'Estado actualizado correctamente' })
 
   } catch (error) {
-    console.error('Error actualizando estado de orden:', error)
+    console.error('Error actualizando estado del pedido:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

@@ -1,4 +1,3 @@
-// app/orders/[id]/page.tsx - CON DESCARGA DE BOLETA PDF
 "use client"
 
 import { useEffect, useState } from "react"
@@ -85,7 +84,15 @@ const statusConfig = {
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800" },
 }
 
+// Función para calcular Neto e IVA desde un monto que ya incluye IVA
+const calculateTaxBreakdown = (amountWithIVA: number) => {
+  const neto = Math.round(amountWithIVA / 1.19)
+  const iva = amountWithIVA - neto
+  return { neto, iva }
+}
+
 const formatCLP = (amount: number): string => {
+  if (isNaN(amount) || amount === undefined || amount === null) return '$0'
   return new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: 'CLP',
@@ -138,7 +145,7 @@ export default function OrderDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching order:', error)
-      setError('No se pudo cargar la información del pedido')
+      setError('No se pudo cargar la informacion del pedido')
     } finally {
       setLoading(false)
     }
@@ -153,14 +160,14 @@ export default function OrderDetailPage() {
 
       if (response.ok) {
         toast({
-          title: "✅ Email reenviado",
-          description: "El email de confirmación ha sido reenviado exitosamente",
+          title: "Email reenviado",
+          description: "El email de confirmacion ha sido reenviado exitosamente",
           duration: 5000,
         })
       } else {
         const errorData = await response.json()
         toast({
-          title: "❌ Error",
+          title: "Error",
           description: errorData.error || "No se pudo reenviar el email",
           variant: "destructive",
           duration: 5000,
@@ -169,8 +176,8 @@ export default function OrderDetailPage() {
     } catch (error) {
       console.error('Error reenviando email:', error)
       toast({
-        title: "❌ Error",
-        description: "No se pudo reenviar el email. Inténtalo de nuevo.",
+        title: "Error",
+        description: "No se pudo reenviar el email. Intentelo de nuevo.",
         variant: "destructive",
         duration: 5000,
       })
@@ -183,8 +190,8 @@ export default function OrderDetailPage() {
     const folio = order?.boleta_info?.folio
     if (!folio) {
       toast({
-        title: "⚠️ Boleta no disponible",
-        description: "Aún no se ha generado la boleta electrónica para este pedido",
+        title: "Boleta no disponible",
+        description: "Aun no se ha generado la boleta electronica para este pedido",
         variant: "destructive",
         duration: 5000,
       })
@@ -207,14 +214,14 @@ export default function OrderDetailPage() {
         window.URL.revokeObjectURL(url)
         
         toast({
-          title: "✅ PDF descargado",
+          title: "PDF descargado",
           description: `Boleta N° ${folio} descargada exitosamente`,
           duration: 3000,
         })
       } else {
         const errorData = await response.json()
         toast({
-          title: "❌ Error",
+          title: "Error",
           description: errorData.error || "Error al descargar PDF",
           variant: "destructive",
           duration: 5000,
@@ -223,8 +230,8 @@ export default function OrderDetailPage() {
     } catch (error) {
       console.error('Error descargando PDF:', error)
       toast({
-        title: "❌ Error",
-        description: "No se pudo descargar el PDF. Inténtalo nuevamente.",
+        title: "Error",
+        description: "No se pudo descargar el PDF. Intentelo nuevamente.",
         variant: "destructive",
         duration: 5000,
       })
@@ -237,8 +244,8 @@ export default function OrderDetailPage() {
     const folio = order?.boleta_info?.folio
     if (!folio) {
       toast({
-        title: "⚠️ Boleta no disponible",
-        description: "Aún no se ha generado la boleta electrónica para este pedido",
+        title: "Boleta no disponible",
+        description: "Aun no se ha generado la boleta electronica para este pedido",
         variant: "destructive",
         duration: 5000,
       })
@@ -248,23 +255,19 @@ export default function OrderDetailPage() {
   }
 
   const getImageUrl = (url?: string) => {
-  if (!url) return "/placeholder.svg"
-
-  if (url.startsWith("http")) return url
-
-  if (url.startsWith("/")) return url
-
-  if (url.startsWith("uploads/")) return `/${url}`
-
-  return `/uploads/products/${url}`
-}
+    if (!url) return "/placeholder.svg"
+    if (url.startsWith("http")) return url
+    if (url.startsWith("/")) return url
+    if (url.startsWith("uploads/")) return `/${url}`
+    return `/uploads/products/${url}`
+  }
 
   if (authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Verificando autenticación...</p>
+          <p className="text-muted-foreground">Verificando autenticacion...</p>
         </div>
       </div>
     )
@@ -321,14 +324,17 @@ export default function OrderDetailPage() {
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
   const addressInfo = order.shipping_address || {
-    street: "Dirección no especificada",
+    street: "Direccion no especificada",
     commune_name: "Ciudad no especificada", 
-    region_name: "Región no especificada",
+    region_name: "Region no especificada",
     postal_code: "000000",
     department: "",
     delivery_instructions: ""
   }
   const tieneBoleta = order.boleta_emitida === 1 && order.boleta_info?.folio
+  
+  // Calcular desglose de IVA del subtotal
+  const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -363,7 +369,6 @@ export default function OrderDetailPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Order Items */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
@@ -374,35 +379,42 @@ export default function OrderDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {order.items && order.items.length > 0 ? (
-                  order.items.map((item) => (
-                    <div key={item.id} className="flex gap-4 p-4 border rounded-lg">
-                      <div className="relative w-16 h-16 flex-shrink-0">
-                        <Image
-                          src={getImageUrl(item.image_url)}
-                          alt={item.product_name}
-                          fill
-                          className="object-cover rounded"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement
-                            target.src = "/placeholder.svg"
-                          }}
-                        />
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <h4 className="font-medium">{item.product_name}</h4>
-                        <Badge variant="secondary" className="text-xs">
-                          {item.category || "General"}
-                        </Badge>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Cantidad: {item.quantity}</span>
-                          <div className="text-right">
-                            <div className="font-medium">{formatCLP(item.product_price * item.quantity)}</div>
-                            <div className="text-xs text-muted-foreground">{formatCLP(item.product_price)} c/u</div>
+                  order.items.map((item) => {
+                    const itemTotal = item.product_price * item.quantity
+                    const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
+                    
+                    return (
+                      <div key={item.id} className="flex gap-4 p-4 border rounded-lg">
+                        <div className="relative w-16 h-16 flex-shrink-0">
+                          <Image
+                            src={getImageUrl(item.image_url)}
+                            alt={item.product_name}
+                            fill
+                            className="object-cover rounded"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.src = "/placeholder.svg"
+                            }}
+                          />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <h4 className="font-medium">{item.product_name}</h4>
+                          <Badge variant="secondary" className="text-xs">
+                            {item.category || "General"}
+                          </Badge>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <span className="text-sm text-muted-foreground">Cantidad: {item.quantity}</span>
+                            <div className="text-right">
+                              <div className="font-medium">{formatCLP(itemTotal)}</div>
+                              <div className="text-xs text-muted-foreground">{formatCLP(item.product_price)} c/u</div>
+                              <div className="text-xs text-muted-foreground">
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 ) : (
                   <div className="text-center py-8">
                     <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -427,7 +439,6 @@ export default function OrderDetailPage() {
             )}
           </div>
 
-          {/* Order Summary */}
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -439,6 +450,14 @@ export default function OrderDetailPage() {
                     <span className="text-muted-foreground">Subtotal:</span>
                     <span>{formatCLP(order.subtotal)}</span>
                   </div>
+                  <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                    <span>Neto (sin IVA):</span>
+                    <span>{formatCLP(subtotalNeto)}</span>
+                  </div>
+                  <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                    <span>IVA (19%):</span>
+                    <span>{formatCLP(subtotalIVA)}</span>
+                  </div>
                   {order.discount > 0 && (
                     <div className="flex justify-between text-green-600">
                       <span className="text-muted-foreground">Descuento:</span>
@@ -446,7 +465,7 @@ export default function OrderDetailPage() {
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Envío:</span>
+                    <span className="text-muted-foreground">Envio:</span>
                     <span>{order.shipping === 0 ? "Gratis" : formatCLP(order.shipping)}</span>
                   </div>
                   <Separator />
@@ -459,7 +478,7 @@ export default function OrderDetailPage() {
                 {order.coupon_code && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
                     <p className="text-sm text-green-800">
-                      <strong>Cupón aplicado:</strong> {order.coupon_code}
+                      <strong>Cupon aplicado:</strong> {order.coupon_code}
                     </p>
                   </div>
                 )}
@@ -470,7 +489,7 @@ export default function OrderDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MapPin className="w-5 h-5" />
-                  Dirección de Envío
+                  Direccion de Envio
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -482,8 +501,8 @@ export default function OrderDetailPage() {
                   <p>
                     {addressInfo.commune_name}, {addressInfo.region_name}
                   </p>
-                  <p>Código Postal: {addressInfo.postal_code}</p>
-                  <p>Teléfono: {order.customer_phone}</p>
+                  <p>Codigo Postal: {addressInfo.postal_code}</p>
+                  <p>Telefono: {order.customer_phone}</p>
                   <p>Email: {order.customer_email}</p>
                   {addressInfo.department && (
                     <p>Departamento: {addressInfo.department}</p>
@@ -501,7 +520,7 @@ export default function OrderDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Shield className="w-5 h-5" />
-                  Método de Pago
+                  Metodo de Pago
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -522,14 +541,13 @@ export default function OrderDetailPage() {
                 {order.payment_status === 'paid' && (
                   <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-2">
                     <p className="text-xs text-green-800 text-center">
-                      ✅ Pago verificado y confirmado
+                      Pago verificado y confirmado
                     </p>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* Action Buttons */}
             <div className="space-y-3">
               {order.status === "delivered" && (
                 <Link href="/">
@@ -553,25 +571,35 @@ export default function OrderDetailPage() {
                 ) : (
                   <>
                     <Mail className="w-4 h-4 mr-2" />
-                    Reenviar Email de Confirmación
+                    Reenviar Email de Confirmacion
                   </>
                 )}
               </Button>
               
               {tieneBoleta && (
-                <Button 
-                  variant="outline" 
-                  className="w-full bg-transparent"
-                  onClick={descargarBoleta}
-                  disabled={descargandoPDF}
-                >
-                  {descargandoPDF ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4 mr-2" />
-                  )}
-                  Descargar Boleta PDF
-                </Button>
+                <>
+                  <Button 
+                    variant="outline" 
+                    className="w-full bg-transparent"
+                    onClick={verBoleta}
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Ver Boleta PDF
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="w-full bg-transparent"
+                    onClick={descargarBoleta}
+                    disabled={descargandoPDF}
+                  >
+                    {descargandoPDF ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Descargar Boleta PDF
+                  </Button>
+                </>
               )}
               
               <Link href="/orders">

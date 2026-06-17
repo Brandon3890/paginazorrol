@@ -1,4 +1,3 @@
-// components/product-card.tsx
 "use client"
 
 import type React from "react"
@@ -31,7 +30,7 @@ interface Product {
   age: string
   players: string
   duration: string
-  tags: string[] // Ahora es un array de strings
+  tags: string[]
   description: string
   inStock: boolean
   stock: number 
@@ -52,13 +51,15 @@ const calculateDiscountPercent = (originalPrice: number, currentPrice: number): 
   return Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
 };
 
-// Función para verificar si tiene un tag específico
 const hasTag = (tags: string[], tagName: string): boolean => {
   if (!tags || !Array.isArray(tags)) return false;
   return tags.some(tag => tag.toLowerCase().includes(tagName.toLowerCase()));
 };
 
-// Configuración de etiquetas
+const isProductOutOfStock = (product: Product): boolean => {
+  return !product.inStock || product.stock <= 0;
+};
+
 interface BadgeConfig {
   text: string | ((product: Product) => string);
   color: string;
@@ -68,10 +69,16 @@ interface BadgeConfig {
 
 const BADGE_CONFIGS: BadgeConfig[] = [
   {
+    text: "AGOTADO",
+    color: "rgba(237, 28, 36)",
+    priority: 1,
+    condition: (product) => isProductOutOfStock(product)
+  },
+  {
     text: "PREVENTA",
     color: "rgb(251, 176, 59)",
-    priority: 1,
-    condition: (product) => hasTag(product.tags, "preventa")
+    priority: 2,
+    condition: (product) => hasTag(product.tags, "preventa") && !isProductOutOfStock(product)
   },
   {
     text: (product) => {
@@ -80,24 +87,17 @@ const BADGE_CONFIGS: BadgeConfig[] = [
       return `-${discountPercent}%`;
     },
     color: "rgba(241, 90, 36)",
-    priority: 2,
-    condition: (product) => product.originalPrice !== undefined && product.originalPrice > product.price
+    priority: 3,
+    condition: (product) => product.originalPrice !== undefined && product.originalPrice > product.price && !isProductOutOfStock(product)
   },
   {
     text: "NOVEDAD",
     color: "rgba(26, 26, 26)",
-    priority: 3,
-    condition: (product) => hasTag(product.tags, "novedad")
-  },
-  {
-    text: "AGOTADO",
-    color: "rgba(237, 28, 36)",
     priority: 4,
-    condition: (product) => !product.inStock || product.stock <= 0
+    condition: (product) => hasTag(product.tags, "novedad") && !isProductOutOfStock(product)
   }
 ];
 
-// Función para obtener todas las etiquetas que debe mostrar el producto
 const getAllBadges = (product: Product): Array<{ text: string; color: string; priority: number }> => {
   const badges: Array<{ text: string; color: string; priority: number }> = [];
   
@@ -111,38 +111,38 @@ const getAllBadges = (product: Product): Array<{ text: string; color: string; pr
           priority: config.priority
         });
       }
+      if (config.priority === 1) {
+        break;
+      }
     }
   }
   
-  // Ordenar por prioridad (menor número = mayor prioridad, se muestra arriba)
   return badges.sort((a, b) => a.priority - b.priority);
 };
 
 export function ProductCard({ product, index = 0 }: ProductCardProps) {
-  const hasDiscount = product.originalPrice && product.originalPrice > product.price
-  const badges = getAllBadges(product)
+  const outOfStock = isProductOutOfStock(product);
+  const hasDiscount = !outOfStock && product.originalPrice && product.originalPrice > product.price;
+  const badges = getAllBadges(product);
 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
-  const [isHovered, setIsHovered] = useState(false)
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
   
-  const allImages = [product.image, ...(product.additionalImages || [])]
+  const allImages = [product.image, ...(product.additionalImages || [])];
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let interval: NodeJS.Timeout;
     
-    if (isHovered && allImages.length > 1) {
+    if (isHovered && allImages.length > 1 && !outOfStock) {
       interval = setInterval(() => {
-        setCurrentImageIndex((prev) => (prev + 1) % allImages.length)
-      }, 2000)
+        setCurrentImageIndex((prev) => (prev + 1) % allImages.length);
+      }, 2000);
     }
 
     return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isHovered, allImages.length])
-
-  // Debug: log para verificar tags
-  console.log(`🏷️ Producto: ${product.name}, Tags:`, product.tags, `Badges a mostrar:`, badges.map(b => b.text));
+      if (interval) clearInterval(interval);
+    };
+  }, [isHovered, allImages.length, outOfStock]);
 
   return (
     <motion.div
@@ -162,8 +162,8 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col w-full cursor-pointer border-border/50 relative overflow-hidden"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => {
-            setIsHovered(false)
-            setCurrentImageIndex(0)
+            setIsHovered(false);
+            setCurrentImageIndex(0);
           }}
         >
           <CardContent className="p-4 flex-1 flex flex-col relative z-10">
@@ -191,7 +191,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                 </motion.div>
               </AnimatePresence>
 
-              {allImages.length > 1 && (
+              {allImages.length > 1 && !outOfStock && (
                 <motion.div 
                   className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1"
                   initial={{ opacity: 0, y: 10 }}
@@ -209,40 +209,39 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                 </motion.div>
               )}
 
-              {/* Múltiples etiquetas apiladas en la esquina superior derecha */}
-                {badges.length > 0 && (
-                  <motion.div
-                    initial={{ x: 50, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
-                    className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
-                  >
-                    {badges.map((badge, idx) => (
-                      <motion.div
-                        key={badge.text}
-                        initial={{ x: 30, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: 0.1 + idx * 0.05 }}
+              {badges.length > 0 && (
+                <motion.div
+                  initial={{ x: 50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
+                  className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
+                >
+                  {badges.map((badge, idx) => (
+                    <motion.div
+                      key={badge.text}
+                      initial={{ x: 30, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: 0.1 + idx * 0.05 }}
+                    >
+                      <Badge 
+                        className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap"
+                        style={{ 
+                          backgroundColor: badge.color,
+                          color: "white"
+                        }}
                       >
-                        <Badge 
-                          className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap"
-                          style={{ 
-                            backgroundColor: badge.color,
-                            color: "white"
-                          }}
-                        >
-                          {badge.text}
-                        </Badge>
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
+                        {badge.text}
+                      </Badge>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
             </motion.div>
 
             <div className="space-y-2 flex-1 flex flex-col">
               <motion.h3 
                 className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] break-words"
-                animate={{ color: isHovered ? "#C2410C" : "#000000" }}
+                animate={{ color: isHovered && !outOfStock ? "#C2410C" : "#000000" }}
                 transition={{ duration: 0.3 }}
               >
                 {product.name}
@@ -253,18 +252,26 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                 animate={isHovered ? { scale: 1.05, x: 5 } : { scale: 1, x: 0 }}
                 transition={{ type: "spring", stiffness: 300 }}
               >
-                <span className="text-lg font-bold text-[#C2410C]">
-                  ${formatCLP(product.price)}
-                </span>
-                {hasDiscount && product.originalPrice && (
-                  <motion.span 
-                    className="text-sm text-muted-foreground line-through"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    ${formatCLP(product.originalPrice)}
-                  </motion.span>
+                {outOfStock ? (
+                  <span className="text-lg font-bold text-red-600">
+                    Sin stock
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-lg font-bold text-[#C2410C]">
+                      ${formatCLP(product.price)}
+                    </span>
+                    {hasDiscount && product.originalPrice && (
+                      <motion.span 
+                        className="text-sm text-muted-foreground line-through"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.1 }}
+                      >
+                        ${formatCLP(product.originalPrice)}
+                      </motion.span>
+                    )}
+                  </>
                 )}
               </motion.div>
             </div>
@@ -272,5 +279,5 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         </Card>
       </Link>
     </motion.div>
-  )
+  );
 }

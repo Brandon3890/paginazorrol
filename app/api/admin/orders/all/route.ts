@@ -1,4 +1,3 @@
-// app/api/admin/orders/all/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -23,28 +22,47 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para ver todos los pedidos' }, { status: 403 })
     }
 
-    // Obtener todas las órdenes de todos los usuarios
+    // Obtener todas las órdenes de todos los usuarios incluyendo is_guest
     const orders = await query(
-      `SELECT o.*, u.email, u.first_name, u.last_name, u.phone 
+      `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.is_guest 
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        ORDER BY o.created_at DESC`
     ) as any[]
 
-    console.log(`📦 Found ${orders.length} total orders`)
+    console.log(`Found ${orders.length} total orders`)
 
     // Para cada orden, obtener los items
     const ordersWithItems = await Promise.all(
       orders.map(async (order: any) => {
         // Obtener items de la orden
         const orderItems = await query(
-          `SELECT oi.*, p.image, c.name as category_name
-           FROM order_items oi 
-           LEFT JOIN products p ON oi.product_id = p.id 
-           LEFT JOIN categories c ON p.category_id = c.id 
-           WHERE oi.order_id = ?`,
+          `SELECT * FROM order_items WHERE order_id = ?`,
           [order.id]
         ) as any[]
+
+        // Obtener imágenes de los productos
+        const itemsWithImages = await Promise.all(
+          orderItems.map(async (item: any) => {
+            try {
+              const products = await query(
+                `SELECT image FROM products WHERE id = ?`,
+                [item.product_id]
+              ) as any[]
+              
+              if (products.length > 0) {
+                return {
+                  ...item,
+                  image_url: products[0].image
+                }
+              }
+            } catch (error) {
+              console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+            }
+            
+            return item
+          })
+        )
 
         // Obtener dirección de envío si existe
         let shippingAddress = undefined
@@ -65,31 +83,32 @@ export async function GET(request: NextRequest) {
           order_number: order.order_number,
           status: order.status,
           payment_status: order.payment_status,
-          subtotal: parseFloat(order.subtotal),
-          discount: parseFloat(order.discount),
-          shipping: parseFloat(order.shipping),
-          tax: parseFloat(order.tax),
-          total: parseFloat(order.total),
-          notes: order.notes,
-          coupon_code: order.coupon_code,
-          shipping_method: order.payment_method,
+          subtotal: parseFloat(order.subtotal) || 0,
+          discount: parseFloat(order.discount) || 0,
+          shipping: parseFloat(order.shipping) || 0,
+          tax: parseFloat(order.tax) || 0,
+          total: parseFloat(order.total) || 0,
+          notes: order.notes || '',
+          coupon_code: order.coupon_code || '',
+          shipping_method: order.payment_method || '',
           created_at: order.created_at,
           updated_at: order.updated_at,
-          items: orderItems.map((item: any) => ({
+          items: itemsWithImages.map((item: any) => ({
             id: item.id,
             product_id: item.product_id,
             product_name: item.product_name,
-            product_price: parseFloat(item.product_price),
-            quantity: item.quantity,
-            subtotal: parseFloat(item.subtotal),
-            image_url: item.image,
-            category: item.category_name || 'General'
+            product_price: parseFloat(item.product_price) || 0,
+            quantity: item.quantity || 0,
+            subtotal: parseFloat(item.subtotal) || 0,
+            image_url: item.image_url || '',
+            category: item.category || ''
           })),
           shipping_address: shippingAddress,
           customer_email: order.email || '',
           customer_first_name: order.first_name || '',
           customer_last_name: order.last_name || '',
-          customer_phone: order.phone || ''
+          customer_phone: order.phone || '',
+          is_guest: order.is_guest === 1
         }
       })
     )

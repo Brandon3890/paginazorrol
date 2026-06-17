@@ -1,4 +1,3 @@
-// lib/auth-store.ts
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -61,6 +60,7 @@ interface AuthState {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  _hydrated: boolean
   login: (email: string, password: string) => Promise<boolean>
   register: (userData: RegisterData) => Promise<boolean>
   logout: () => void
@@ -71,6 +71,7 @@ interface AuthState {
   deleteUserAddress: (id: number) => Promise<void>
   setDefaultAddress: (id: number) => Promise<void>
   loadUserAddresses: () => Promise<void>
+  setHydrated: (state: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -80,6 +81,9 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       isLoading: false,
+      _hydrated: false,
+
+      setHydrated: (state) => set({ _hydrated: state }),
 
       login: async (email: string, password: string) => {
         try {
@@ -118,6 +122,11 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             })
+            
+            if (typeof window !== 'undefined') {
+              sessionStorage.removeItem('guest_session_id')
+            }
+            
             return true
           } else {
             set({ isLoading: false })
@@ -181,6 +190,11 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: true,
                 isLoading: false,
               })
+              
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem('guest_session_id')
+              }
+              
               return true
             }
           }
@@ -205,6 +219,10 @@ export const useAuthStore = create<AuthState>()(
             token: null,
             isAuthenticated: false,
           })
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('guest_session_id')
+            localStorage.removeItem('guest-storage')
+          }
         }
       },
 
@@ -408,6 +426,14 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated 
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHydrated(true)
+          if (state.token && state.user) {
+            state.verifyToken()
+          }
+        }
+      },
     }
   )
 )

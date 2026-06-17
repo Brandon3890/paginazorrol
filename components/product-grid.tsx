@@ -9,7 +9,6 @@ import { SlidersHorizontal, X, RefreshCw, ChevronLeft, ChevronRight } from "luci
 import { useProductStore } from "@/lib/product-store"
 import { useToast } from "@/hooks/use-toast"
 
-// Define un tipo local para Product que sea compatible con ProductCard
 interface CompatibleProduct {
   id: number
   name: string
@@ -22,7 +21,7 @@ interface CompatibleProduct {
   age: string
   players: string
   duration: string
-  tags: string[] // Ahora es array de strings
+  tags: string[]
   description: string
   inStock: boolean
   isOnSale: boolean
@@ -54,34 +53,33 @@ interface ProductGridProps {
   onSale?: boolean
 }
 
-// Configuración de paginación
 const PRODUCTS_PER_PAGE = 15
 
-// Función para obtener el tag principal como string (para ordenamiento)
-const getPrimaryTag = (tags: string[]): string => {
-  if (!tags || tags.length === 0) return '';
-  return tags[0];
+const isProductOutOfStock = (product: CompatibleProduct): boolean => {
+  return !product.inStock || product.stock <= 0
 }
 
-// Función para determinar el orden de los productos
 const getProductPriority = (product: CompatibleProduct): number => {
-  const tags = product.tags || [];
+  const outOfStock = isProductOutOfStock(product)
+  const tags = product.tags || []
   
-  // 1. PREVENTA (primero)
-  if (tags.some(tag => tag === 'preventa')) return 1
+  if (outOfStock) {
+    return 100
+  }
   
-  // 2. DESCUENTO (segundo)
-  const hasDiscount = product.originalPrice && product.originalPrice > product.price
-  if (hasDiscount || tags.some(tag => tag === 'descuento')) return 2
+  if (tags.includes('preventa')) {
+    return 1
+  }
   
-  // 3. NOVEDAD (tercero)
-  if (tags.some(tag => tag === 'novedad')) return 3
+  if (product.originalPrice && product.originalPrice > product.price) {
+    return 2
+  }
   
-  // 4. SIN ETIQUETA (cuarto)
-  if (product.inStock && product.stock > 0) return 4
+  if (tags.includes('novedad')) {
+    return 3
+  }
   
-  // 5. AGOTADO (último)
-  return 5
+  return 4
 }
 
 export function ProductGrid({ category, subcategory, searchQuery, onSale }: ProductGridProps) {
@@ -92,7 +90,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
   const { products, fetchProducts, globalSearchQuery } = useProductStore()
   const { toast } = useToast()
 
-  // Resetear página cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(1)
   }, [category, subcategory, searchQuery, globalSearchQuery, onSale])
@@ -164,7 +161,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       age: product.age || `${product.ageMin}+ años`,
       players: product.players || `${product.playersMin}-${product.playersMax} jugadores`,
       duration: product.duration || `${product.durationMin} min`,
-      tags: product.tags || [], // Usar tags normalizados directamente
+      tags: product.tags || [],
       description: product.description,
       inStock: product.stock > 0,
       isOnSale: product.isOnSale,
@@ -220,7 +217,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     setFilters(clearedFilters)
   }
 
-  // Filtrar y ordenar productos
   const filteredProducts = useMemo(() => {
     let filtered = compatibleProducts
 
@@ -276,11 +272,9 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       return true
     })
 
-    // ORDENAR PRODUCTOS según prioridad
     return filtered.sort((a, b) => getProductPriority(a) - getProductPriority(b))
   }, [category, subcategory, searchQuery, onSale, filters, compatibleProducts, globalSearchQuery])
 
-  // Paginación
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
   const paginatedProducts = filteredProducts.slice(
     (currentPage - 1) * PRODUCTS_PER_PAGE,
@@ -360,7 +354,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
             className="text-orange-700 border-orange-300 hover:bg-orange-100"
           >
             <X className="w-4 h-4 mr-1" />
-            Limpiar búsqueda
+            Limpiar busqueda
           </Button>
         </div>
       )}
@@ -369,8 +363,8 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-blue-50 p-4 rounded-lg border border-blue-200 gap-3">
           <div className="text-sm text-blue-700">
             <strong>Filtros activos:</strong>
-            {filters.categories.length > 0 && ` Categorías (${filters.categories.length})`}
-            {filters.subcategories.length > 0 && ` Subcategorías (${filters.subcategories.length})`}
+            {filters.categories.length > 0 && ` Categorias (${filters.categories.length})`}
+            {filters.subcategories.length > 0 && ` Subcategorias (${filters.subcategories.length})`}
             {filters.tags.length > 0 && ` Etiquetas (${filters.tags.length})`}
             {filters.inStock && ` Stock disponible`}
           </div>
@@ -419,7 +413,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
                 ))}
               </div>
 
-              {/* Paginación */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-2 mt-10">
                   <Button
