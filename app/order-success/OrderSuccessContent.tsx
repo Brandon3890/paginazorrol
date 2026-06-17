@@ -1,13 +1,12 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
 import { useToast } from '@/hooks/use-toast'
 
@@ -52,7 +51,7 @@ interface BoletaInfo {
 }
 
 export default function OrderSuccessContent() {
-  const { clearCart, items } = useCartStore()
+  const { clearCart, items, resetCartAfterCheckout } = useCartStore()
   const { toast } = useToast()
   const searchParams = useSearchParams()
   const status = searchParams.get('status')
@@ -61,7 +60,7 @@ export default function OrderSuccessContent() {
   const router = useRouter()
 
   const [order, setOrder] = useState<Order | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cartClearedLocal, setCartClearedLocal] = useState(false)
   
@@ -90,17 +89,20 @@ export default function OrderSuccessContent() {
     }
   }, [orderId, status, router])
 
+  // EFECTO PARA LIMPIAR CARRITO - SOLO CUANDO EL PAGO ES EXITOSO
   useEffect(() => {
-    if (status === 'success' && !cartClearedLocal && items.length > 0) {
-      console.log('Limpiando carrito local - pago exitoso confirmado')
+    if (status === 'success' && !cartClearedLocal) {
+      console.log('Vaciar carrito - pago exitoso confirmado')
       clearCart()
+      resetCartAfterCheckout()
       setCartClearedLocal(true)
       
       window.dispatchEvent(new CustomEvent('payment-complete'))
       window.dispatchEvent(new CustomEvent('stock-update'))
     }
-  }, [status, items.length, clearCart, cartClearedLocal])
+  }, [status, cartClearedLocal, clearCart, resetCartAfterCheckout])
 
+  // EFECTO PARA EMITIR BOLETA AUTOMÁTICAMENTE
   useEffect(() => {
     const emitirBoleta = async () => {
       if (status !== 'success' || !order || boletaInfo || emitiendoBoleta || order.boleta_emitida === 1) {
@@ -392,147 +394,145 @@ export default function OrderSuccessContent() {
             {status === 'success' && cartClearedLocal && (
               <div className="mt-2 flex items-center justify-center gap-2 text-sm text-green-600">
                 <ShoppingCart className="w-4 h-4" />
-                <span>Carrito limpiado automáticamente</span>
+                <span>Carrito vaciado automáticamente</span>
               </div>
             )}
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {order && (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Detalles del Pedido
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Número de Pedido:</span>
-                    <span className="font-mono">{order.order_number}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span>${order.total.toLocaleString('es-CL')}</span>
+            {order ? (
+              <>
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Detalles del Pedido
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Número de Pedido:</span>
+                      <span className="font-mono">{order.order_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total:</span>
+                      <span>${order.total.toLocaleString('es-CL')}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {order?.items && order.items.length > 0 && (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Productos
-                </h3>
-                <div className="space-y-3">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex gap-3 items-center">
-                      <div className="relative w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
-                        <img 
-                          src={getImageUrl(item.image_url)}
-                          alt={item.product_name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/placeholder.svg"
+                {order.items && order.items.length > 0 && (
+                  <div className="border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      Productos
+                    </h3>
+                    <div className="space-y-3">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex gap-3 items-center">
+                          <div className="relative w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
+                            <img 
+                              src={getImageUrl(item.image_url)}
+                              alt={item.product_name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = "/placeholder.svg"
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between">
+                              <span className="font-medium text-sm">{item.product_name}</span>
+                              <span className="font-medium">${(item.product_price * item.quantity).toLocaleString('es-CL')}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {item.quantity} × ${item.product_price.toLocaleString('es-CL')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {status === 'success' && (
+                  <div className="border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Boleta Electrónica
+                    </h3>
+                    
+                    {emitiendoBoleta && (
+                      <div className="flex items-center justify-center gap-2 py-4">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
+                      </div>
+                    )}
+
+                    {boletaError && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                        <p className="text-xs text-yellow-800 mb-2">
+                          ⚠️ {boletaError}
+                        </p>
+                        <Button 
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setBoletaInfo(null)
+                            setBoletaError(null)
                           }}
-                        />
+                        >
+                          Reintentar
+                        </Button>
                       </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-sm">{item.product_name}</span>
-                          <span className="font-medium">${(item.product_price * item.quantity).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.quantity} × ${item.product_price.toLocaleString('es-CL')}
+                    )}
+
+                    {boletaFolio && (
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={descargarPDF}
+                            disabled={descargandoPDF}
+                          >
+                            {descargandoPDF ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4 mr-2" />
+                            )}
+                            Descargar PDF
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={reenviarEmail}
+                            disabled={reenviandoEmail}
+                          >
+                            {reenviandoEmail ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Mail className="w-4 h-4 mr-2" />
+                            )}
+                            Reenviar Email
+                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    )}
 
-            {status === 'success' && (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Boleta Electrónica
-                </h3>
-                
-                {emitiendoBoleta && (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
+                    {!boletaFolio && !emitiendoBoleta && !boletaError && (
+                      <p className="text-sm text-muted-foreground">
+                        Generando boleta electrónica...
+                      </p>
+                    )}
                   </div>
                 )}
-
-                {boletaError && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
-                    <p className="text-xs text-yellow-800 mb-2">
-                      ⚠️ {boletaError}
-                    </p>
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setBoletaInfo(null)
-                        setBoletaError(null)
-                      }}
-                    >
-                      Reintentar
-                    </Button>
-                  </div>
-                )}
-
-                {boletaFolio && (
-                  <div className="space-y-3">
-                    <div className="flex gap-3">
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={descargarPDF}
-                        disabled={descargandoPDF}
-                      >
-                        {descargandoPDF ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4 mr-2" />
-                        )}
-                        Descargar PDF
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={reenviarEmail}
-                        disabled={reenviandoEmail}
-                      >
-                        {reenviandoEmail ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Mail className="w-4 h-4 mr-2" />
-                        )}
-                        Reenviar Email
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {!boletaFolio && !emitiendoBoleta && !boletaError && (
-                  <p className="text-sm text-muted-foreground">
-                    Generando boleta electrónica...
-                  </p>
-                )}
-              </div>
-            )}
-
-            {loading && (
+              </>
+            ) : loading ? (
               <div className="text-center py-4">
                 <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                 <p className="text-muted-foreground">Cargando detalles del pedido...</p>
               </div>
-            )}
-
-            {error && (
+            ) : error ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <p className="text-sm text-yellow-800 text-center">{error}</p>
                 <div className="flex justify-center mt-3">
@@ -545,7 +545,7 @@ export default function OrderSuccessContent() {
                   </Button>
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div className="flex gap-4 justify-center pt-4">
               <Link href="/">

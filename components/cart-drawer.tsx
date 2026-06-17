@@ -1,4 +1,3 @@
-// components/cart-drawer.tsx
 "use client"
 
 import { useCartStore } from "@/lib/cart-store"
@@ -48,7 +47,6 @@ export function CartDrawer() {
     currentItemsRef.current = items
   }, [items])
 
-  // Actualizar reserva cuando cambian los items (solo si hay checkout activo)
   useEffect(() => {
     if (hasActiveCheckout() && user && items.length > 0) {
       const timeoutId = setTimeout(() => {
@@ -58,7 +56,6 @@ export function CartDrawer() {
     }
   }, [items, hasActiveCheckout, user])
 
-  // Temporizador sincronizado con checkoutExpiresAt
   useEffect(() => {
     if (!hasActiveCheckout() || !checkoutExpiresAt) {
       setTimeLeft(null)
@@ -113,7 +110,7 @@ export function CartDrawer() {
     if (!user || !hasActiveCheckout()) return false
     
     try {
-      console.log(`🔄 Liberando stock de producto: ${productName} (${quantity} unidades)`)
+      console.log(`Liberando stock de producto: ${productName} (${quantity} unidades)`)
       
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
@@ -130,15 +127,15 @@ export function CartDrawer() {
       
       if (!response.ok) {
         const error = await response.json()
-        console.error('❌ Error liberando stock:', error)
+        console.error('Error liberando stock:', error)
         return false
       }
       
-      console.log(`✅ Stock liberado correctamente para ${productName}`)
+      console.log(`Stock liberado correctamente para ${productName}`)
       return true
       
     } catch (error) {
-      console.error('❌ Error en releaseSingleProductStock:', error)
+      console.error('Error en releaseSingleProductStock:', error)
       return false
     }
   }
@@ -165,7 +162,7 @@ export function CartDrawer() {
         const data = await response.json()
         if (data.errors) {
           toast({
-            title: "⚠️ Stock insuficiente",
+            title: "Stock insuficiente",
             description: data.errors.map((e: any) => `${e.name}: solo ${e.disponible} disponibles`).join(', '),
             variant: "destructive",
             duration: 5000,
@@ -219,9 +216,6 @@ export function CartDrawer() {
     }
   }
 
-  // =====================================================
-  // NUEVA FUNCIÓN: Vaciar carrito SIN confirmación (sin reserva activa)
-  // =====================================================
   const handleClearCartDirect = () => {
     clearCart()
     endCheckout()
@@ -232,12 +226,8 @@ export function CartDrawer() {
     })
   }
 
-  // =====================================================
-  // Vaciar carrito CON confirmación (cuando hay reserva activa)
-  // =====================================================
   const handleClearCartWithReservation = async () => {
     if (!hasActiveCheckout() || !user || items.length === 0) {
-      // Si no hay reserva, vaciar directamente
       handleClearCartDirect()
       return
     }
@@ -245,14 +235,13 @@ export function CartDrawer() {
     setShowCancelConfirm(true)
   }
 
-  // Función real para vaciar con reserva (cuando el usuario confirma)
   const handleCancelAndClear = async () => {
     setIsCancellingCheckout(true)
     
     try {
       const itemsToRelease = currentItemsRef.current
       
-      console.log('🔄 Cancelando y vaciando carrito. Items a liberar:', itemsToRelease)
+      console.log('Cancelando y vaciando carrito. Items a liberar:', itemsToRelease)
 
       if (itemsToRelease.length > 0) {
         const response = await fetch('/api/cart/reserve-stock', {
@@ -285,7 +274,7 @@ export function CartDrawer() {
       
       setShowCancelConfirm(false)
     } catch (error) {
-      console.error('❌ Error cancelando:', error)
+      console.error('Error cancelando:', error)
       toast({
         title: "Error",
         description: "No se pudo liberar el stock. Intenta nuevamente.",
@@ -307,7 +296,6 @@ export function CartDrawer() {
     }, 300)
   }
 
-  // Carrito vacío
   if (items.length === 0) {
     return (
       <Sheet open={isOpen} onOpenChange={setCartOpen}>
@@ -372,7 +360,6 @@ export function CartDrawer() {
             </SheetDescription>
           </SheetHeader>
 
-          {/* Banner de temporizador - solo visible cuando hay reserva activa */}
           {hasActiveCheckout() && timeLeft !== null && timeLeft > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
@@ -419,7 +406,6 @@ export function CartDrawer() {
             </motion.div>
           )}
 
-          {/* Modal de confirmación - SOLO cuando hay reserva activa */}
           {showCancelConfirm && (
             <>
               <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCancelConfirm(false)} />

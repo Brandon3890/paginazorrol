@@ -4,7 +4,6 @@ import { query } from '@/lib/db'
 import { sendBoletaEmail } from '@/lib/email-service';
 import { emitirBoletaSimpleFactura, obtenerPDFSimpleFactura } from '@/lib/simplefactura-service'
 
-// Función auxiliar para obtener el PDF de la boleta
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
   try {
     console.log('Obteniendo PDF');
@@ -16,12 +15,10 @@ async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
   }
 }
 
-// Función auxiliar para emitir boleta
 async function emitirBoleta(orderId: number) {
   try {
     console.log('Iniciando emisión de boleta para orden:', orderId);
     
-    // Obtener datos de la orden
     const orderData = await query(
       `SELECT 
         o.*,
@@ -46,7 +43,6 @@ async function emitirBoleta(orderId: number) {
 
     const order = orderData[0];
 
-    // Obtener productos de la orden
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -62,7 +58,6 @@ async function emitirBoleta(orderId: number) {
       throw new Error('No hay productos en la orden');
     }
 
-    // Preparar datos del cliente
     const cliente = {
       rut: order.customer_rut || '55555555-5',
       nombre: `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() || 'Consumidor Final',
@@ -71,7 +66,6 @@ async function emitirBoleta(orderId: number) {
       ciudad: order.shipping_region || 'Santiago'
     };
 
-    // Preparar productos para la boleta
     const productos = orderItems.map((item: any) => ({
       nombre: item.product_name,
       cantidad: item.quantity,
@@ -80,7 +74,6 @@ async function emitirBoleta(orderId: number) {
 
     const total = parseFloat(order.total);
 
-    // Llamar a la API de emisión de boleta
     const result = await emitirBoletaSimpleFactura(
       productos,
       cliente,
@@ -104,6 +97,41 @@ async function emitirBoleta(orderId: number) {
   }
 }
 
+// Función para liberar stock al cancelar
+async function liberarStock(userId: number) {
+  try {
+    const reservations = await query(
+      `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
+      [userId]
+    ) as any[]
+    
+    if (reservations && reservations.length > 0) {
+      console.log(`Liberando ${reservations.length} reservas para usuario ${userId}`)
+      
+      for (const res of reservations) {
+        await query(
+          `UPDATE products SET stock = stock + ? WHERE id = ?`,
+          [res.quantity, res.product_id]
+        )
+        console.log(`Stock devuelto para producto ${res.product_id}: +${res.quantity} unidades`)
+      }
+      
+      await query(
+        'DELETE FROM stock_reservations WHERE user_id = ?',
+        [userId]
+      )
+      console.log(`Reservas eliminadas para usuario ${userId}`)
+      return true
+    } else {
+      console.log(`No hay reservas activas para usuario ${userId}`)
+      return true
+    }
+  } catch (error) {
+    console.error('Error liberando stock:', error)
+    return false
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -117,7 +145,7 @@ export async function POST(request: NextRequest) {
 
     // CASO 1: Pago cancelado por el usuario
     if (TBK_TOKEN && !token_ws) {
-      console.log('Pago ABORTADO por el usuario con TBK_TOKEN:')
+      console.log('Pago ABORTADO por el usuario')
       
       const orders = await query(
         `SELECT * FROM orders WHERE transbank_session_id = ?`,
@@ -127,23 +155,8 @@ export async function POST(request: NextRequest) {
       if (orders.length > 0) {
         const order = orders[0]
         
-        // LIBERAR STOCK - devolver stock a productos
-        const reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ?`,
-          [order.user_id]
-        ) as any[]
-        
-        for (const res of reservations) {
-          await query(
-            `UPDATE products SET stock = stock + ? WHERE id = ?`,
-            [res.quantity, res.product_id]
-          )
-        }
-        
-        await query(
-          'DELETE FROM stock_reservations WHERE user_id = ?',
-          [order.user_id]
-        );
+        // LIBERAR STOCK
+        await liberarStock(order.user_id)
         
         await query(
           `UPDATE orders SET 
@@ -340,23 +353,8 @@ export async function POST(request: NextRequest) {
           // Pago rechazado
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
           
-          // LIBERAR STOCK - devolver stock a productos
-          const reservations = await query(
-            `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ?`,
-            [order.user_id]
-          ) as any[]
-          
-          for (const res of reservations) {
-            await query(
-              `UPDATE products SET stock = stock + ? WHERE id = ?`,
-              [res.quantity, res.product_id]
-            )
-          }
-          
-          await query(
-            'DELETE FROM stock_reservations WHERE user_id = ?',
-            [order.user_id]
-          );
+          // LIBERAR STOCK
+          await liberarStock(order.user_id)
           
           await query(
             `UPDATE orders SET 
@@ -380,7 +378,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // CASO 3: Tokens inválidos
     console.error('Tokens inválidos o ausentes')
     return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/order-success?status=error&message=invalid_tokens`
