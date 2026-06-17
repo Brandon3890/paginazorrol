@@ -1,4 +1,3 @@
-// app/api/payment/response/route.ts - VERSIÓN CORREGIDA CON sendBoletaEmail
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
@@ -8,17 +7,11 @@ import { emitirBoletaSimpleFactura, obtenerPDFSimpleFactura } from '@/lib/simple
 // Función auxiliar para obtener el PDF de la boleta
 async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
   try {
-
     console.log('Obteniendo PDF');
-
     const pdfUint8Array = await obtenerPDFSimpleFactura(Number(folio));
-
     return Buffer.from(pdfUint8Array);
-
   } catch (error: any) {
-
-    console.error(' Error obteniendo PDF:', error.message);
-
+    console.error('Error obteniendo PDF:', error.message);
     return null;
   }
 }
@@ -82,10 +75,9 @@ async function emitirBoleta(orderId: number) {
     const productos = orderItems.map((item: any) => ({
       nombre: item.product_name,
       cantidad: item.quantity,
-      precio: parseFloat(item.product_price) // Este precio YA incluye IVA
+      precio: parseFloat(item.product_price)
     }));
 
-    // Calcular total
     const total = parseFloat(order.total);
 
     // Llamar a la API de emisión de boleta
@@ -97,13 +89,12 @@ async function emitirBoleta(orderId: number) {
 
     if (result.status === 200) {
       console.log('Boleta emitida exitosamente.');
-
       return {
         success: true,
         folio: result.data.folio
       };
     } else {
-      console.error('❌ Error emitiendo boleta:', result.error);
+      console.error('Error emitiendo boleta:', result.error);
       return { success: false, error: result.error };
     }
 
@@ -136,6 +127,19 @@ export async function POST(request: NextRequest) {
       if (orders.length > 0) {
         const order = orders[0]
         
+        // LIBERAR STOCK - devolver stock a productos
+        const reservations = await query(
+          `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ?`,
+          [order.user_id]
+        ) as any[]
+        
+        for (const res of reservations) {
+          await query(
+            `UPDATE products SET stock = stock + ? WHERE id = ?`,
+            [res.quantity, res.product_id]
+          )
+        }
+        
         await query(
           'DELETE FROM stock_reservations WHERE user_id = ?',
           [order.user_id]
@@ -162,7 +166,7 @@ export async function POST(request: NextRequest) {
 
     // CASO 2: Pago exitoso
     if (token_ws && !TBK_TOKEN) {
-      console.log(' Procesando pago EXITOSO con token_ws')
+      console.log('Procesando pago EXITOSO con token_ws')
       
       try {
         const commitResponse = await transbankService.commitTransaction(token_ws)
@@ -183,25 +187,9 @@ export async function POST(request: NextRequest) {
         if (transbankService.isTransactionApproved(commitResponse)) {
           
           if (order.payment_status !== 'paid') {
-            console.log('Procesando pago exitoso - DESCONTANDO STOCK')
+            console.log('Procesando pago exitoso - ELIMINANDO RESERVAS (stock ya descontado)')
             
-            // Descontar stock
-            const orderItems = await query(
-              `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
-              [order.id]
-            ) as any[];
-            
-            for (const item of orderItems) {
-              await query(
-                `UPDATE products 
-                 SET stock = stock - ?,
-                     updated_at = CURRENT_TIMESTAMP
-                 WHERE id = ? AND stock >= ?`,
-                [item.quantity, item.product_id, item.quantity]
-              );
-            }
-            
-            // Eliminar reservas
+            // ELIMINAR RESERVAS (el stock YA fue descontado en la reserva)
             await query(
               'DELETE FROM stock_reservations WHERE user_id = ?',
               [order.user_id]
@@ -218,7 +206,6 @@ export async function POST(request: NextRequest) {
               folio = resultadoBoleta.folio;
               console.log('Boleta emitida, folio:', folio);
               
-              // Obtener el PDF de la boleta
               pdfBuffer = await obtenerPDFBoleta(folio);
               if (pdfBuffer) {
                 console.log('PDF de boleta obtenido correctamente');
@@ -231,7 +218,6 @@ export async function POST(request: NextRequest) {
 
             // ========== ENVIAR EMAIL CON BOLETA ==========
             try {
-              // Obtener datos completos para el email
               const orderDetails = await query(
                 `SELECT 
                   o.*,
@@ -258,12 +244,10 @@ export async function POST(request: NextRequest) {
               if (orderDetails.length > 0 && orderDetails[0].customer_email) {
                 const firstItem = orderDetails[0];
                 
-                // Calcular el IVA incluido correctamente
                 const subtotalConIVA = parseFloat(firstItem.subtotal);
                 const subtotalNeto = Math.round(subtotalConIVA / 1.19);
                 const ivaIncluido = subtotalConIVA - subtotalNeto;
                 
-                // Preparar datos para sendBoletaEmail
                 const emailData = {
                   orderNumber: firstItem.order_number,
                   customerName: `${firstItem.customer_first_name || ''} ${firstItem.customer_last_name || ''}`.trim() || 'Cliente',
@@ -280,10 +264,10 @@ export async function POST(request: NextRequest) {
                     product_price: parseFloat(item.product_price),
                     quantity: item.quantity
                   })),
-                  subtotal: subtotalConIVA, // Ya incluye IVA
+                  subtotal: subtotalConIVA,
                   discount: parseFloat(firstItem.discount || 0),
                   shipping: parseFloat(firstItem.shipping || 0),
-                  tax: ivaIncluido, // IVA incluido (para desglose)
+                  tax: ivaIncluido,
                   total: parseFloat(firstItem.total),
                   shippingAddress: {
                     street: firstItem.shipping_street || 'No especificada',
@@ -301,14 +285,11 @@ export async function POST(request: NextRequest) {
                   }
                 };
 
-                // Enviar email con la boleta PDF (los 3 argumentos requeridos)
                 if (pdfBuffer && folio) {
                   await sendBoletaEmail(emailData, pdfBuffer, folio);
-                  console.log(' Email con boleta PDF enviado a:', firstItem.customer_email);
+                  console.log('Email con boleta PDF enviado a:', firstItem.customer_email);
                 } else {
-                  // Si no hay PDF, enviar solo confirmación sin boleta
-                  console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
-                  // Enviar email sin PDF (pasar null o un buffer vacío)
+                  console.warn('No se pudo enviar boleta PDF, enviando solo confirmación');
                   await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
                 }
               }
@@ -341,7 +322,7 @@ export async function POST(request: NextRequest) {
               new Date(commitResponse.transaction_date)
                 .toISOString()
                 .slice(0, 19)
-                .replace('T', ' '), // cambio de fechas arregladas para el servidor
+                .replace('T', ' '),
               order.id
             ]
           )
@@ -358,6 +339,19 @@ export async function POST(request: NextRequest) {
         } else {
           // Pago rechazado
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
+          
+          // LIBERAR STOCK - devolver stock a productos
+          const reservations = await query(
+            `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ?`,
+            [order.user_id]
+          ) as any[]
+          
+          for (const res of reservations) {
+            await query(
+              `UPDATE products SET stock = stock + ? WHERE id = ?`,
+              [res.quantity, res.product_id]
+            )
+          }
           
           await query(
             'DELETE FROM stock_reservations WHERE user_id = ?',
@@ -379,7 +373,7 @@ export async function POST(request: NextRequest) {
         }
 
       } catch (commitError: any) {
-        console.error('❌ Error confirmando pago:', commitError)
+        console.error('Error confirmando pago:', commitError)
         return NextResponse.redirect(
           `${process.env.NEXTAUTH_URL}/order-success?status=error&message=payment_failed`
         )

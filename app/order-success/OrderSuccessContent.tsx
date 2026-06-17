@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Eye, Mail } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
@@ -23,8 +23,13 @@ interface Order {
   customer_last_name?: string
   customer_phone?: string
   customer_rut?: string
-  boleta_folio?: string
   boleta_emitida?: number
+  boleta_info?: {
+    folio: string
+    monto_total: number
+    fecha_emision: string
+    estado_sii: string
+  }
   shipping_address?: {
     street: string
     commune_name: string
@@ -60,12 +65,19 @@ export default function OrderSuccessContent() {
   const [error, setError] = useState<string | null>(null)
   const [cartClearedLocal, setCartClearedLocal] = useState(false)
   
-  // Estados para la boleta
   const [boletaInfo, setBoletaInfo] = useState<BoletaInfo | null>(null)
   const [emitiendoBoleta, setEmitiendoBoleta] = useState(false)
   const [boletaError, setBoletaError] = useState<string | null>(null)
   const [descargandoPDF, setDescargandoPDF] = useState(false)
   const [reenviandoEmail, setReenviandoEmail] = useState(false)
+
+  const getImageUrl = (url?: string) => {
+    if (!url) return "/placeholder.svg"
+    if (url.startsWith("http")) return url
+    if (url.startsWith("/")) return url
+    if (url.startsWith("uploads/")) return `/${url}`
+    return `/uploads/products/${url}`
+  }
 
   useEffect(() => {
     if (!status && !orderId) {
@@ -78,7 +90,6 @@ export default function OrderSuccessContent() {
     }
   }, [orderId, status, router])
 
-  // EFECTO PARA LIMPIAR CARRITO
   useEffect(() => {
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
       console.log('Limpiando carrito local - pago exitoso confirmado')
@@ -90,23 +101,15 @@ export default function OrderSuccessContent() {
     }
   }, [status, items.length, clearCart, cartClearedLocal])
 
-  // EFECTO PARA EMITIR BOLETA AUTOMÁTICAMENTE
   useEffect(() => {
     const emitirBoleta = async () => {
-      // Solo emitir si:
-      // 1. El pago fue exitoso
-      // 2. Tenemos la orden cargada
-      // 3. No hemos emitido la boleta aún
-      // 4. No estamos en proceso de emisión
-      // 5. La orden no tiene boleta ya emitida
       if (status !== 'success' || !order || boletaInfo || emitiendoBoleta || order.boleta_emitida === 1) {
         return
       }
 
-      // Verificar si ya se emitió para esta orden (evitar duplicados)
       const emittedKey = `boleta_${order.id}`
       if (sessionStorage.getItem(emittedKey)) {
-        console.log('⏭Boleta ya emitida para esta orden')
+        console.log('Boleta ya emitida para esta orden')
         return
       }
 
@@ -116,14 +119,12 @@ export default function OrderSuccessContent() {
       try {
         console.log('Emitiendo boleta para orden:', order.id)
         
-        // Limpiar RUT - si es inválido, usar consumidor final
         let rutCliente = order.customer_rut || '55555555-5'
         let nombreCliente = order.customer_first_name || 'Consumidor'
         let apellidoCliente = order.customer_last_name || 'Final'
         
-        // Si el RUT no es válido, usar consumidor final
         if (rutCliente === '11111111-2' || !rutCliente.match(/^[0-9]+-[0-9Kk]$/)) {
-          console.log('RUT inválido, usando consumidor final')
+          console.log('RUT invalido, usando consumidor final')
           rutCliente = '55555555-5'
           nombreCliente = 'Consumidor'
           apellidoCliente = 'Final'
@@ -162,7 +163,6 @@ export default function OrderSuccessContent() {
             data: resultado.data
           })
           
-          // Marcar como emitida
           sessionStorage.setItem(`boleta_${order.id}`, 'true')
           
           toast({
@@ -175,14 +175,13 @@ export default function OrderSuccessContent() {
           console.error('Error emitiendo boleta:', resultado)
         }
       } catch (error: any) {
-        setBoletaError('Error de conexión al emitir boleta')
+        setBoletaError('Error de conexion al emitir boleta')
         console.error('Error:', error)
       } finally {
         setEmitiendoBoleta(false)
       }
     }
 
-    // Pequeño delay para evitar rate limit
     const timer = setTimeout(() => {
       emitirBoleta()
     }, 1000)
@@ -202,13 +201,13 @@ export default function OrderSuccessContent() {
         console.log('Orden cargada:', {
           id: orderData.id,
           boleta_emitida: orderData.boleta_emitida,
+          items: orderData.items?.length || 0
         })
         
-        // Si ya tiene boleta, mostrarla
-        if (orderData.boleta_emitida === 1 && orderData.boleta_folio) {
+        if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
           setBoletaInfo({
             success: true,
-            folio: orderData.boleta_folio,
+            folio: orderData.boleta_info.folio,
             data: orderData.boleta_info
           })
         }
@@ -220,14 +219,14 @@ export default function OrderSuccessContent() {
       }
     } catch (error) {
       console.error('Error fetching order:', error)
-      setError('No se pudo cargar la información del pedido')
+      setError('No se pudo cargar la informacion del pedido')
     } finally {
       setLoading(false)
     }
   }
 
   const descargarPDF = async () => {
-    const folio = boletaInfo?.folio || order?.boleta_folio
+    const folio = boletaInfo?.folio || order?.boleta_info?.folio
     if (!folio) {
       toast({
         title: "Error",
@@ -274,19 +273,6 @@ export default function OrderSuccessContent() {
     } finally {
       setDescargandoPDF(false)
     }
-  }
-
-  const verPDF = () => {
-    const folio = boletaInfo?.folio || order?.boleta_folio
-    if (!folio) {
-      toast({
-        title: "Error",
-        description: "No hay boleta disponible",
-        variant: "destructive"
-      })
-      return
-    }
-    window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
   }
 
   const reenviarEmail = async () => {
@@ -378,7 +364,7 @@ export default function OrderSuccessContent() {
 
   const statusConfig = getStatusConfig()
   const StatusIcon = statusConfig.icon
-  const boletaFolio = boletaInfo?.folio || order?.boleta_folio
+  const boletaFolio = boletaInfo?.folio || order?.boleta_info?.folio
 
   if (!status) {
     return (
@@ -431,7 +417,6 @@ export default function OrderSuccessContent() {
               </div>
             )}
 
-            {/* Lista de productos con imágenes */}
             {order?.items && order.items.length > 0 && (
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
@@ -441,18 +426,16 @@ export default function OrderSuccessContent() {
                 <div className="space-y-3">
                   {order.items.map((item) => (
                     <div key={item.id} className="flex gap-3 items-center">
-                      {item.image_url && (
-                        <div className="w-12 h-12 relative flex-shrink-0 bg-gray-100 rounded overflow-hidden">
-                          <img 
-                            src={item.image_url} 
-                            alt={item.product_name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      )}
+                      <div className="relative w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
+                        <img 
+                          src={getImageUrl(item.image_url)}
+                          alt={item.product_name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/placeholder.svg"
+                          }}
+                        />
+                      </div>
                       <div className="flex-1">
                         <div className="flex justify-between">
                           <span className="font-medium text-sm">{item.product_name}</span>
@@ -468,80 +451,79 @@ export default function OrderSuccessContent() {
               </div>
             )}
 
-            {/* SECCIÓN DE BOLETA ELECTRÓNICA */}
             {status === 'success' && (
-                <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Boleta Electrónica
-                    </h3>
-                    
-                    {emitiendoBoleta && (
-                    <div className="flex items-center justify-center gap-2 py-4">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
-                    </div>
-                    )}
-
-                    {boletaError && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
-                        <p className="text-xs text-yellow-800 mb-2">
-                        ⚠️ {boletaError}
-                        </p>
-                        <Button 
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                            setBoletaInfo(null)
-                            setBoletaError(null)
-                        }}
-                        >
-                        Reintentar
-                        </Button>
-                    </div>
-                    )}
-
-                    {boletaFolio && (
-                    <div className="space-y-3">
-                        <div className="flex gap-3">
-                            <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={descargarPDF}
-                                disabled={descargandoPDF}
-                            >
-                                {descargandoPDF ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Download className="w-4 h-4 mr-2" />
-                                )}
-                                Descargar PDF
-                            </Button>
-
-                            <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={reenviarEmail}
-                                disabled={reenviandoEmail}
-                            >
-                                {reenviandoEmail ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Mail className="w-4 h-4 mr-2" />
-                                )}
-                                Reenviar Email
-                            </Button>
-                        </div>
-                    </div>
-                    )}
-
-                    {!boletaFolio && !emitiendoBoleta && !boletaError && (
-                    <p className="text-sm text-muted-foreground">
-                        Generando boleta electrónica...
-                    </p>
-                    )}
-                </div>
+              <div className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Boleta Electrónica
+                </h3>
+                
+                {emitiendoBoleta && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Generando boleta electrónica...</span>
+                  </div>
                 )}
+
+                {boletaError && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
+                    <p className="text-xs text-yellow-800 mb-2">
+                      ⚠️ {boletaError}
+                    </p>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setBoletaInfo(null)
+                        setBoletaError(null)
+                      }}
+                    >
+                      Reintentar
+                    </Button>
+                  </div>
+                )}
+
+                {boletaFolio && (
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={descargarPDF}
+                        disabled={descargandoPDF}
+                      >
+                        {descargandoPDF ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-2" />
+                        )}
+                        Descargar PDF
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={reenviarEmail}
+                        disabled={reenviandoEmail}
+                      >
+                        {reenviandoEmail ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Mail className="w-4 h-4 mr-2" />
+                        )}
+                        Reenviar Email
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!boletaFolio && !emitiendoBoleta && !boletaError && (
+                  <p className="text-sm text-muted-foreground">
+                    Generando boleta electrónica...
+                  </p>
+                )}
+              </div>
+            )}
 
             {loading && (
               <div className="text-center py-4">
