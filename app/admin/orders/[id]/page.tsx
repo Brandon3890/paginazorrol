@@ -336,11 +336,6 @@ export default function AdminOrderDetailPage() {
                   <div>
                     <p className="font-medium">
                       {order.customer_first_name} {order.customer_last_name}
-                      {order.is_guest ? (
-                        <span className="text-purple-600 text-xs ml-2">(Invitado)</span>
-                      ) : (
-                        <span className="text-green-600 text-xs ml-2">(Registrado)</span>
-                      )}
                     </p>
                   </div>
                 </div>
