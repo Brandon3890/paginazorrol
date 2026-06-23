@@ -65,7 +65,7 @@ export default function MySQLOrderDetailPage() {
     }
 
     if (!isAuthenticated) {
-      console.log('Usuario no autenticado, redirigiendo a login')
+      console.log('🔐 Usuario no autenticado, redirigiendo a login')
       router.push('/login?from=' + encodeURIComponent(`/orders/mysql/${orderId}`))
       return
     }
@@ -78,10 +78,12 @@ export default function MySQLOrderDetailPage() {
       setLoading(true)
       setError(null)
       
+      console.log('📦 Fetching order from MySQL:', orderId)
       const response = await fetch(`/api/orders/${orderId}`)
       
       if (response.ok) {
         const orderData = await response.json()
+        console.log('✅ Order data received:', orderData)
         setOrder(orderData)
       } else if (response.status === 404) {
         setError('Orden no encontrada')
@@ -96,7 +98,7 @@ export default function MySQLOrderDetailPage() {
         setError(errorData.error || 'Error al cargar la orden')
       }
     } catch (error) {
-      console.error('Error fetching order:', error)
+      console.error('❌ Error fetching order:', error)
       setError('No se pudo cargar la información del pedido. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)
@@ -331,21 +333,21 @@ export default function MySQLOrderDetailPage() {
                 {order.payment_status === 'paid' && (
                   <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-2">
                     <p className="text-xs text-green-800 text-center">
-                      Pago verificado y confirmado
+                      ✅ Pago verificado y confirmado
                     </p>
                   </div>
                 )}
                 {order.payment_status === 'pending' && (
                   <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2">
                     <p className="text-xs text-yellow-800 text-center">
-                      Pago pendiente de confirmación
+                      ⏳ Pago pendiente de confirmación
                     </p>
                   </div>
                 )}
                 {order.payment_status === 'failed' && (
                   <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
                     <p className="text-xs text-red-800 text-center">
-                      Pago fallido o cancelado
+                      ❌ Pago fallido o cancelado
                     </p>
                   </div>
                 )}

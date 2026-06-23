@@ -111,15 +111,6 @@ export default function AdminOrdersPage() {
     })
   }
 
-  // Función para obtener URL de imagen
-  const getImageUrl = (url?: string) => {
-    if (!url) return "/placeholder.svg"
-    if (url.startsWith("http")) return url
-    if (url.startsWith("/")) return url
-    if (url.startsWith("uploads/")) return `/${url}`
-    return `/uploads/products/${url}`
-  }
-
   useEffect(() => {
     if (authLoading) return
 
@@ -189,6 +180,24 @@ export default function AdminOrdersPage() {
       console.error('Error updating order status:', error)
       setError('Error al actualizar el estado del pedido')
     }
+  }
+
+  const getImageUrl = (imagePath: string | undefined) => {
+    if (!imagePath) return "/placeholder.svg"
+    
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    if (imagePath.startsWith('/uploads/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    if (imagePath.startsWith('/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    return "/placeholder.svg"
   }
 
   const filteredOrders = orders.filter(order => {
@@ -506,7 +515,6 @@ export default function AdminOrdersPage() {
                                   <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
-                                  Neto: {formatPrice(itemNeto)} + IVA: {formatPrice(itemIVA)}
                                 </div>
                               </div>
                               <div className="text-right">

@@ -596,8 +596,6 @@ Ingresar Código
 export { transporter };
 
 
-// lib/email-service.ts - AGREGAR ESTA FUNCIÓN AL FINAL DEL ARCHIVO
-
 // Función para enviar correo de contacto
 export async function sendContactEmail(formData: {
   name: string;
@@ -609,12 +607,12 @@ export async function sendContactEmail(formData: {
   const { name, email, phone, subject, message } = formData;
 
   if (!email) {
-    console.error('❌ No se puede enviar email: email es undefined');
+    console.error('No se puede enviar email: email es undefined');
     return false;
   }
 
-  // Correo destino (puedes cambiarlo por el que necesites)
-  const destEmail = "carocabrandon6@gmail.com";
+  // Correo destino
+  const destEmail = "jinfranko@zorroludico.cl";
 
   const formatDate = () => {
     return new Date().toLocaleString('es-CL', {
@@ -635,94 +633,126 @@ export async function sendContactEmail(formData: {
       margin: 0;
       padding: 0;
       background-color: #f3f4f6;
-      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-family: Arial, sans-serif;
     }
     .container {
-      max-width: 600px;
+      max-width: 700px;
       margin: 0 auto;
       background-color: #ffffff;
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      border: 1px solid #e5e7eb;
     }
     .header {
-      background: linear-gradient(135deg, #C2410C 0%, #EA580C 100%);
-      padding: 32px;
-      text-align: center;
+      background: #111827;
+      padding: 30px;
     }
     .header h1 {
       margin: 0;
       color: #ffffff;
       font-size: 24px;
-      font-weight: 600;
-      letter-spacing: -0.5px;
     }
-    .header p {
-      margin: 8px 0 0 0;
-      color: #fef3c7;
+    .header .subtitle {
+      margin: 5px 0 0 0;
+      color: #d1d5db;
       font-size: 14px;
     }
+    .header .meta {
+      margin: 5px 0 0 0;
+      color: #d1d5db;
+      font-size: 12px;
+      text-align: right;
+    }
     .content {
-      padding: 32px;
+      padding: 30px;
+    }
+    .greeting {
+      font-size: 22px;
+      font-weight: bold;
+      color: #111827;
+      margin: 0 0 15px 0;
+    }
+    .description {
+      color: #374151;
+      font-size: 14px;
+      margin: 0 0 30px 0;
     }
     .section-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #1f2937;
-      margin: 0 0 16px 0;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #f3f4f6;
-    }
-    .info-card {
-      background-color: #f9fafb;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 24px;
-    }
-    .info-row {
-      margin-bottom: 16px;
-    }
-    .info-row:last-child {
-      margin-bottom: 0;
-    }
-    .info-label {
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #6b7280;
-      margin-bottom: 4px;
-    }
-    .info-value {
       font-size: 16px;
-      font-weight: 500;
-      color: #1f2937;
-      word-break: break-word;
+      font-weight: 600;
+      color: #111827;
+      margin: 0 0 15px 0;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e5e7eb;
     }
-    .info-value a {
-      color: #C2410C;
+    .info-table {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+    }
+    .info-table td {
+      padding: 12px 20px;
+      font-size: 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .info-table tr:last-child td {
+      border-bottom: none;
+    }
+    .info-table .label {
+      color: #6b7280;
+      font-weight: 500;
+      width: 35%;
+    }
+    .info-table .value {
+      color: #111827;
+      font-weight: 500;
+    }
+    .info-table .value a {
+      color: #111827;
       text-decoration: none;
     }
-    .info-value a:hover {
+    .info-table .value a:hover {
       text-decoration: underline;
     }
-    .message-card {
-      background-color: #fffbeb;
-      border-left: 4px solid #C2410C;
-      border-radius: 12px;
+    .message-box {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
       padding: 20px;
-      margin-top: 8px;
+      margin-bottom: 25px;
     }
     .message-text {
       font-size: 15px;
-      line-height: 1.6;
+      line-height: 1.7;
       color: #374151;
       margin: 0;
       white-space: pre-wrap;
     }
+    .divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 30px 0;
+    }
+    .btn-container {
+      text-align: center;
+      padding: 10px 0;
+    }
+    .btn {
+      display: inline-block;
+      background: #111827;
+      color: #ffffff;
+      padding: 14px 40px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 4px;
+    }
+    .btn:hover {
+      background: #1f2937;
+    }
     .footer {
-      background-color: #f9fafb;
-      padding: 24px 32px;
+      background: #f9fafb;
+      padding: 20px 30px;
       text-align: center;
       border-top: 1px solid #e5e7eb;
     }
@@ -732,109 +762,144 @@ export async function sendContactEmail(formData: {
       color: #9ca3af;
     }
     .footer a {
-      color: #C2410C;
+      color: #111827;
       text-decoration: none;
     }
-    .badge {
+    .status-badge {
       display: inline-block;
-      background-color: #dcfce7;
+      background: #dcfce7;
       color: #166534;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
       padding: 4px 12px;
-      border-radius: 20px;
-      margin-bottom: 16px;
+      border-radius: 4px;
+      margin-bottom: 20px;
     }
-    hr {
-      border: none;
-      border-top: 1px solid #e5e7eb;
-      margin: 24px 0;
+    @media (max-width: 480px) {
+      .header {
+        padding: 20px;
+      }
+      .header h1 {
+        font-size: 20px;
+      }
+      .content {
+        padding: 20px;
+      }
+      .info-table td {
+        padding: 10px 15px;
+        font-size: 13px;
+      }
+      .info-table .label {
+        width: 40%;
+      }
     }
   </style>
 </head>
-<body style="margin: 0; padding: 20px; background-color: #f3f4f6;">
+<body>
 
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px 0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:20px 0;">
+<tr>
+<td align="center">
+
+<table width="700" cellpadding="0" cellspacing="0" class="container" style="background:#ffffff;border:1px solid #e5e7eb;">
+
+<!-- HEADER -->
+<tr>
+<td class="header" style="background:#111827;padding:30px;">
+  <table width="100%">
+    <tr>
+      <td align="left">
+        <h1 style="margin:0;color:#ffffff;font-size:24px;">Zorro Ludico</h1>
+        <p class="subtitle" style="margin:5px 0 0 0;color:#d1d5db;font-size:14px;">Nuevo mensaje de contacto</p>
+      </td>
+      <td align="right" class="meta" style="margin:5px 0 0 0;color:#d1d5db;font-size:12px;">
+        ${formatDate()}
+      </td>
+    </tr>
+  </table>
+</td>
+</tr>
+
+<!-- CONTENIDO -->
+<tr>
+<td class="content" style="padding:30px;">
+
+
+<p class="greeting" style="font-size:22px;font-weight:bold;color:#111827;margin:0 0 15px 0;">
+  Has recibido un nuevo mensaje
+</p>
+
+<p class="description" style="color:#374151;font-size:14px;margin:0 0 30px 0;">
+  Un cliente ha enviado un mensaje a traves del formulario de contacto.
+</p>
+
+<!-- INFORMACION DEL CLIENTE -->
+<h2 class="section-title" style="font-size:16px;font-weight:600;color:#111827;margin:0 0 15px 0;padding-bottom:8px;border-bottom:2px solid #e5e7eb;">
+  Datos del Cliente
+</h2>
+
+<table class="info-table" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-collapse:collapse;margin-bottom:25px;">
   <tr>
-    <td align="center">
-      <div class="container" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-
-        <!-- HEADER -->
-        <div class="header" style="background: linear-gradient(135deg, #C2410C 0%, #EA580C 100%); padding: 32px; text-align: center;">
-          <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">Zorro Lúdico</h1>
-          <p style="margin: 8px 0 0 0; color: #fef3c7; font-size: 14px;">Nuevo mensaje de contacto</p>
-        </div>
-
-        <!-- CONTENIDO -->
-        <div class="content" style="padding: 32px;">
-
-          <div style="text-align: center; margin-bottom: 24px;">
-            <span class="badge" style="display: inline-block; background-color: #dcfce7; color: #166534; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 20px;">
-              Recibido el ${formatDate()}
-            </span>
-          </div>
-
-          <!-- INFORMACIÓN DEL CLIENTE -->
-          <h2 class="section-title" style="font-size: 18px; font-weight: 600; color: #1f2937; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 2px solid #f3f4f6;">
-            👤 Información del Cliente
-          </h2>
-
-          <div class="info-card" style="background-color: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-            <div class="info-row" style="margin-bottom: 16px;">
-              <div class="info-label" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #6b7280; margin-bottom: 4px;">NOMBRE COMPLETO</div>
-              <div class="info-value" style="font-size: 16px; font-weight: 500; color: #1f2937;">${escapeHtml(name)}</div>
-            </div>
-
-            <div class="info-row" style="margin-bottom: 16px;">
-              <div class="info-label" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #6b7280; margin-bottom: 4px;">CORREO ELECTRÓNICO</div>
-              <div class="info-value" style="font-size: 16px; font-weight: 500; color: #1f2937;">
-                <a href="mailto:${escapeHtml(email)}" style="color: #C2410C; text-decoration: none;">${escapeHtml(email)}</a>
-              </div>
-            </div>
-
-            <div class="info-row" style="margin-bottom: 16px;">
-              <div class="info-label" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #6b7280; margin-bottom: 4px;">TELÉFONO</div>
-              <div class="info-value" style="font-size: 16px; font-weight: 500; color: #1f2937;">
-                ${phone ? `<a href="tel:${escapeHtml(phone)}" style="color: #C2410C; text-decoration: none;">${escapeHtml(phone)}</a>` : 'No especificado'}
-              </div>
-            </div>
-
-            <div class="info-row" style="margin-bottom: 0;">
-              <div class="info-label" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #6b7280; margin-bottom: 4px;">ASUNTO</div>
-              <div class="info-value" style="font-size: 16px; font-weight: 500; color: #1f2937;">${escapeHtml(subject)}</div>
-            </div>
-          </div>
-
-          <!-- MENSAJE -->
-          <h2 class="section-title" style="font-size: 18px; font-weight: 600; color: #1f2937; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 2px solid #f3f4f6;">
-            Mensaje
-          </h2>
-
-          <div class="message-card" style="background-color: #fffbeb; border-left: 4px solid #C2410C; border-radius: 12px; padding: 20px;">
-            <p class="message-text" style="font-size: 15px; line-height: 1.6; color: #374151; margin: 0; white-space: pre-wrap;">
-              ${escapeHtml(message)}
-            </p>
-          </div>
-
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
-
-          <!-- CALL TO ACTION -->
-          <div style="text-align: center;">
-            <p style="font-size: 14px; color: #6b7280; margin: 0 0 16px 0;">
-              Responde rápidamente para brindar la mejor atención
-            </p>
-            <div style="display: inline-block; background-color: #C2410C; border-radius: 8px; padding: 10px 24px;">
-              <a href="mailto:${escapeHtml(email)}" style="color: #ffffff; text-decoration: none; font-weight: 500; font-size: 14px;">
-                Responder al Cliente
-              </a>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:500;width:35%;border-bottom:1px solid #e5e7eb;">Nombre completo</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;border-bottom:1px solid #e5e7eb;">${escapeHtml(name)}</td>
+  </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:500;width:35%;border-bottom:1px solid #e5e7eb;">Correo electronico</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;border-bottom:1px solid #e5e7eb;">
+      <a href="mailto:${escapeHtml(email)}" style="color:#111827;text-decoration:none;">${escapeHtml(email)}</a>
     </td>
   </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:500;width:35%;border-bottom:1px solid #e5e7eb;">Telefono</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;border-bottom:1px solid #e5e7eb;">
+      ${phone ? `<a href="tel:${escapeHtml(phone)}" style="color:#111827;text-decoration:none;">${escapeHtml(phone)}</a>` : 'No especificado'}
+    </td>
+  </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:500;width:35%;border-bottom:none;">Asunto</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;border-bottom:none;">${escapeHtml(subject)}</td>
+  </tr>
+</table>
+
+<!-- MENSAJE -->
+<h2 class="section-title" style="font-size:16px;font-weight:600;color:#111827;margin:0 0 15px 0;padding-bottom:8px;border-bottom:2px solid #e5e7eb;">
+  Mensaje del Cliente
+</h2>
+
+<div class="message-box" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:20px;margin-bottom:25px;">
+  <p class="message-text" style="font-size:15px;line-height:1.7;color:#374151;margin:0;white-space:pre-wrap;">
+    ${escapeHtml(message)}
+  </p>
+</div>
+
+<hr class="divider" style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;">
+
+<!-- BOTON RESPONDER -->
+<div class="btn-container" style="text-align:center;padding:10px 0;">
+  <p style="font-size:14px;color:#6b7280;margin:0 0 15px 0;">
+    Responde al cliente para brindar una atencion rapida
+  </p>
+  <a href="mailto:${escapeHtml(email)}?subject=Respuesta: ${escapeHtml(subject)}" class="btn" style="display:inline-block;background:#111827;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:15px;border-radius:4px;">
+    Responder al Cliente
+  </a>
+</div>
+
+</td>
+</tr>
+
+<!-- FOOTER -->
+<tr>
+<td class="footer" style="background:#f9fafb;padding:20px 30px;text-align:center;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;font-size:12px;color:#9ca3af;">
+    Zorro Ludico
+  </p>
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
 </table>
 
 </body>
@@ -843,7 +908,7 @@ export async function sendContactEmail(formData: {
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Lúdico - Contacto" <contacto@zorroludico.cl>',
+      from: process.env.SMTP_FROM || '"Zorro Ludico" <contacto@zorroludico.cl>',
       to: destEmail,
       replyTo: email,
       subject: `Nuevo mensaje de contacto: ${subject}`,
@@ -851,13 +916,14 @@ export async function sendContactEmail(formData: {
     };
 
     const info = await transporter.sendMail(mailOptions);
+    console.log('Email de contacto enviado a:', destEmail);
     return true;
 
   } catch (error) {
-    console.error('❌ Error enviando email de contacto:', error);
+    console.error('Error enviando email de contacto:', error);
     
-    // En desarrollo, simular envío
     if (process.env.NODE_ENV === 'development') {
+      console.log('[DEV] Simulacion de envio de contacto');
       return true;
     }
     

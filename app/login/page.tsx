@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useAuthStore } from "@/lib/auth-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function LoginPage() {
-  const { login, isAuthenticated } = useAuthStore()
+  const { login } = useAuthStore()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -29,13 +29,6 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("")
   const [isSendingReset, setIsSendingReset] = useState(false)
-
-  // Redirigir si ya está autenticado
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.push("/")
-    }
-  }, [isAuthenticated, router])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -117,14 +110,7 @@ export default function LoginPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <Link 
-            href="/" 
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground group"
-            onClick={(e) => {
-              // Permitir la navegación normal
-              // No prevenir el comportamiento por defecto
-            }}
-          >
+          <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground group">
             <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
             Volver a la tienda
           </Link>
@@ -308,6 +294,26 @@ export default function LoginPage() {
                           Regístrate aquí
                         </Link>
                       </p>
+
+                      <motion.div 
+                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        transition={{ type: "spring", stiffness: 300 }}
+                      >
+                        <p className="font-medium mb-1">Cuenta de prueba usuario normal:</p>
+                        <p>Email: demo@example.com</p>
+                        <p>Contraseña: demo123</p>
+                      </motion.div>
+                      
+                      <motion.div 
+                        className="bg-muted rounded-lg p-3 text-sm transition-all hover:scale-[1.02] hover:-translate-y-1 cursor-pointer"
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
+                      >
+                        <p className="font-medium mb-1">Cuenta de prueba admin:</p>
+                        <p>Email: admin@ludicagames.com</p>
+                        <p>Contraseña: admin123</p>
+                      </motion.div>
                     </motion.div>
                   </motion.div>
                 ) : (

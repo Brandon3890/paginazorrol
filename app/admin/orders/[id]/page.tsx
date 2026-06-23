@@ -108,15 +108,6 @@ export default function AdminOrderDetailPage() {
     })
   }
 
-  // Función para obtener URL de imagen
-  const getImageUrl = (url?: string) => {
-    if (!url) return "/placeholder.svg"
-    if (url.startsWith("http")) return url
-    if (url.startsWith("/")) return url
-    if (url.startsWith("uploads/")) return `/${url}`
-    return `/uploads/products/${url}`
-  }
-
   useEffect(() => {
     if (authLoading) return
 
@@ -154,6 +145,24 @@ export default function AdminOrderDetailPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const getImageUrl = (imagePath: string | undefined) => {
+    if (!imagePath) return "/placeholder.svg"
+    
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    if (imagePath.startsWith('/uploads/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    if (imagePath.startsWith('/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    return "/placeholder.svg"
   }
 
   const formatPaymentMethod = (method: string) => {
@@ -418,10 +427,7 @@ export default function AdminOrderDetailPage() {
                 {order.transbank_info && (
                   <>
                     {order.transbank_info.authorization_code && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Código de autorización:</span>
-                        <span className="font-mono">{order.transbank_info.authorization_code}</span>
-                      </div>
+                      <div ></div>
                     )}
                     {order.transbank_info.payment_type && (
                       <div className="flex justify-between">
@@ -436,10 +442,7 @@ export default function AdminOrderDetailPage() {
                       </div>
                     )}
                     {order.transbank_info.card_number && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Tarjeta:</span>
-                        <span className="font-mono">****{order.transbank_info.card_number}</span>
-                      </div>
+                      <div ></div>
                     )}
                     {order.transbank_info.transaction_date && (
                       <div className="flex justify-between">
@@ -496,7 +499,6 @@ export default function AdminOrderDetailPage() {
                               <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">
-                              Neto: {formatPrice(itemNeto)} + IVA: {formatPrice(itemIVA)}
                             </div>
                           </div>
                           <div className="text-right">
