@@ -145,6 +145,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     if (!url) return '/diverse-products-still-life.png';
     if (url.startsWith('/')) return url;
     if (url.startsWith('uploads/')) return `/${url}`;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return `/uploads/products/${url}`;
   };
 
@@ -583,33 +584,17 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                   </Button>
                 </motion.div>
 
-                <motion.div 
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex-shrink-0"
-                >
-                  {isAuthenticated ? (
+                {/* Corazón - Solo visible si el usuario está autenticado */}
+                {isAuthenticated && (
+                  <motion.div 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex-shrink-0"
+                  >
                     <FavoriteButton productId={product.id} size="lg" />
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="w-12 h-12 rounded-full border-2 border-gray-300 text-gray-400 hover:text-red-500 hover:border-red-500 transition-colors"
-                      disabled
-                      title="Inicia sesion para agregar a favoritos"
-                    >
-                      <Heart className="w-5 h-5" />
-                    </Button>
-                  )}
-                </motion.div>
+                  </motion.div>
+                )}
               </div>
-
-              {!isAuthenticated && (
-                <p className="text-xs text-muted-foreground text-center mt-3">
-                  <Link href="/login" className="text-orange-600 hover:underline">
-                    Inicia sesion
-                  </Link> para agregar a favoritos
-                </p>
-              )}
             </div>
           </motion.div>
         </div>
