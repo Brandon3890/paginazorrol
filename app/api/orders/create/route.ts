@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         // Generar número de orden único
         orderNumber = orderNumberService.generateOrderNumber();
         
-        console.log('Intentando crear orden con número:', orderNumber);
+        console.log('📝 Intentando crear orden con número:', orderNumber);
 
         // 1. Crear la orden principal
         const orderResult = await query(
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        console.log('Orden creada en MySQL con ID:', orderId);
+        console.log('✅ Orden creada en MySQL con ID:', orderId);
 
         return NextResponse.json({
           success: true,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         // Si es error de duplicado, reintentar
         if (error.code === 'ER_DUP_ENTRY' && error.sqlMessage?.includes('order_number')) {
           attempts++;
-          console.warn(` Número de orden duplicado, reintento ${attempts}/${maxAttempts}`);
+          console.warn(`⚠️ Número de orden duplicado, reintento ${attempts}/${maxAttempts}`);
           
           if (attempts >= maxAttempts) {
             throw new Error('No se pudo generar un número de orden único después de varios intentos');
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     throw new Error('No se pudo crear la orden');
 
   } catch (error: any) {
-    console.error('Error creando orden:', error);
+    console.error('❌ Error creando orden:', error);
     
     if (error.message.includes('número de orden único')) {
       return NextResponse.json(

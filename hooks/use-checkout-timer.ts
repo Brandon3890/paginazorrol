@@ -33,14 +33,9 @@ export const useCheckoutTimer = () => {
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    return minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0')
   }
 
-  // =====================================================
-  // TEMPORIZADOR - basado en el código funcional de cart-drawer
-  // =====================================================
-  
-  // Este useEffect maneja el temporizador sincronizado con checkoutExpiresAt
   useEffect(() => {
     if (!hasActiveCheckout() || !checkoutExpiresAt) {
       setTimeLeft(CHECKOUT_TIME)
@@ -79,10 +74,6 @@ export const useCheckoutTimer = () => {
     }
   }, [hasActiveCheckout, checkoutExpiresAt])
 
-  // =====================================================
-  // LIBERAR STOCK - cuando expira o se cancela
-  // =====================================================
-  
   const releaseStockAndClearCart = useCallback(async () => {
     if (expiryProcessed.current || purchaseConfirmed.current) return
     expiryProcessed.current = true
@@ -124,10 +115,6 @@ export const useCheckoutTimer = () => {
     }
   }, [items, user, clearCart, endCheckout])
 
-  // =====================================================
-  // MANEJAR EXPIRACIÓN
-  // =====================================================
-  
   const expireCheckout = useCallback(async () => {
     if (expiryProcessed.current || purchaseConfirmed.current) return
     
@@ -152,10 +139,6 @@ export const useCheckoutTimer = () => {
     }, 2500)
   }, [releaseStockAndClearCart, router, toast])
 
-  // =====================================================
-  // ACTUALIZAR RESERVA - cuando cambian los items
-  // =====================================================
-  
   const updateReservation = useCallback(async () => {
     if (!hasActiveCheckout() || !user || items.length === 0) return
 
@@ -178,7 +161,7 @@ export const useCheckoutTimer = () => {
 
       if (!response.ok) {
         const errorMsg = data.errors?.map((e: any) => 
-          `${e.name}: disponible ${e.disponible}, solicitado ${e.solicitado}`
+          e.name + ': disponible ' + e.disponible + ', solicitado ' + e.solicitado
         ).join(', ') || data.error
 
         toast({
@@ -197,10 +180,6 @@ export const useCheckoutTimer = () => {
     }
   }, [items, user, hasActiveCheckout, router, toast])
 
-  // =====================================================
-  // CREAR RESERVA INICIAL
-  // =====================================================
-  
   const createReservation = useCallback(async () => {
     if (purchaseConfirmed.current || items.length === 0 || !user) {
       return
@@ -232,7 +211,7 @@ export const useCheckoutTimer = () => {
 
       if (!response.ok) {
         const errorMsg = data.errors?.map((e: any) => 
-          `${e.name}: disponible ${e.disponible}, solicitado ${e.solicitado}`
+          e.name + ': disponible ' + e.disponible + ', solicitado ' + e.solicitado
         ).join(', ') || data.error
 
         toast({
@@ -264,11 +243,6 @@ export const useCheckoutTimer = () => {
     }
   }, [items, user, router, toast, startCheckout, hasActiveCheckout])
 
-  // =====================================================
-  // EFECTOS PARA RESERVAS
-  // =====================================================
-  
-  // Actualizar reserva cuando cambian los items (solo si hay checkout activo)
   useEffect(() => {
     if (hasActiveCheckout() && user && items.length > 0 && !expiryProcessed.current && !purchaseConfirmed.current) {
       const timeoutId = setTimeout(() => {
@@ -279,17 +253,12 @@ export const useCheckoutTimer = () => {
     }
   }, [items, hasActiveCheckout, user, updateReservation])
 
-  // Crear reserva si no hay checkout activo
   useEffect(() => {
     if (!hasActiveCheckout() && !reservationAttempted.current && items.length > 0 && user && !purchaseConfirmed.current && !expiryProcessed.current) {
       createReservation()
     }
   }, [hasActiveCheckout, items, user, createReservation])
 
-  // =====================================================
-  // RECUPERAR FOCO - sincronizar tiempo
-  // =====================================================
-  
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && hasActiveCheckout() && checkoutExpiresAt && !purchaseConfirmed.current && !expiryProcessed.current) {
@@ -312,10 +281,6 @@ export const useCheckoutTimer = () => {
     }
   }, [hasActiveCheckout, checkoutExpiresAt, expireCheckout])
 
-  // =====================================================
-  // CONFIRMAR COMPRA
-  // =====================================================
-  
   const confirmPurchase = useCallback(async () => {
     if (items.length === 0 || !user || purchaseConfirmed.current) return
 
@@ -352,10 +317,6 @@ export const useCheckoutTimer = () => {
     }
   }, [items, user, endCheckout, resetCartAfterCheckout])
 
-  // =====================================================
-  // RESET MANUAL
-  // =====================================================
-  
   const resetTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current)
@@ -369,10 +330,6 @@ export const useCheckoutTimer = () => {
     initialExpiresAt.current = null
   }, [])
 
-  // =====================================================
-  // PROGRESO - basado en el tiempo real
-  // =====================================================
-  
   const progress = (timeLeft / CHECKOUT_TIME) * 100
 
   return {

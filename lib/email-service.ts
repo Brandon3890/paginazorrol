@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 const createTransporter = () => {
   // Si no hay configuración SMTP, usar un transporter de desarrollo
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+    console.log(' Usando transporter de desarrollo (sin envío real)');
     return nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
@@ -385,7 +386,7 @@ Contáctanos en soporte@ludicagames.com
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
+    console.log('✅ Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
     return true;
 
   } catch (error) {
@@ -863,6 +864,397 @@ export async function sendContactEmail(formData: {
     return false;
   }
 }
+
+export async function sendProductOnSaleEmail(
+  productName: string,
+  productPrice: number,
+  productOriginalPrice: number,
+  productImage: string,
+  productId: number,
+  usersEmails: string[],
+  discountPercent: number
+) {
+  if (!usersEmails || usersEmails.length === 0) {
+    console.log('No hay usuarios para notificar sobre la oferta');
+    return true;
+  }
+
+  console.log('Enviando notificaciones de oferta a', usersEmails.length, 'usuarios');
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(price);
+  };
+
+  // Funcion para obtener URL correcta de la imagen
+  const getImageUrl = (imagePath: string) => {
+    if (!imagePath) {
+      return process.env.NEXTAUTH_URL + '/diverse-products-still-life.png';
+    }
+    
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    
+    if (imagePath.startsWith('/')) {
+      return process.env.NEXTAUTH_URL + imagePath;
+    }
+    
+    if (imagePath.startsWith('uploads/')) {
+      return process.env.NEXTAUTH_URL + '/' + imagePath;
+    }
+    
+    return process.env.NEXTAUTH_URL + '/uploads/products/' + imagePath;
+  };
+
+  const productUrl = process.env.NEXTAUTH_URL + '/products/' + productId;
+  const imageUrl = getImageUrl(productImage);
+  
+  console.log('URL de la imagen para el correo:', imageUrl);
+
+  const emailTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oferta en tu producto favorito</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f3f4f6;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border: 1px solid #e5e7eb;
+    }
+    .header {
+      background: #111827;
+      padding: 30px;
+    }
+    .header h1 {
+      margin: 0;
+      color: #ffffff;
+      font-size: 24px;
+    }
+    .header p {
+      margin: 5px 0 0 0;
+      color: #d1d5db;
+      font-size: 14px;
+    }
+    .header .date {
+      color: #d1d5db;
+      font-size: 13px;
+      margin: 5px 0 0 0;
+      text-align: right;
+    }
+    .content {
+      padding: 30px;
+    }
+    .greeting {
+      font-size: 22px;
+      font-weight: bold;
+      color: #111827;
+      margin: 0 0 15px 0;
+    }
+    .description {
+      color: #374151;
+      font-size: 14px;
+      margin: 0 0 10px 0;
+    }
+    .offer-box {
+      background: #fef2f2;
+      border-left: 4px solid #C2410C;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+    .offer-box p {
+      margin: 0;
+      font-size: 15px;
+      color: #374151;
+      line-height: 1.6;
+    }
+    .offer-box strong {
+      color: #C2410C;
+    }
+    .product-card {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      background: #f9fafb;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0;
+    }
+    .product-image {
+      width: 130px;
+      height: 130px;
+      border-radius: 8px;
+      object-fit: cover;
+      background-color: #e5e7eb;
+      flex-shrink: 0;
+    }
+    .product-info {
+      flex: 1;
+    }
+    .product-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+      margin: 0 0 12px 0;
+    }
+    .price-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .current-price {
+      font-size: 26px;
+      font-weight: 700;
+      color: #C2410C;
+    }
+    .original-price {
+      font-size: 18px;
+      color: #9ca3af;
+      text-decoration: line-through;
+    }
+    .discount-badge {
+      display: inline-block;
+      background: #dcfce7;
+      color: #166534;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+    .btn-primary {
+      display: inline-block;
+      background: #C2410C;
+      color: #ffffff;
+      padding: 14px 40px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      border-radius: 8px;
+    }
+    .btn-primary:hover {
+      background: #9A3412;
+    }
+    .text-center {
+      text-align: center;
+    }
+    .details-table {
+      width: 100%;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-collapse: collapse;
+    }
+    .details-table td {
+      padding: 12px 20px;
+      font-size: 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .details-table tr:last-child td {
+      border-bottom: none;
+    }
+    .details-table .label {
+      color: #6b7280;
+    }
+    .details-table .value {
+      color: #111827;
+      font-weight: 500;
+      text-align: right;
+    }
+    .details-table .value-sale {
+      color: #C2410C;
+      font-weight: 700;
+      text-align: right;
+    }
+    .hr-divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 30px 0;
+    }
+    .footer {
+      background: #f9fafb;
+      padding: 24px 30px;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+    .footer p {
+      margin: 0;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    @media (max-width: 480px) {
+      .product-card {
+        flex-direction: column;
+        text-align: center;
+      }
+      .product-image {
+        width: 150px;
+        height: 150px;
+      }
+      .price-container {
+        justify-content: center;
+      }
+      .header h1 {
+        font-size: 20px;
+      }
+      .current-price {
+        font-size: 24px;
+      }
+      .details-table td {
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:20px 0;">
+<tr>
+<td align="center">
+
+<table width="700" cellpadding="0" cellspacing="0" class="container" style="background:#ffffff;border:1px solid #e5e7eb;">
+
+<tr>
+<td class="header" style="background:#111827;padding:30px;">
+  <table width="100%">
+    <tr>
+      <td align="left">
+        <h1 style="margin:0;color:#ffffff;font-size:24px;">Zorro Ludico</h1>
+        <p style="margin:5px 0 0 0;color:#d1d5db;font-size:14px;">Tu producto favorito esta en oferta</p>
+      </td>
+      <td align="right" style="color:#d1d5db;font-size:13px;">
+        ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}
+      </td>
+    </tr>
+  </table>
+</td>
+</tr>
+
+<tr>
+<td class="content" style="padding:30px;">
+
+<p class="greeting" style="font-size:22px;font-weight:bold;color:#111827;margin:0 0 15px 0;">
+  Buenos noticias!
+</p>
+
+<p class="description" style="color:#374151;font-size:14px;margin:0 0 10px 0;">
+  El producto que marcaste como favorito ha bajado de precio.
+</p>
+
+<p class="description" style="color:#374151;font-size:14px;margin:0 0 30px 0;">
+  No dejes pasar esta oportunidad.
+</p>
+
+<div class="offer-box" style="background:#fef2f2;border-left:4px solid #C2410C;border-radius:8px;padding:16px 20px;margin:20px 0;">
+  <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;">
+    Oferta especial: <strong>${discountPercent}%</strong> de descuento en este producto.
+  </p>
+</div>
+
+<div class="product-card" style="display:flex;align-items:center;gap:24px;background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:24px;margin:20px 0;">
+  <img src="${imageUrl}" alt="${productName}" class="product-image" style="width:130px;height:130px;border-radius:8px;object-fit:cover;background:#e5e7eb;flex-shrink:0;" onerror="this.src='${process.env.NEXTAUTH_URL}/diverse-products-still-life.png'">
+  <div class="product-info" style="flex:1;">
+    <p class="product-name" style="font-size:18px;font-weight:600;color:#111827;margin:0 0 12px 0;">${productName}</p>
+    <div class="price-container" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <span class="current-price" style="font-size:26px;font-weight:700;color:#C2410C;">${formatPrice(productPrice)}</span>
+      <span class="original-price" style="font-size:18px;color:#9ca3af;text-decoration:line-through;">${formatPrice(productOriginalPrice)}</span>
+      <span class="discount-badge" style="display:inline-block;background:#dcfce7;color:#166534;font-size:14px;font-weight:600;padding:4px 14px;border-radius:20px;">
+        -${discountPercent}%
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="text-center" style="text-align:center;padding:20px 0;">
+  <a href="${productUrl}" class="btn-primary" style="display:inline-block;background:#C2410C;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:16px;border-radius:8px;">
+    Ver Producto
+  </a>
+</div>
+
+<hr class="hr-divider" style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;">
+
+<table class="details-table" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-collapse:collapse;">
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Producto</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${productName}</td>
+  </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Precio original</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productOriginalPrice)}</td>
+  </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Precio de oferta</td>
+    <td class="value-sale" style="padding:12px 20px;font-size:14px;color:#C2410C;font-weight:700;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productPrice)}</td>
+  </tr>
+  <tr>
+    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:none;">Descuento</td>
+    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:none;">${discountPercent}%</td>
+  </tr>
+</table>
+
+</td>
+</tr>
+
+<tr>
+<td class="footer" style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;font-size:12px;color:#9ca3af;">
+    Zorro Ludico
+  </p>
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>
+  `;
+
+  try {
+    const transporter = (await import('@/lib/email-service')).transporter;
+    
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"Zorro Ludico" <ofertas@zorroludico.cl>',
+      bcc: usersEmails.join(','),
+      subject: 'Oferta! ' + productName + ' - ' + discountPercent + '% de descuento',
+      html: emailTemplate,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email de oferta enviado a', usersEmails.length, 'usuarios');
+    return true;
+
+  } catch (error) {
+    console.error('Error enviando email de oferta:', error);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[DEV] Simulacion de envio de oferta');
+      return true;
+    }
+    
+    return false;
+  }
+}
+
 
 // Función auxiliar para escapar HTML
 function escapeHtml(text: string): string {

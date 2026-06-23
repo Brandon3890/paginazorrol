@@ -3,7 +3,6 @@ import { Transaction } from '@/lib/db-transaction';
 import fs from 'fs';
 import path from 'path';
 
-// Función para guardar imágenes
 async function saveImage(file: File, filename: string): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
@@ -13,7 +12,10 @@ async function saveImage(file: File, filename: string): Promise<string> {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  const extension = file.type.split('/')[1] || 'jpg';
+  let extension = file.type.split('/')[1] || 'jpg';
+  if (extension === 'jpeg') extension = 'jpg';
+  if (extension === 'svg+xml') extension = 'svg';
+  
   const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
@@ -23,16 +25,27 @@ async function saveImage(file: File, filename: string): Promise<string> {
 }
 
 function correctImageUrl(imagePath: string | null): string {
-  if (!imagePath) return '/diverse-products-still-life.png';
-  if (imagePath.startsWith('/')) return imagePath;
-  if (imagePath.startsWith('uploads/')) return `/${imagePath}`;
-  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || imagePath.includes('.png')) {
+  if (!imagePath) {
+    return '/diverse-products-still-life.png';
+  }
+  
+  if (imagePath.startsWith('/')) {
+    return imagePath;
+  }
+  
+  if (imagePath.startsWith('uploads/')) {
+    return `/${imagePath}`;
+  }
+  
+  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || 
+      imagePath.includes('.png') || imagePath.includes('.webp') || 
+      imagePath.includes('.gif') || imagePath.includes('.svg')) {
     return `/uploads/products/${imagePath}`;
   }
+  
   return '/diverse-products-still-life.png';
 }
 
-// GET /api/products - Obtener todos los productos (CON TAGS, BRAND Y GENRE)
 export async function GET(request: Request) {
   const transaction = new Transaction();
   
@@ -78,6 +91,11 @@ export async function GET(request: Request) {
         p.tags as tagsRaw,
         p.brand as brand,
         p.genre as genre,
+        p.specs as specs,
+        p.weight,
+        p.height,
+        p.width,
+        p.length,
         GROUP_CONCAT(DISTINCT s.name) as subcategory_names,
         GROUP_CONCAT(DISTINCT s.id) as subcategory_ids
       FROM products p
@@ -106,7 +124,6 @@ export async function GET(request: Request) {
         const primarySubcategory = subcategoryNames.length > 0 ? subcategoryNames[0] : 'Sin subcategoría';
         const primarySubcategoryId = subcategoryIds.length > 0 ? subcategoryIds[0] : 0;
 
-        // PROCESAR TAGS desde el campo tagsRaw
         let tagsArray: string[] = [];
         if (product.tagsRaw) {
           if (typeof product.tagsRaw === 'string') {
@@ -156,8 +173,13 @@ export async function GET(request: Request) {
           tags: tagsArray,
           brand: product.brand || 'Devir',
           genre: product.genre || 'Estrategia, Familiar',
+          specs: product.specs || null,
           createdAt: product.createdAt || new Date().toISOString(),
-          updatedAt: product.updatedAt || new Date().toISOString()
+          updatedAt: product.updatedAt || new Date().toISOString(),
+          weight: parseFloat(product.weight) || 0.5,
+          height: parseInt(product.height) || 10,
+          width: parseInt(product.width) || 15,
+          length: parseInt(product.length) || 20,
         };
       })
     );
@@ -175,7 +197,6 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/products - Crear un nuevo producto (CON TAGS, BRAND Y GENRE)
 export async function POST(request: Request) {
   const transaction = new Transaction();
   
@@ -203,11 +224,20 @@ export async function POST(request: Request) {
     const brand = formData.get('brand') as string;
     const genre = formData.get('genre') as string;
     const youtubeVideoId = formData.get('youtubeVideoId') as string;
+    const weight = formData.get('weight') as string;
+    const height = formData.get('height') as string;
+    const width = formData.get('width') as string;
+    const length = formData.get('length') as string;
+    const specs = formData.get('specs') as string;
 
     if (!name || !price || !categoryId || subcategoryIds.length === 0) {
+      console.error('Validation failed:', { name, price, categoryId, subcategoryIds });
       await transaction.rollback();
       return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
+        { 
+          error: 'Faltan campos requeridos', 
+          details: { name: !!name, price: !!price, categoryId: !!categoryId, subcategories: subcategoryIds.length }
+        },
         { status: 400 }
       );
     }
@@ -218,10 +248,15 @@ export async function POST(request: Request) {
       .replace(/-+/g, '-');
 
     const mainImageFile = formData.get('mainImage') as File;
-    let mainImageUrl = '/diverse-products-still-life.png'; 
+    let mainImageUrl = '/diverse-products-still-life.png';
 
     if (mainImageFile && mainImageFile.size > 0) {
-      mainImageUrl = await saveImage(mainImageFile, slug);
+      try {
+        mainImageUrl = await saveImage(mainImageFile, slug);
+        console.log('Main image saved:', mainImageUrl);
+      } catch (error) {
+        console.error('Error saving main image:', error);
+      }
     }
 
     const result: any = await transaction.query(
@@ -230,24 +265,41 @@ export async function POST(request: Request) {
         youtube_video_id, category_id, age_min, age_display, 
         players_min, players_max, players_display, 
         duration_min, duration_display, stock, in_stock, is_on_sale, is_active, 
-        tags, brand, genre
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?, ?)`,
+        tags, brand, genre, specs,
+        weight, height, width, length
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        name, slug, description, parseFloat(price), 
+        name,
+        slug,
+        description || '',
+        parseFloat(price),
         originalPrice ? parseFloat(originalPrice) : null,
         mainImageUrl,
         youtubeVideoId || null,
         parseInt(categoryId),
-        parseInt(ageMin), ageDisplay, parseInt(playersMin), 
-        parseInt(playersMax), playersDisplay, parseInt(durationMin),
-        durationDisplay, parseInt(stock), inStock, isOnSale,
+        parseInt(ageMin) || 8,
+        ageDisplay || '8+',
+        parseInt(playersMin) || 2,
+        parseInt(playersMax) || 4,
+        playersDisplay || '2-4',
+        parseInt(durationMin) || 30,
+        durationDisplay || '30 min',
+        parseInt(stock) || 0,
+        inStock,
+        isOnSale,
         tags || null,
         brand || 'Devir',
-        genre || 'Estrategia, Familiar'
+        genre || 'Estrategia, Familiar',
+        specs || null,
+        parseFloat(weight) || 0.5,
+        parseInt(height) || 10,
+        parseInt(width) || 15,
+        parseInt(length) || 20
       ]
     );
 
     const productId = result.insertId;
+    console.log('Product created with ID:', productId);
 
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcategoryId = subcategoryIds[i];
@@ -257,28 +309,41 @@ export async function POST(request: Request) {
         [productId, parseInt(subcategoryId), isPrimary, i + 1]
       );
     }
+    console.log(`${subcategoryIds.length} subcategories associated`);
 
     const additionalImages = formData.getAll('additionalImages') as File[];
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i];
       if (imageFile && imageFile.size > 0) {
-        const imageUrl = await saveImage(imageFile, `${slug}-additional-${i + 1}`);
-        await transaction.query(
-          'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
-          [productId, imageUrl, i]
-        );
+        try {
+          const imageUrl = await saveImage(imageFile, `${slug}-additional-${i + 1}`);
+          await transaction.query(
+            'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
+            [productId, imageUrl, i]
+          );
+          console.log(`Additional image ${i + 1} saved`);
+        } catch (error) {
+          console.error(`Error saving additional image ${i + 1}:`, error);
+        }
       }
     }
 
     await transaction.commit();
+    console.log('Transaction completed successfully');
 
-    return NextResponse.json({ id: productId, message: 'Producto creado exitosamente' });
+    return NextResponse.json({ 
+      id: productId, 
+      message: 'Producto creado exitosamente' 
+    });
 
   } catch (error) {
     console.error('Error en POST /api/products:', error);
     await transaction.rollback();
     return NextResponse.json(
-      { error: 'Error al crear el producto' },
+      { 
+        error: 'Error al crear el producto',
+        details: error instanceof Error ? error.message : 'Error desconocido'
+      },
       { status: 500 }
     );
   }

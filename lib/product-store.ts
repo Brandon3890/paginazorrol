@@ -1,4 +1,3 @@
-// lib/product-store.ts - ACTUALIZADO CON DIMENSIONES
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -54,9 +53,9 @@ export interface Product {
   tagsRaw?: string;
   brand: string;
   genre: string;
+  specs: string | null;
   createdAt: string;
   updatedAt: string;
-  // NUEVAS PROPIEDADES PARA DIMENSIONES DE ENVÍO
   weight: number;
   height: number;
   width: number;
@@ -87,10 +86,10 @@ interface ProductStore {
   } | null;
   getProductsByCategory: (categoryId: number) => Product[];
   getProductsBySubcategory: (subcategoryId: number) => Product[];
-  getRecommendedProducts: (productId: number) => Product[];  
+  getRecommendedProducts: (productId: number) => Product[];
+  getSortedProducts: () => Product[];
 }
 
-// Función para normalizar tags desde la DB
 const normalizeTags = (tags: any): string[] => {
   if (!tags) return [];
   if (Array.isArray(tags)) {
@@ -110,7 +109,83 @@ const normalizeTags = (tags: any): string[] => {
   return [];
 };
 
-// Función de migración para limpiar datos corruptos
+const isProductOutOfStock = (product: Product): boolean => {
+  return !product.inStock || product.stock <= 0;
+};
+
+const getProductPriority = (product: Product): number => {
+  if (isProductOutOfStock(product)) {
+    return 100;
+  }
+  if (product.tags && product.tags.includes('preventa')) {
+    return 1;
+  }
+  if (product.originalPrice && product.originalPrice > product.price) {
+    return 2;
+  }
+  if (product.tags && product.tags.includes('novedad')) {
+    return 3;
+  }
+  return 4;
+};
+
+const CACHE_KEY = 'products_cache';
+const CACHE_TIMESTAMP_KEY = 'products_cache_timestamp';
+const CACHE_DURATION = 2 * 60 * 1000;
+
+function getCachedProducts(): any[] | null {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+    
+    if (!cached || !timestamp) return null;
+    
+    const now = Date.now();
+    const cacheTime = parseInt(timestamp);
+    
+    if (now - cacheTime > CACHE_DURATION) {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+      return null;
+    }
+    
+    const data = JSON.parse(cached);
+    return data;
+  } catch (error) {
+    console.error('Error reading cache:', error);
+    return null;
+  }
+}
+
+function setCachedProducts(products: any[]): void {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+    localStorage.setItem(CACHE_TIMESTAMP_KEY, String(Date.now()));
+  } catch (error) {
+    console.error('Error saving cache:', error);
+  }
+}
+
+function invalidateProductsCache(): void {
+  if (typeof window === 'undefined') return;
+  
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+}
+
+function getCacheAge(): number | null {
+  if (typeof window === 'undefined') return null;
+  
+  const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+  if (!timestamp) return null;
+  
+  return Date.now() - parseInt(timestamp);
+}
+
 const migrateStore = (persistedState: any, version: number) => {
   console.log('Migrating store from version:', version);
   
@@ -140,14 +215,14 @@ const migrateStore = (persistedState: any, version: number) => {
     tags: normalizeTags(product.tags || product.tagsRaw),
     brand: product.brand || 'Devir',
     genre: product.genre || 'Estrategia, Familiar',
-    // Valores por defecto para dimensiones si no existen
+    specs: product.specs || null,
     weight: product.weight ?? 0.5,
     height: product.height ?? 10,
     width: product.width ?? 15,
     length: product.length ?? 20,
   }));
   
-  console.log(`🔄 Cleaned ${cleanedProducts.length} valid products`);
+  console.log('Cleaned', cleanedProducts.length, 'valid products');
   
   return {
     ...persistedState,
@@ -170,20 +245,33 @@ export const useProductStore = create<ProductStore>()(
       
       setGlobalSearchQuery: (query) => {
         set({ globalSearchQuery: query });
-        console.log('🔍 Búsqueda global actualizada:', query);
       },
       
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
         
         if (get().productsLoaded && !force) {
-          console.log('Products already loaded, skipping fetch');
-          return;
+          const cacheAge = getCacheAge();
+          if (cacheAge !== null && cacheAge < CACHE_DURATION) {
+            return;
+          }
         }
         
         set({ loading: true, error: null });
+        
         try {
-          console.log('Fetching products from API...', { includeInactive, isAdmin, force });
+          if (!force) {
+            const cachedProducts = getCachedProducts();
+            if (cachedProducts && cachedProducts.length > 0) {
+              set({ 
+                products: cachedProducts, 
+                productsLoaded: true,
+                loading: false, 
+                error: null 
+              });
+              return;
+            }
+          }
           
           const params = new URLSearchParams();
           if (isAdmin || includeInactive) {
@@ -193,36 +281,37 @@ export const useProductStore = create<ProductStore>()(
             params.append('admin', 'true');
           }
           
-          const url = `/api/products?${params.toString()}`;
-          console.log('📡 Fetching from:', url);
+          const url = `/api/products?${params.toString()}&_=${Date.now()}`;
           
-          const response = await fetch(url);
+          const response = await fetch(url, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
           
           if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ API response not OK:', response.status, errorText);
-            throw new Error(`Error fetching products: ${response.status} ${response.statusText}`);
+            throw new Error(`Error fetching products: ${response.status}`);
           }
           
           const productsData = await response.json();
-          console.log('✅ Products fetched successfully:', productsData.length, 'products');
           
-          // Normalizar los tags y añadir brand/genre de cada producto
           const normalizedProducts = productsData.map((product: any) => ({
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
             brand: product.brand || 'Devir',
             genre: product.genre || 'Estrategia, Familiar',
-            // Asegurar que las dimensiones tengan valores por defecto
+            specs: product.specs || null,
             weight: product.weight ?? 0.5,
             height: product.height ?? 10,
             width: product.width ?? 15,
             length: product.length ?? 20,
           }));
           
-          console.log('🏷️ Tags normalizados:', normalizedProducts.map((p: any) => ({ name: p.name, tags: p.tags })));
-          
           const validProducts = Array.isArray(normalizedProducts) ? normalizedProducts : [];
+          
+          setCachedProducts(validProducts);
           
           set({ 
             products: validProducts, 
@@ -231,50 +320,51 @@ export const useProductStore = create<ProductStore>()(
             error: null 
           });
           
-          console.log('📦 Store updated with', validProducts.length, 'products');
         } catch (error) {
-          console.error('❌ Error in fetchProducts:', error);
-          set({ 
-            error: error instanceof Error ? error.message : 'Error al cargar productos', 
-            loading: false 
-          });
+          console.error('Error in fetchProducts:', error);
+          
+          const cachedProducts = getCachedProducts();
+          if (cachedProducts && cachedProducts.length > 0) {
+            set({ 
+              products: cachedProducts, 
+              productsLoaded: true,
+              loading: false, 
+              error: 'Error al cargar productos, mostrando cache' 
+            });
+          } else {
+            set({ 
+              error: error instanceof Error ? error.message : 'Error al cargar productos', 
+              loading: false 
+            });
+          }
         }
       },
 
       fetchProduct: async (id: number) => {
         try {
-          console.log(`🔄 Fetching individual product ${id} from API...`);
-          const response = await fetch(`/api/products/${id}`);
+          const response = await fetch(`/api/products/${id}?_=${Date.now()}`, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
           if (!response.ok) {
             throw new Error(`Error fetching product: ${response.status}`);
           }
           
           const product = await response.json();
-          // Normalizar tags del producto individual
           const normalizedProduct = {
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
             brand: product.brand || 'Devir',
             genre: product.genre || 'Estrategia, Familiar',
-            // Asegurar que las dimensiones tengan valores por defecto
+            specs: product.specs || null,
             weight: product.weight ?? 0.5,
             height: product.height ?? 10,
             width: product.width ?? 15,
             length: product.length ?? 20,
           };
-          
-          console.log(`✅ Product ${id} fetched successfully:`, {
-            name: normalizedProduct.name,
-            tags: normalizedProduct.tags,
-            brand: normalizedProduct.brand,
-            genre: normalizedProduct.genre,
-            dimensions: {
-              weight: normalizedProduct.weight,
-              height: normalizedProduct.height,
-              width: normalizedProduct.width,
-              length: normalizedProduct.length,
-            }
-          });
           
           set(state => {
             const existingProductIndex = state.products.findIndex(p => p.id === id);
@@ -298,7 +388,6 @@ export const useProductStore = create<ProductStore>()(
 
       incrementVersion: () => {
         set(state => ({ version: state.version + 1 }));
-        console.log('📢 Versión incrementada:', get().version);
       },
 
       getRecommendedProducts: (productId: number) => {
@@ -314,6 +403,16 @@ export const useProductStore = create<ProductStore>()(
         );
       },
 
+      getSortedProducts: () => {
+        const { products } = get();
+        const activeProducts = products.filter(p => p.isActive);
+        return [...activeProducts].sort((a, b) => {
+          const priorityA = getProductPriority(a);
+          const priorityB = getProductPriority(b);
+          return priorityA - priorityB;
+        });
+      },
+
       addProduct: async (formData: FormData) => {
         try {
           const response = await fetch('/api/products', {
@@ -326,6 +425,7 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error creating product');
           }
           
+          invalidateProductsCache();
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
         } catch (error) {
@@ -347,7 +447,7 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error updating product');
           }
           
-          console.log('🔄 Recargando productos después de actualizar...');
+          invalidateProductsCache();
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -360,7 +460,6 @@ export const useProductStore = create<ProductStore>()(
 
       deactivateProduct: async (id: number) => {
         try {
-          console.log(`🗑️ Attempting to deactivate product ${id}...`);
           const response = await fetch(`/api/products/${id}`, {
             method: 'DELETE',
           });
@@ -370,6 +469,8 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deactivating product');
           }
           
+          invalidateProductsCache();
+          
           set(state => ({
             products: state.products.map(p =>
               p.id === id ? { ...p, isActive: false } : p
@@ -377,10 +478,9 @@ export const useProductStore = create<ProductStore>()(
           }));
           
           get().incrementVersion();
-          console.log(`✅ Product ${id} deactivated successfully`);
           
         } catch (error) {
-          console.error(`❌ Error deactivating product ${id}:`, error);
+          console.error(`Error deactivating product ${id}:`, error);
           const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
           set({ error: errorMessage });
           throw error;
@@ -389,7 +489,6 @@ export const useProductStore = create<ProductStore>()(
 
       reactivateProduct: async (id: number) => {
         try {
-          console.log(`🔄 Attempting to reactivate product ${id}...`);
           const response = await fetch(`/api/products/${id}/reactivate`, {
             method: 'PUT',
           });
@@ -399,6 +498,8 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error reactivating product');
           }
           
+          invalidateProductsCache();
+          
           set(state => ({
             products: state.products.map(p =>
               p.id === id ? { ...p, isActive: true } : p
@@ -406,10 +507,9 @@ export const useProductStore = create<ProductStore>()(
           }));
           
           get().incrementVersion();
-          console.log(`✅ Product ${id} reactivated successfully`);
           
         } catch (error) {
-          console.error(`❌ Error reactivating product ${id}:`, error);
+          console.error(`Error reactivating product ${id}:`, error);
           const errorMessage = error instanceof Error ? error.message : 'Error al reactivar el producto';
           set({ error: errorMessage });
           throw error;
@@ -418,7 +518,6 @@ export const useProductStore = create<ProductStore>()(
 
       permanentlyDeleteProduct: async (id: number) => {
         try {
-          console.log(`💀 Attempting to permanently delete product ${id}...`);
           const response = await fetch(`/api/products/${id}/permanent`, {
             method: 'DELETE',
           });
@@ -428,15 +527,16 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deleting product permanently');
           }
           
+          invalidateProductsCache();
+          
           set(state => ({
             products: state.products.filter(p => p.id !== id)
           }));
           
           get().incrementVersion();
-          console.log(`✅ Product ${id} permanently deleted from local state`);
           
         } catch (error) {
-          console.error(`❌ Error permanently deleting product ${id}:`, error);
+          console.error(`Error permanently deleting product ${id}:`, error);
           const errorMessage = error instanceof Error ? error.message : 'Error al eliminar el producto';
           set({ error: errorMessage });
           throw error;
@@ -484,7 +584,7 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 3, // IMPORTANTE: Incrementar la versión para migrar datos existentes
+      version: 4,
       migrate: migrateStore,
       partialize: (state) => ({ 
         products: state.products,
@@ -496,7 +596,6 @@ export const useProductStore = create<ProductStore>()(
   )
 );
 
-// Hook personalizado para categorías
 export const useProductCategories = () => {
   const { products, getProductCategories, getProductsByCategory, getProductsBySubcategory } = useProductStore();
 

@@ -7,7 +7,7 @@ import { Footer } from "@/components/footer"
 import { useAuthStore } from "@/lib/auth-store"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Package, Ticket, ShoppingCart, Tags, Loader2 } from "lucide-react"
+import { Package, Ticket, ShoppingCart, Tags, Loader2, Heart } from "lucide-react"
 import Link from "next/link"
 import { Image as ImageIcon } from "lucide-react"
 
@@ -44,6 +44,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [favoritesCount, setFavoritesCount] = useState(0)
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
@@ -52,6 +53,7 @@ export default function AdminPage() {
     }
 
     fetchDashboardStats()
+    fetchFavoritesCount()
   }, [isAuthenticated, user, router])
 
   const fetchDashboardStats = async () => {
@@ -72,6 +74,18 @@ export default function AdminPage() {
       setError('No se pudieron cargar las estadísticas')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchFavoritesCount = async () => {
+    try {
+      const response = await fetch('/api/admin/favorites')
+      if (response.ok) {
+        const data = await response.json()
+        setFavoritesCount(data.totalFavorites || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching favorites count:', error)
     }
   }
 
@@ -196,7 +210,7 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Categorías activas</span>
-                  <Badge variant="outline" className="text-base bg-green-100 text-green-800">
+                  <Badge variant="outline" className="bg-green-100 text-green-800">
                     {stats?.categories.active || 0}
                   </Badge>
                 </div>
@@ -272,7 +286,7 @@ export default function AdminPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Pedidos completados</span>
-                  <Badge variant="outline" className="text-base bg-green-100 text-green-800">
+                  <Badge variant="outline" className="bg-green-100 text-green-800">
                     {stats?.orders.delivered || 0}
                   </Badge>
                 </div>
@@ -281,32 +295,56 @@ export default function AdminPage() {
             </Card>
           </Link>
 
-          {/* Baner */}
-        <Link href="/admin/banners">
-          <Card className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer h-full">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-orange-100 rounded-lg">
-                  <ImageIcon className="w-8 h-8 text-[#C2410C]" />
+          {/* Banners Card */}
+          <Link href="/admin/banners">
+            <Card className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer h-full">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-orange-100 rounded-lg">
+                    <ImageIcon className="w-8 h-8 text-[#C2410C]" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Banners</CardTitle>
+                    <CardDescription className="text-sm">Gestión visual</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-xl">Banners</CardTitle>
-                  <CardDescription className="text-sm">Gestión visual</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-        Administra los banners del home
-              </p>
-              <p className="text-xs text-muted-foreground pt-2">
-                Crea, edita y reordena los banners
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Administra los banners del home
+                </p>
+                <p className="text-xs text-muted-foreground pt-2">
+                  Crea, edita y reordena los banners
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
 
+          {/* Favoritos Card */}
+          <Link href="/admin/favorites">
+            <Card className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer h-full">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-red-100 rounded-lg">
+                    <Heart className="w-8 h-8 text-red-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Favoritos</CardTitle>
+                    <CardDescription className="text-sm">Productos favoritos de usuarios</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Visualiza qué productos son los favoritos de los usuarios
+                </p>
+                <p className="text-xs text-muted-foreground pt-2">
+                  {favoritesCount} productos marcados como favoritos
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
 
         {/* Resumen General */}
         <div className="mt-12">
@@ -331,7 +369,7 @@ export default function AdminPage() {
                   <p className="text-2xl font-bold text-orange-600">{stats?.orders.total || 0}</p>
                   <p className="text-sm text-muted-foreground">Pedidos Totales</p>
                 </div>
-                <div className="text-center p-4 border rounded-lg"> 
+                <div className="text-center p-4 border rounded-lg">
                   <p className="text-2xl font-bold text-purple-600">{stats?.coupons.total || 0}</p>
                   <p className="text-sm text-muted-foreground">Cupones totales</p>
                 </div>

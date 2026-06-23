@@ -17,7 +17,7 @@ async function obtenerPDFBoleta(folio: string): Promise<Buffer | null> {
 
 async function emitirBoleta(orderId: number) {
   try {
-    console.log('Iniciando emisión de boleta para orden:', orderId);
+    console.log('Iniciando emision de boleta para orden:', orderId);
     
     const orderData = await query(
       `SELECT 
@@ -97,7 +97,6 @@ async function emitirBoleta(orderId: number) {
   }
 }
 
-// Función para liberar stock al cancelar
 async function liberarStock(userId: number) {
   try {
     const reservations = await query(
@@ -105,27 +104,36 @@ async function liberarStock(userId: number) {
       [userId]
     ) as any[]
     
-    if (reservations && reservations.length > 0) {
-      console.log(`Liberando ${reservations.length} reservas para usuario ${userId}`)
+    if (!reservations || reservations.length === 0) {
+      console.log('No hay reservas activas para usuario', userId, 'saltando liberacion')
+      return true
+    }
+    
+    console.log('Liberando', reservations.length, 'reservas para usuario', userId)
+    
+    for (const res of reservations) {
+      const [productCheck] = await query(
+        `SELECT stock FROM products WHERE id = ?`,
+        [res.product_id]
+      ) as any[]
       
-      for (const res of reservations) {
+      if (productCheck) {
         await query(
           `UPDATE products SET stock = stock + ? WHERE id = ?`,
           [res.quantity, res.product_id]
         )
-        console.log(`Stock devuelto para producto ${res.product_id}: +${res.quantity} unidades`)
+        console.log('Stock devuelto para producto', res.product_id, '+', res.quantity, 'unidades')
+      } else {
+        console.warn('Producto', res.product_id, 'no encontrado, no se puede devolver stock')
       }
-      
-      await query(
-        'DELETE FROM stock_reservations WHERE user_id = ?',
-        [userId]
-      )
-      console.log(`Reservas eliminadas para usuario ${userId}`)
-      return true
-    } else {
-      console.log(`No hay reservas activas para usuario ${userId}`)
-      return true
     }
+    
+    await query(
+      'DELETE FROM stock_reservations WHERE user_id = ?',
+      [userId]
+    )
+    console.log('Reservas eliminadas para usuario', userId)
+    return true
   } catch (error) {
     console.error('Error liberando stock:', error)
     return false
@@ -139,11 +147,10 @@ export async function POST(request: NextRequest) {
     const TBK_TOKEN = formData.get('TBK_TOKEN') as string
 
     console.log('Respuesta de Webpay recibida:', { 
-      token_ws: token_ws ? `PRESENTE (${token_ws.substring(0, 10)}...)` : 'AUSENTE', 
-      TBK_TOKEN: TBK_TOKEN ? `PRESENTE (${TBK_TOKEN.substring(0, 10)}...)` : 'AUSENTE' 
+      token_ws: token_ws ? 'PRESENTE (' + token_ws.substring(0, 10) + '...)' : 'AUSENTE', 
+      TBK_TOKEN: TBK_TOKEN ? 'PRESENTE (' + TBK_TOKEN.substring(0, 10) + '...)' : 'AUSENTE' 
     })
 
-    // CASO 1: Pago cancelado por el usuario
     if (TBK_TOKEN && !token_ws) {
       console.log('Pago ABORTADO por el usuario')
       
@@ -155,7 +162,6 @@ export async function POST(request: NextRequest) {
       if (orders.length > 0) {
         const order = orders[0]
         
-        // LIBERAR STOCK
         await liberarStock(order.user_id)
         
         await query(
@@ -168,16 +174,15 @@ export async function POST(request: NextRequest) {
         )
         
         return NextResponse.redirect(
-          `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=cancelled`
+          process.env.NEXTAUTH_URL + '/order-success?orderId=' + order.id + '&status=cancelled'
         )
       } else {
         return NextResponse.redirect(
-          `${process.env.NEXTAUTH_URL}/order-success?status=cancelled&message=order_not_found`
+          process.env.NEXTAUTH_URL + '/order-success?status=cancelled&message=order_not_found'
         )
       }
     }
 
-    // CASO 2: Pago exitoso
     if (token_ws && !TBK_TOKEN) {
       console.log('Procesando pago EXITOSO con token_ws')
       
@@ -191,7 +196,7 @@ export async function POST(request: NextRequest) {
 
         if (orders.length === 0) {
           return NextResponse.redirect(
-            `${process.env.NEXTAUTH_URL}/order-success?status=error&message=order_not_found`
+            process.env.NEXTAUTH_URL + '/order-success?status=error&message=order_not_found'
           )
         }
 
@@ -199,17 +204,30 @@ export async function POST(request: NextRequest) {
 
         if (transbankService.isTransactionApproved(commitResponse)) {
           
+          const [orderCheck] = await query(
+            `SELECT payment_status, status FROM orders WHERE id = ?`,
+            [order.id]
+          ) as any[]
+          
+          if (orderCheck && orderCheck.payment_status === 'paid') {
+            console.log('Esta orden ya fue procesada, saltando...')
+            return NextResponse.redirect(
+              new URL(
+                '/order-success?orderId=' + order.id + '&status=success',
+                process.env.NEXTAUTH_URL
+              )
+            )
+          }
+          
           if (order.payment_status !== 'paid') {
             console.log('Procesando pago exitoso - ELIMINANDO RESERVAS (stock ya descontado)')
             
-            // ELIMINAR RESERVAS (el stock YA fue descontado en la reserva)
             await query(
               'DELETE FROM stock_reservations WHERE user_id = ?',
               [order.user_id]
             );
 
-            // ========== EMITIR BOLETA ==========
-            console.log('Emitiendo boleta electrónica...');
+            console.log('Emitiendo boleta electronica...');
             const resultadoBoleta = await emitirBoleta(order.id);
             
             let pdfBuffer = null;
@@ -229,7 +247,6 @@ export async function POST(request: NextRequest) {
               console.error('Error emitiendo boleta:', resultadoBoleta.error);
             }
 
-            // ========== ENVIAR EMAIL CON BOLETA ==========
             try {
               const orderDetails = await query(
                 `SELECT 
@@ -263,7 +280,7 @@ export async function POST(request: NextRequest) {
                 
                 const emailData = {
                   orderNumber: firstItem.order_number,
-                  customerName: `${firstItem.customer_first_name || ''} ${firstItem.customer_last_name || ''}`.trim() || 'Cliente',
+                  customerName: (firstItem.customer_first_name || '' + ' ' + firstItem.customer_last_name || '').trim() || 'Cliente',
                   customerEmail: firstItem.customer_email,
                   customerPhone: firstItem.customer_phone || 'No especificado',
                   orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
@@ -289,7 +306,7 @@ export async function POST(request: NextRequest) {
                     postal_code: firstItem.shipping_postal_code || '000000'
                   },
                   storeInfo: {
-                    name: "Zorro Lúdico",
+                    name: "Zorro Ludico",
                     rut: process.env.SIMPLEFACTURA_RUT_EMISOR || "78181331-1",
                     giro: "Venta de juegos",
                     direccion: "Calle 7 numero 3",
@@ -302,7 +319,7 @@ export async function POST(request: NextRequest) {
                   await sendBoletaEmail(emailData, pdfBuffer, folio);
                   console.log('Email con boleta PDF enviado a:', firstItem.customer_email);
                 } else {
-                  console.warn('No se pudo enviar boleta PDF, enviando solo confirmación');
+                  console.warn('No se pudo enviar boleta PDF, enviando solo confirmacion');
                   await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
                 }
               }
@@ -311,7 +328,6 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Actualizar estado de la orden
           await query(
             `UPDATE orders SET 
               payment_status = 'paid',
@@ -344,16 +360,14 @@ export async function POST(request: NextRequest) {
 
           return NextResponse.redirect(
             new URL(
-              `/order-success?orderId=${order.id}&status=success`,
+              '/order-success?orderId=' + order.id + '&status=success',
               process.env.NEXTAUTH_URL
             )
           )
 
         } else {
-          // Pago rechazado
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
           
-          // LIBERAR STOCK
           await liberarStock(order.user_id)
           
           await query(
@@ -366,27 +380,27 @@ export async function POST(request: NextRequest) {
           )
 
           return NextResponse.redirect(
-            `${process.env.NEXTAUTH_URL}/order-success?orderId=${order.id}&status=error&message=payment_rejected&reason=${encodeURIComponent(rejectionReason)}`
+            process.env.NEXTAUTH_URL + '/order-success?orderId=' + order.id + '&status=error&message=payment_rejected&reason=' + encodeURIComponent(rejectionReason)
           )
         }
 
       } catch (commitError: any) {
         console.error('Error confirmando pago:', commitError)
         return NextResponse.redirect(
-          `${process.env.NEXTAUTH_URL}/order-success?status=error&message=payment_failed`
+          process.env.NEXTAUTH_URL + '/order-success?status=error&message=payment_failed'
         )
       }
     }
 
-    console.error('Tokens inválidos o ausentes')
+    console.error('Tokens invalidos o ausentes')
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/order-success?status=error&message=invalid_tokens`
+      process.env.NEXTAUTH_URL + '/order-success?status=error&message=invalid_tokens'
     )
 
   } catch (error: any) {
-    console.error('Error CRÍTICO:', error)
+    console.error('Error CRITICO:', error)
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/order-success?status=error&message=processing_error`
+      process.env.NEXTAUTH_URL + '/order-success?status=error&message=processing_error'
     )
   }
 }
@@ -407,5 +421,5 @@ export async function GET(request: NextRequest) {
     }))
   }
   
-  return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/`)
+  return NextResponse.redirect(process.env.NEXTAUTH_URL + '/')
 }

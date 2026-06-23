@@ -1,4 +1,3 @@
-// app/admin/products/[id]/page.tsx - COMPLETO CON DIMENSIONES
 "use client"
 
 import React, { useEffect, useState, use, useCallback, useMemo } from "react"
@@ -19,8 +18,9 @@ import {
   Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
 } from "lucide-react"
 import Link from "next/link"
+import { SpecsEditor } from "@/components/SpecsEditor"
+import { ProductSpec, parseProductSpecs } from "@/lib/product-specs"
 
-// Función para redimensionar imagen
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -74,7 +74,6 @@ const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<F
   });
 };
 
-// Función mejorada para extraer ID de YouTube
 const extractYoutubeId = (url: string): string | null => {
   if (!url) return null;
   
@@ -104,7 +103,6 @@ const extractYoutubeId = (url: string): string | null => {
   return null
 }
 
-// Funciones auxiliares
 const formatCLP = (price: number): string => Math.round(price).toLocaleString('es-CL');
 const calculateDiscountPrice = (price: number, discountPercent: number): number => price * (1 - discountPercent / 100);
 const safeToString = (value: any): string => value === null || value === undefined ? "" : String(value);
@@ -114,7 +112,6 @@ const safeToNumber = (value: any): number => {
   return isNaN(num) ? 0 : num
 }
 
-// Componente memoizado para subcategorías
 const SubcategoryCheckbox = React.memo(({ 
   subcat, 
   isSelected, 
@@ -147,7 +144,6 @@ const SubcategoryCheckbox = React.memo(({
 
 SubcategoryCheckbox.displayName = 'SubcategoryCheckbox';
 
-// Componente memoizado para productos recomendados
 const RecommendedProductCard = React.memo(({ 
   product, 
   isSelected, 
@@ -202,6 +198,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [selectedTag, setSelectedTag] = useState<string>("")
+  const [productSpecs, setProductSpecs] = useState<ProductSpec[]>([])
+  const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [formData, setFormData] = useState({
     name: "",
     price: "",
@@ -223,8 +221,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     isOnSale: false,
     discountPercent: "10",
     recommendedProducts: [] as number[],
-    brand: "Devir",
-    genre: "Estrategia, Familiar",
     weight: "0.5",
     height: "10",
     width: "15",
@@ -259,7 +255,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     }
   }, [isAuthenticated, user, router])
 
-  // Función para extraer tag del producto
   const extractProductTag = (productData: any): string => {
     if (productData.tags) {
       if (typeof productData.tags === 'string') {
@@ -274,7 +269,54 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     return "" 
   }
 
-  // Cargar producto
+  const validateField = (field: string, value: any): boolean => {
+    if (!value || (typeof value === 'string' && value.trim() === '')) {
+      return false
+    }
+    if (Array.isArray(value) && value.length === 0) {
+      return false
+    }
+    return true
+  }
+
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, boolean> = {}
+    
+    if (!validateField('name', formData.name)) newErrors.name = true
+    if (!validateField('price', formData.price)) newErrors.price = true
+    if (!validateField('categoryId', formData.categoryId)) newErrors.categoryId = true
+    if (!validateField('subcategoryIds', formData.subcategoryIds)) newErrors.subcategoryIds = true
+    if (!validateField('age', formData.age)) newErrors.age = true
+    if (!validateField('ageMin', formData.ageMin)) newErrors.ageMin = true
+    if (!validateField('players', formData.players)) newErrors.players = true
+    if (!validateField('playersMin', formData.playersMin)) newErrors.playersMin = true
+    if (!validateField('playersMax', formData.playersMax)) newErrors.playersMax = true
+    if (!validateField('duration', formData.duration)) newErrors.duration = true
+    if (!validateField('durationMin', formData.durationMin)) newErrors.durationMin = true
+    if (!validateField('stock', formData.stock)) newErrors.stock = true
+    if (!validateField('description', formData.description)) newErrors.description = true
+    if (!validateField('weight', formData.weight)) newErrors.weight = true
+    if (!validateField('height', formData.height)) newErrors.height = true
+    if (!validateField('width', formData.width)) newErrors.width = true
+    if (!validateField('length', formData.length)) newErrors.length = true
+    
+    if (!formData.image && !imageFile) {
+      newErrors.image = true
+    }
+    
+    if (productSpecs.length === 0) {
+      newErrors.specs = true
+    }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
+    const hasError = errors[fieldName]
+    return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
+  }
+
   useEffect(() => {
     const loadProduct = async () => {
       if (!productId) return
@@ -301,6 +343,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
           const productTag = extractProductTag(productData)
           setSelectedTag(productTag)
+
+          const parsedSpecs = productData.specs ? parseProductSpecs(productData.specs) : []
+          setProductSpecs(parsedSpecs)
 
           let price = safeToString(productData.price)
           let originalPrice = ""
@@ -356,8 +401,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             isOnSale: isOnSale,
             discountPercent: discountPercent,
             recommendedProducts: productData.recommendedProducts || [],
-            brand: productData.brand || "Devir",
-            genre: productData.genre || "Estrategia, Familiar",
             weight: safeToString(productData.weight) || "0.5",
             height: safeToString(productData.height) || "10",
             width: safeToString(productData.width) || "15",
@@ -399,7 +442,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setSelectedTag(tagValue)
       
       if (tagValue === "") {
-        // Normal - sin etiqueta
         setFormData(prev => ({ 
           ...prev, 
           originalPrice: "",
@@ -445,7 +487,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         ? prev.subcategoryIds.filter(id => id !== subcategoryId)
         : [...prev.subcategoryIds, subcategoryId]
     }));
-  }, []);
+    if (errors.subcategoryIds) {
+      setErrors(prev => ({ ...prev, subcategoryIds: false }))
+    }
+  }, [errors.subcategoryIds]);
 
   const handleDiscountChange = (type: 'originalPrice' | 'discountPercent' | 'price', value: string) => {
     if (selectedTag !== "descuento") return
@@ -510,21 +555,25 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
       return
     }
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        setImageFile(resizedFile)
-        setImagePreview(previewUrl)
-      } catch (error) {
-        console.error("Error procesando imagen:", error)
-        alert("Error al procesar la imagen")
-      } finally {
-        setIsUploading(false)
+    if (file) {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
+      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
+        setIsUploading(true)
+        try {
+          const resizedFile = await resizeImage(file, 1024, 1024)
+          const previewUrl = URL.createObjectURL(resizedFile)
+          setImageFile(resizedFile)
+          setImagePreview(previewUrl)
+          if (errors.image) setErrors(prev => ({ ...prev, image: false }))
+        } catch (error) {
+          console.error("Error procesando imagen:", error)
+          alert("Error al procesar la imagen")
+        } finally {
+          setIsUploading(false)
+        }
+      } else {
+        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
       }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
     }
   }
 
@@ -541,21 +590,24 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
       return
     }
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        setNewAdditionalImageFiles(prev => [...prev, resizedFile])
-        setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
-      } catch (error) {
-        console.error("Error procesando imagen adicional:", error)
-        alert("Error al procesar la imagen")
-      } finally {
-        setIsUploading(false)
+    if (file) {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
+      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
+        setIsUploading(true)
+        try {
+          const resizedFile = await resizeImage(file, 1024, 1024)
+          const previewUrl = URL.createObjectURL(resizedFile)
+          setNewAdditionalImageFiles(prev => [...prev, resizedFile])
+          setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
+        } catch (error) {
+          console.error("Error procesando imagen adicional:", error)
+          alert("Error al procesar la imagen")
+        } finally {
+          setIsUploading(false)
+        }
+      } else {
+        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
       }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
     }
   }
 
@@ -579,8 +631,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (formData.subcategoryIds.length === 0) {
-      alert("Por favor selecciona al menos una subcategoria")
+    
+    if (!validateForm()) {
+      const firstError = document.querySelector('.border-red-500')
+      if (firstError) {
+        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      alert("Por favor completa todos los campos requeridos (marcados en rojo)")
       return
     }
 
@@ -593,11 +650,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('price', safeToString(formData.price))
       formDataToSend.append('categoryId', safeToString(formData.categoryId))
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
-      formDataToSend.append('brand', safeToString(formData.brand))
-      formDataToSend.append('genre', safeToString(formData.genre))
       formDataToSend.append('tags', selectedTag)
+      formDataToSend.append('specs', JSON.stringify(productSpecs))
       
-      // NUEVOS CAMPOS DE DIMENSIONES
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
       formDataToSend.append('width', safeToString(formData.width))
@@ -710,18 +765,24 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Nombre */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="name">Nombre del Producto *</Label>
+                  <Label htmlFor="name" className={errors.name ? 'text-red-600' : ''}>
+                    Nombre del Producto *
+                  </Label>
                   <Input
                     id="name"
                     required
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value })
+                      if (errors.name) setErrors(prev => ({ ...prev, name: false }))
+                    }}
+                    className={getFieldClassName('name')}
+                    placeholder="Ej: Gloomhaven"
                   />
+                  {errors.name && <p className="text-xs text-red-500">El nombre es requerido</p>}
                 </div>
 
-                {/* Video YouTube */}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Video de YouTube (opcional)</Label>
                   <div className="flex items-center gap-2">
@@ -773,25 +834,26 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
 
-                {/* Imagenes */}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
-                    <Label>Imagenes del Producto</Label>
+                    <Label className={errors.image ? 'text-red-600' : ''}>
+                      Imagenes del Producto *
+                    </Label>
                     <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
                       {totalImages}/{MAX_TOTAL_IMAGES} imagenes
                     </span>
                   </div>
 
-                  <div className="border rounded-lg p-4">
-                    <Label className="text-sm font-medium">Imagen Principal</Label>
+                  <div className={`border rounded-lg p-4 ${errors.image ? 'border-red-500' : ''}`}>
+                    <Label className="text-sm font-medium">Imagen Principal *</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Input
                             type="file"
-                            accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                            accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
                             onChange={handleImageUpload}
-                            className="cursor-pointer"
+                            className={`cursor-pointer ${errors.image ? 'border-red-500' : ''}`}
                             disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
                           />
                           <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -804,11 +866,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                             setFormData({ ...formData, image: e.target.value })
                             setImagePreview(e.target.value)
                             setImageFile(null)
+                            if (errors.image) setErrors(prev => ({ ...prev, image: false }))
                           }}
                           placeholder="URL de imagen web"
+                          className={errors.image ? 'border-red-500' : ''}
                         />
                       </div>
                     </div>
+                    {errors.image && <p className="text-xs text-red-500 mt-2">Debes agregar al menos una imagen principal</p>}
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
@@ -835,7 +900,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       <div className="flex items-center gap-2">
                         <Input
                           type="file"
-                          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                          accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
                           onChange={handleAdditionalImageUpload}
                           className="cursor-pointer"
                           disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
@@ -883,9 +948,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </div>
 
-                {/* Categoria */}
                 <div className="space-y-2">
-                  <Label htmlFor="category-select">Categoria *</Label>
+                  <Label htmlFor="category-select" className={errors.categoryId ? 'text-red-600' : ''}>
+                    Categoria *
+                  </Label>
                   <select
                     id="category-select"
                     value={formData.categoryId || ""}
@@ -897,8 +963,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         subcategoryIds: [] 
                       }));
                       setSelectedCategory(newValue);
+                      if (errors.categoryId) setErrors(prev => ({ ...prev, categoryId: false }))
                     }}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    className={`flex h-10 w-full rounded-md border ${errors.categoryId ? 'border-red-500' : 'border-input'} bg-background px-3 py-2 text-sm ring-offset-background`}
                     required
                   >
                     <option value="">Selecciona una categoria</option>
@@ -908,12 +975,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       </option>
                     ))}
                   </select>
+                  {errors.categoryId && <p className="text-xs text-red-500">Debes seleccionar una categoria</p>}
                 </div>
 
-                {/* Subcategorias */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Subcategorias *</Label>
-                  <div className="border rounded-lg p-4 bg-muted/20">
+                  <Label className={errors.subcategoryIds ? 'text-red-600' : ''}>
+                    Subcategorias *
+                  </Label>
+                  <div className={`border rounded-lg p-4 bg-muted/20 ${errors.subcategoryIds ? 'border-red-500' : ''}`}>
                     {!selectedCategory ? (
                       <p className="text-sm text-muted-foreground">Primero selecciona una categoria</p>
                     ) : availableSubcategories.length === 0 ? (
@@ -931,6 +1000,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       </div>
                     )}
                   </div>
+                  {errors.subcategoryIds && <p className="text-xs text-red-500">Debes seleccionar al menos una subcategoria</p>}
                   {formData.subcategoryIds.length > 0 && (
                     <p className="text-sm text-green-600 mt-2">
                       {formData.subcategoryIds.length} subcategoria(s) seleccionada(s)
@@ -938,42 +1008,17 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
 
-                {/* Marca y Género */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="brand">Marca *</Label>
-                    <Input
-                      id="brand"
-                      required
-                      value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      placeholder="Ej: Devir"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="genre">Género *</Label>
-                    <Input
-                      id="genre"
-                      required
-                      value={formData.genre}
-                      onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
-                      placeholder="Ej: Estrategia, Familiar"
-                    />
-                  </div>
-                </div>
-
-                {/* DIMENSIONES PARA ENVÍO - NUEVA SECCIÓN */}
                 <div className="md:col-span-2 space-y-3">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
-                    Dimensiones para Envío
+                    Dimensiones para Envio
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Estas dimensiones se usarán para calcular el costo de envío con Chilexpress.
+                    Estas dimensiones se usaran para calcular el costo de envio con Chilexpress.
                   </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
                     <div className="space-y-2">
-                      <Label htmlFor="weight" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="weight" className={`text-sm flex items-center gap-1 ${errors.weight ? 'text-red-600' : ''}`}>
                         <Weight className="w-3 h-3" /> Peso (kg) *
                       </Label>
                       <Input
@@ -983,14 +1028,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         min="0.1"
                         required
                         value={formData.weight}
-                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, weight: e.target.value })
+                          if (errors.weight) setErrors(prev => ({ ...prev, weight: false }))
+                        }}
+                        className={getFieldClassName('weight')}
                         placeholder="0.5"
                       />
-                      <p className="text-xs text-muted-foreground">Peso real del producto</p>
+                      {errors.weight && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="height" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="height" className={`text-sm flex items-center gap-1 ${errors.height ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Alto (cm) *
                       </Label>
                       <Input
@@ -1000,13 +1049,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         min="1"
                         required
                         value={formData.height}
-                        onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, height: e.target.value })
+                          if (errors.height) setErrors(prev => ({ ...prev, height: false }))
+                        }}
+                        className={getFieldClassName('height')}
                         placeholder="10"
                       />
+                      {errors.height && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="width" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="width" className={`text-sm flex items-center gap-1 ${errors.width ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Ancho (cm) *
                       </Label>
                       <Input
@@ -1016,13 +1070,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         min="1"
                         required
                         value={formData.width}
-                        onChange={(e) => setFormData({ ...formData, width: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, width: e.target.value })
+                          if (errors.width) setErrors(prev => ({ ...prev, width: false }))
+                        }}
+                        className={getFieldClassName('width')}
                         placeholder="15"
                       />
+                      {errors.width && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="length" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="length" className={`text-sm flex items-center gap-1 ${errors.length ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Largo (cm) *
                       </Label>
                       <Input
@@ -1032,14 +1091,28 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         min="1"
                         required
                         value={formData.length}
-                        onChange={(e) => setFormData({ ...formData, length: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, length: e.target.value })
+                          if (errors.length) setErrors(prev => ({ ...prev, length: false }))
+                        }}
+                        className={getFieldClassName('length')}
                         placeholder="20"
                       />
+                      {errors.length && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                   </div>
                 </div>
 
-                {/* Etiquetas del Producto */}
+                <div className="md:col-span-2 border rounded-lg p-4">
+                  <SpecsEditor 
+                    specs={productSpecs} 
+                    onChange={setProductSpecs} 
+                  />
+                  {errors.specs && (
+                    <p className="text-xs text-red-500 mt-2">Debes agregar al menos una caracteristica</p>
+                  )}
+                </div>
+
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Tag className="w-4 h-4" />
@@ -1091,7 +1164,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     })}
                   </div>
                   
-                  {/* Panel para NORMAL (sin etiqueta) */}
                   {selectedTag === "" && (
                     <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
@@ -1099,7 +1171,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         Producto Normal
                       </h4>
                       <p className="text-sm text-green-700 mb-3">
-                        Este producto se mostrará sin etiqueta especial.
+                        Este producto se mostrara sin etiqueta especial.
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio (CLP)</Label>
@@ -1114,7 +1186,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     </div>
                   )}
                   
-                  {/* Panel para DESCUENTO */}
                   {selectedTag === "descuento" && (
                     <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
                       <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
@@ -1149,7 +1220,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         </div>
                       </div>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio Final (calculado automáticamente)</Label>
+                        <Label className="text-sm">Precio Final (calculado automaticamente)</Label>
                         <Input
                           type="number"
                           value={formData.price}
@@ -1161,15 +1232,19 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         <div className="mt-3 p-3 bg-white rounded-lg">
                           <p className="text-sm">
                             <span className="font-semibold">Resumen:</span>{' '}
-                            <span className="line-through text-gray-500">${formatCLP(safeToNumber(formData.originalPrice))} CLP</span>{' '}
-                            → <span className="text-orange-600 font-bold">${formatCLP(safeToNumber(formData.price))} CLP</span>
+                            <span className="line-through text-gray-500">
+                              ${formatCLP(safeToNumber(formData.originalPrice))} CLP
+                            </span>{' '}
+                            <span className="mx-1 text-gray-400">→</span>
+                            <span className="text-orange-600 font-bold">
+                              ${formatCLP(safeToNumber(formData.price))} CLP
+                            </span>
                           </p>
                         </div>
                       )}
                     </div>
                   )}
                   
-                  {/* Panel para PREVENTA */}
                   {selectedTag === "preventa" && (
                     <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
@@ -1177,7 +1252,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         Producto en Preventa
                       </h4>
                       <p className="text-sm text-amber-700 mb-3">
-                        Este producto se mostrará con la etiqueta "PREVENTA".
+                        Este producto se mostrara con la etiqueta "PREVENTA".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio de Preventa (CLP)</Label>
@@ -1192,7 +1267,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     </div>
                   )}
                   
-                  {/* Panel para NOVEDAD */}
                   {selectedTag === "novedad" && (
                     <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
                       <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -1200,7 +1274,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         Producto Nuevo
                       </h4>
                       <p className="text-sm text-gray-700 mb-3">
-                        Este producto se mostrará con la etiqueta "NOVEDAD".
+                        Este producto se mostrara con la etiqueta "NOVEDAD".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio (CLP)</Label>
@@ -1214,7 +1288,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     </div>
                   )}
                   
-                  {/* Panel para AGOTADO */}
                   {selectedTag === "agotado" && (
                     <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                       <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
@@ -1222,7 +1295,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         Producto Agotado
                       </h4>
                       <p className="text-sm text-red-700">
-                        Este producto se mostrará con la etiqueta "AGOTADO". El stock se ha establecido automáticamente a 0.
+                        Este producto se mostrara con la etiqueta "AGOTADO". El stock se ha establecido automaticamente a 0.
                       </p>
                       <div className="mt-3 p-3 bg-white rounded-lg">
                         <p className="text-sm">
@@ -1232,7 +1305,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     </div>
                   )}
                   
-                  {/* Vista previa del badge - solo mostrar si hay etiqueta seleccionada y no es normal */}
                   {selectedTag && selectedTag !== "" && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
@@ -1262,7 +1334,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
 
-                {/* Productos Recomendados */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -1306,106 +1377,175 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
 
-                {/* Stock y Especificaciones */}
                 <div className="space-y-2">
-                  <Label htmlFor="stock">Stock *</Label>
+                  <Label htmlFor="stock" className={errors.stock ? 'text-red-600' : ''}>
+                    Stock *
+                  </Label>
                   <Input
                     id="stock"
                     type="number"
                     required
                     value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, stock: e.target.value })
+                      if (errors.stock) setErrors(prev => ({ ...prev, stock: false }))
+                    }}
                     disabled={selectedTag === "agotado"}
-                    className={selectedTag === "agotado" ? "bg-gray-100" : ""}
+                    className={getFieldClassName('stock', selectedTag === "agotado" ? "bg-gray-100" : "")}
                   />
+                  {errors.stock && <p className="text-xs text-red-500">El stock es requerido</p>}
                   {selectedTag === "agotado" && (
                     <p className="text-xs text-red-500">El stock esta fijado en 0 porque el producto esta agotado</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="age">Edad (ej: 8+) *</Label>
+                  <Label htmlFor="age" className={errors.age ? 'text-red-600' : ''}>
+                    Edad (ej: 8+) *
+                  </Label>
                   <Input
                     id="age"
                     required
                     value={formData.age}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, age: e.target.value })
+                      if (errors.age) setErrors(prev => ({ ...prev, age: false }))
+                    }}
+                    className={getFieldClassName('age')}
+                    placeholder="Ej: 8+"
                   />
+                  {errors.age && <p className="text-xs text-red-500">La edad es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ageMin">Edad Minima *</Label>
+                  <Label htmlFor="ageMin" className={errors.ageMin ? 'text-red-600' : ''}>
+                    Edad Minima *
+                  </Label>
                   <Input
                     id="ageMin"
                     type="number"
                     required
                     value={formData.ageMin}
-                    onChange={(e) => setFormData({ ...formData, ageMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, ageMin: e.target.value })
+                      if (errors.ageMin) setErrors(prev => ({ ...prev, ageMin: false }))
+                    }}
+                    className={getFieldClassName('ageMin')}
+                    placeholder="8"
                   />
+                  {errors.ageMin && <p className="text-xs text-red-500">La edad minima es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="players">Jugadores (ej: 2-5) *</Label>
+                  <Label htmlFor="players" className={errors.players ? 'text-red-600' : ''}>
+                    Jugadores (ej: 2-5) *
+                  </Label>
                   <Input
                     id="players"
                     required
                     value={formData.players}
-                    onChange={(e) => setFormData({ ...formData, players: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, players: e.target.value })
+                      if (errors.players) setErrors(prev => ({ ...prev, players: false }))
+                    }}
+                    className={getFieldClassName('players')}
+                    placeholder="Ej: 2-5"
                   />
+                  {errors.players && <p className="text-xs text-red-500">Los jugadores son requeridos</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMin">Jugadores Minimo *</Label>
+                  <Label htmlFor="playersMin" className={errors.playersMin ? 'text-red-600' : ''}>
+                    Jugadores Minimo *
+                  </Label>
                   <Input
                     id="playersMin"
                     type="number"
                     required
                     value={formData.playersMin}
-                    onChange={(e) => setFormData({ ...formData, playersMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, playersMin: e.target.value })
+                      if (errors.playersMin) setErrors(prev => ({ ...prev, playersMin: false }))
+                    }}
+                    className={getFieldClassName('playersMin')}
+                    placeholder="2"
                   />
+                  {errors.playersMin && <p className="text-xs text-red-500">El minimo de jugadores es requerido</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMax">Jugadores Maximo *</Label>
+                  <Label htmlFor="playersMax" className={errors.playersMax ? 'text-red-600' : ''}>
+                    Jugadores Maximo *
+                  </Label>
                   <Input
                     id="playersMax"
                     type="number"
                     required
                     value={formData.playersMax}
-                    onChange={(e) => setFormData({ ...formData, playersMax: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, playersMax: e.target.value })
+                      if (errors.playersMax) setErrors(prev => ({ ...prev, playersMax: false }))
+                    }}
+                    className={getFieldClassName('playersMax')}
+                    placeholder="5"
                   />
+                  {errors.playersMax && <p className="text-xs text-red-500">El maximo de jugadores es requerido</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duracion (ej: 15 min) *</Label>
+                  <Label htmlFor="duration" className={errors.duration ? 'text-red-600' : ''}>
+                    Duracion (ej: 15 min) *
+                  </Label>
                   <Input
                     id="duration"
                     required
                     value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, duration: e.target.value })
+                      if (errors.duration) setErrors(prev => ({ ...prev, duration: false }))
+                    }}
+                    className={getFieldClassName('duration')}
+                    placeholder="Ej: 30 min"
                   />
+                  {errors.duration && <p className="text-xs text-red-500">La duracion es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="durationMin">Duracion Minima (min) *</Label>
+                  <Label htmlFor="durationMin" className={errors.durationMin ? 'text-red-600' : ''}>
+                    Duracion Minima (min) *
+                  </Label>
                   <Input
                     id="durationMin"
                     type="number"
                     required
                     value={formData.durationMin}
-                    onChange={(e) => setFormData({ ...formData, durationMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, durationMin: e.target.value })
+                      if (errors.durationMin) setErrors(prev => ({ ...prev, durationMin: false }))
+                    }}
+                    className={getFieldClassName('durationMin')}
+                    placeholder="30"
                   />
+                  {errors.durationMin && <p className="text-xs text-red-500">La duracion minima es requerida</p>}
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Descripcion *</Label>
+                  <Label htmlFor="description" className={errors.description ? 'text-red-600' : ''}>
+                    Descripcion *
+                  </Label>
                   <Textarea
                     id="description"
                     required
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, description: e.target.value })
+                      if (errors.description) setErrors(prev => ({ ...prev, description: false }))
+                    }}
+                    className={getFieldClassName('description')}
                     rows={4}
+                    placeholder="Describe el producto..."
                   />
+                  {errors.description && <p className="text-xs text-red-500">La descripcion es requerida</p>}
                 </div>
               </div>
 

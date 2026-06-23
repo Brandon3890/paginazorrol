@@ -18,8 +18,9 @@ import {
   Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
 } from "lucide-react"
 import Link from "next/link"
+import { SpecsEditor } from "@/components/SpecsEditor"
+import { ProductSpec } from "@/lib/product-specs"
 
-// Función para redimensionar imagen
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -73,7 +74,6 @@ const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<F
   });
 };
 
-// Función mejorada para extraer ID de YouTube
 const extractYoutubeId = (url: string): string | null => {
   if (!url) return null;
   
@@ -103,7 +103,6 @@ const extractYoutubeId = (url: string): string | null => {
   return null
 }
 
-// Funciones auxiliares
 const formatCLP = (price: number): string => Math.round(price).toLocaleString('es-CL');
 const calculateDiscountPrice = (price: number, discountPercent: number): number => price * (1 - discountPercent / 100);
 const safeToString = (value: any): string => value === null || value === undefined ? "" : String(value);
@@ -113,7 +112,6 @@ const safeToNumber = (value: any): number => {
   return isNaN(num) ? 0 : num
 }
 
-// Componente memoizado para subcategorías
 const SubcategoryCheckbox = React.memo(({ 
   subcat, 
   isSelected, 
@@ -146,7 +144,6 @@ const SubcategoryCheckbox = React.memo(({
 
 SubcategoryCheckbox.displayName = 'SubcategoryCheckbox';
 
-// Componente memoizado para productos recomendados
 const RecommendedProductCard = React.memo(({ 
   product, 
   isSelected, 
@@ -217,9 +214,6 @@ export default function NewProductPage() {
     isOnSale: false,
     discountPercent: "0",
     recommendedProducts: [] as number[],
-    brand: "Devir",
-    genre: "Estrategia, Familiar",
-    // NUEVOS CAMPOS - Dimensiones para envío
     weight: "0.5",
     height: "10",
     width: "15",
@@ -234,6 +228,8 @@ export default function NewProductPage() {
   const [youtubeError, setYoutubeError] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedTag, setSelectedTag] = useState<string>("")
+  const [productSpecs, setProductSpecs] = useState<ProductSpec[]>([])
+  const [errors, setErrors] = useState<Record<string, boolean>>({})
   
   const [newAdditionalImageFiles, setNewAdditionalImageFiles] = useState<File[]>([])
   const [newAdditionalImagePreviews, setNewAdditionalImagePreviews] = useState<string[]>([])
@@ -253,6 +249,52 @@ export default function NewProductPage() {
     }
   }, [isAuthenticated, user, router])
 
+  const validateField = (field: string, value: any): boolean => {
+    if (!value || (typeof value === 'string' && value.trim() === '')) {
+      return false
+    }
+    if (Array.isArray(value) && value.length === 0) {
+      return false
+    }
+    return true
+  }
+
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, boolean> = {}
+    
+    // Campos requeridos
+    if (!validateField('name', formData.name)) newErrors.name = true
+    if (!validateField('price', formData.price)) newErrors.price = true
+    if (!validateField('categoryId', formData.categoryId)) newErrors.categoryId = true
+    if (!validateField('subcategoryIds', formData.subcategoryIds)) newErrors.subcategoryIds = true
+    if (!validateField('age', formData.age)) newErrors.age = true
+    if (!validateField('ageMin', formData.ageMin)) newErrors.ageMin = true
+    if (!validateField('players', formData.players)) newErrors.players = true
+    if (!validateField('playersMin', formData.playersMin)) newErrors.playersMin = true
+    if (!validateField('playersMax', formData.playersMax)) newErrors.playersMax = true
+    if (!validateField('duration', formData.duration)) newErrors.duration = true
+    if (!validateField('durationMin', formData.durationMin)) newErrors.durationMin = true
+    if (!validateField('stock', formData.stock)) newErrors.stock = true
+    if (!validateField('description', formData.description)) newErrors.description = true
+    if (!validateField('weight', formData.weight)) newErrors.weight = true
+    if (!validateField('height', formData.height)) newErrors.height = true
+    if (!validateField('width', formData.width)) newErrors.width = true
+    if (!validateField('length', formData.length)) newErrors.length = true
+    
+    // Validar imagen (si no hay imagen ni archivo)
+    if (!formData.image && !imageFile) {
+      newErrors.image = true
+    }
+    
+    // Validar specs (al menos una característica)
+    if (productSpecs.length === 0) {
+      newErrors.specs = true
+    }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
   const handleTagSelect = (tagValue: string) => {
     if (selectedTag === tagValue) {
       setSelectedTag("")
@@ -269,7 +311,6 @@ export default function NewProductPage() {
       setSelectedTag(tagValue)
       
       if (tagValue === "") {
-        // Normal - sin etiqueta
         setFormData(prev => ({ 
           ...prev, 
           tags: "",
@@ -319,7 +360,11 @@ export default function NewProductPage() {
         ? prev.subcategoryIds.filter(id => id !== subcategoryId)
         : [...prev.subcategoryIds, subcategoryId]
     }));
-  }, []);
+    // Limpiar error de subcategorías cuando se selecciona alguna
+    if (errors.subcategoryIds) {
+      setErrors(prev => ({ ...prev, subcategoryIds: false }))
+    }
+  }, [errors.subcategoryIds]);
 
   const handleDiscountChange = (type: 'originalPrice' | 'discountPercent' | 'price', value: string) => {
     if (selectedTag !== "descuento") return
@@ -381,24 +426,29 @@ export default function NewProductPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Máximo ${MAX_TOTAL_IMAGES} imágenes en total`)
+      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
       return
     }
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        setImageFile(resizedFile)
-        setImagePreview(previewUrl)
-      } catch (error) {
-        console.error("Error procesando imagen:", error)
-        alert("Error al procesar la imagen")
-      } finally {
-        setIsUploading(false)
+    if (file) {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
+      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
+        setIsUploading(true)
+        try {
+          const resizedFile = await resizeImage(file, 1024, 1024)
+          const previewUrl = URL.createObjectURL(resizedFile)
+          setImageFile(resizedFile)
+          setImagePreview(previewUrl)
+          // Limpiar error de imagen
+          setErrors(prev => ({ ...prev, image: false }))
+        } catch (error) {
+          console.error("Error procesando imagen:", error)
+          alert("Error al procesar la imagen")
+        } finally {
+          setIsUploading(false)
+        }
+      } else {
+        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
       }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
     }
   }
 
@@ -412,24 +462,27 @@ export default function NewProductPage() {
   const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Máximo ${MAX_TOTAL_IMAGES} imágenes en total`)
+      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
       return
     }
-    if (file && (file.type === "image/png" || file.type === "image/jpeg" || file.type === "image/jpg")) {
-      setIsUploading(true)
-      try {
-        const resizedFile = await resizeImage(file, 1024, 1024)
-        const previewUrl = URL.createObjectURL(resizedFile)
-        setNewAdditionalImageFiles(prev => [...prev, resizedFile])
-        setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
-      } catch (error) {
-        console.error("Error procesando imagen adicional:", error)
-        alert("Error al procesar la imagen")
-      } finally {
-        setIsUploading(false)
+    if (file) {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
+      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
+        setIsUploading(true)
+        try {
+          const resizedFile = await resizeImage(file, 1024, 1024)
+          const previewUrl = URL.createObjectURL(resizedFile)
+          setNewAdditionalImageFiles(prev => [...prev, resizedFile])
+          setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
+        } catch (error) {
+          console.error("Error procesando imagen adicional:", error)
+          alert("Error al procesar la imagen")
+        } finally {
+          setIsUploading(false)
+        }
+      } else {
+        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
       }
-    } else {
-      alert("Por favor selecciona una imagen PNG, JPG o JPEG")
     }
   }
 
@@ -448,13 +501,14 @@ export default function NewProductPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name || !formData.price || !formData.categoryId) {
-      alert("Por favor completa todos los campos obligatorios")
-      return
-    }
-
-    if (formData.subcategoryIds.length === 0) {
-      alert("Por favor selecciona al menos una subcategoría")
+    // Validar formulario
+    if (!validateForm()) {
+      // Scroll al primer error
+      const firstError = document.querySelector('.border-red-500')
+      if (firstError) {
+        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      alert("Por favor completa todos los campos requeridos (marcados en rojo)")
       return
     }
 
@@ -467,10 +521,8 @@ export default function NewProductPage() {
       formDataToSend.append('price', formData.price)
       formDataToSend.append('categoryId', formData.categoryId)
       formDataToSend.append('youtubeVideoId', formData.youtubeVideoId)
-      formDataToSend.append('brand', formData.brand)
-      formDataToSend.append('genre', formData.genre)
+      formDataToSend.append('specs', JSON.stringify(productSpecs))
       
-      // NUEVOS CAMPOS - Peso y dimensiones para envío
       formDataToSend.append('weight', formData.weight)
       formDataToSend.append('height', formData.height)
       formDataToSend.append('width', formData.width)
@@ -527,6 +579,11 @@ export default function NewProductPage() {
     }
   }
 
+  const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
+    const hasError = errors[fieldName]
+    return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
+  }
+
   if (!isAuthenticated || user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-background">
@@ -546,7 +603,7 @@ export default function NewProductPage() {
         <main className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Cargando categorías...</span>
+            <span>Cargando categorias...</span>
           </div>
         </main>
         <Footer />
@@ -568,23 +625,29 @@ export default function NewProductPage() {
         <Card>
           <CardHeader>
             <CardTitle>Añadir Nuevo Producto</CardTitle>
-            <CardDescription>Completa la información del producto</CardDescription>
+            <CardDescription>Completa la informacion del producto</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Nombre */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="name">Nombre del Producto *</Label>
+                  <Label htmlFor="name" className={errors.name ? 'text-red-600' : ''}>
+                    Nombre del Producto *
+                  </Label>
                   <Input
                     id="name"
                     required
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value })
+                      if (errors.name) setErrors(prev => ({ ...prev, name: false }))
+                    }}
+                    className={getFieldClassName('name')}
+                    placeholder="Ej: Gloomhaven"
                   />
+                  {errors.name && <p className="text-xs text-red-500">El nombre es requerido</p>}
                 </div>
 
-                {/* Video YouTube */}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Video de YouTube (opcional)</Label>
                   <div className="flex items-center gap-2">
@@ -636,25 +699,26 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* Imágenes */}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
-                    <Label>Imágenes del Producto</Label>
+                    <Label className={errors.image ? 'text-red-600' : ''}>
+                      Imagenes del Producto *
+                    </Label>
                     <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
-                      {totalImages}/{MAX_TOTAL_IMAGES} imágenes
+                      {totalImages}/{MAX_TOTAL_IMAGES} imagenes
                     </span>
                   </div>
 
-                  <div className="border rounded-lg p-4">
-                    <Label className="text-sm font-medium">Imagen Principal</Label>
+                  <div className={`border rounded-lg p-4 ${errors.image ? 'border-red-500' : ''}`}>
+                    <Label className="text-sm font-medium">Imagen Principal *</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Input
                             type="file"
-                            accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                            accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
                             onChange={handleImageUpload}
-                            className="cursor-pointer"
+                            className={`cursor-pointer ${errors.image ? 'border-red-500' : ''}`}
                             disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
                           />
                           <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -667,11 +731,14 @@ export default function NewProductPage() {
                             setFormData({ ...formData, image: e.target.value })
                             setImagePreview(e.target.value)
                             setImageFile(null)
+                            if (errors.image) setErrors(prev => ({ ...prev, image: false }))
                           }}
                           placeholder="URL de imagen web"
+                          className={errors.image ? 'border-red-500' : ''}
                         />
                       </div>
                     </div>
+                    {errors.image && <p className="text-xs text-red-500 mt-2">Debes agregar al menos una imagen principal</p>}
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
@@ -693,12 +760,12 @@ export default function NewProductPage() {
                   </div>
 
                   <div className="border rounded-lg p-4">
-                    <Label className="text-sm font-medium">Imágenes Adicionales</Label>
+                    <Label className="text-sm font-medium">Imagenes Adicionales</Label>
                     <div className="mt-2">
                       <div className="flex items-center gap-2">
                         <Input
                           type="file"
-                          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                          accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
                           onChange={handleAdditionalImageUpload}
                           className="cursor-pointer"
                           disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
@@ -737,9 +804,10 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
-                {/* Categoría */}
                 <div className="space-y-2">
-                  <Label htmlFor="category-select">Categoría *</Label>
+                  <Label htmlFor="category-select" className={errors.categoryId ? 'text-red-600' : ''}>
+                    Categoria *
+                  </Label>
                   <select
                     id="category-select"
                     value={formData.categoryId}
@@ -751,27 +819,30 @@ export default function NewProductPage() {
                         subcategoryIds: [] 
                       }));
                       setSelectedCategory(newValue);
+                      if (errors.categoryId) setErrors(prev => ({ ...prev, categoryId: false }))
                     }}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    className={`flex h-10 w-full rounded-md border ${errors.categoryId ? 'border-red-500' : 'border-input'} bg-background px-3 py-2 text-sm ring-offset-background`}
                     required
                   >
-                    <option value="">Selecciona una categoría</option>
+                    <option value="">Selecciona una categoria</option>
                     {categories.map((cat) => (
                       <option key={cat.id} value={safeToString(cat.id)}>
                         {cat.name}
                       </option>
                     ))}
                   </select>
+                  {errors.categoryId && <p className="text-xs text-red-500">Debes seleccionar una categoria</p>}
                 </div>
 
-                {/* Subcategorías */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Subcategorías *</Label>
-                  <div className="border rounded-lg p-4 bg-muted/20">
+                  <Label className={errors.subcategoryIds ? 'text-red-600' : ''}>
+                    Subcategorias *
+                  </Label>
+                  <div className={`border rounded-lg p-4 bg-muted/20 ${errors.subcategoryIds ? 'border-red-500' : ''}`}>
                     {!selectedCategory ? (
-                      <p className="text-sm text-muted-foreground">Primero selecciona una categoría</p>
+                      <p className="text-sm text-muted-foreground">Primero selecciona una categoria</p>
                     ) : availableSubcategories.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay subcategorías disponibles</p>
+                      <p className="text-sm text-muted-foreground">No hay subcategorias disponibles</p>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         {availableSubcategories.map((subcat) => (
@@ -785,49 +856,25 @@ export default function NewProductPage() {
                       </div>
                     )}
                   </div>
+                  {errors.subcategoryIds && <p className="text-xs text-red-500">Debes seleccionar al menos una subcategoria</p>}
                   {formData.subcategoryIds.length > 0 && (
                     <p className="text-sm text-green-600 mt-2">
-                      {formData.subcategoryIds.length} subcategoría(s) seleccionada(s)
+                      {formData.subcategoryIds.length} subcategoria(s) seleccionada(s)
                     </p>
                   )}
                 </div>
 
-                {/* Marca y Género */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="brand">Marca *</Label>
-                    <Input
-                      id="brand"
-                      required
-                      value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      placeholder="Ej: Devir"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="genre">Género *</Label>
-                    <Input
-                      id="genre"
-                      required
-                      value={formData.genre}
-                      onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
-                      placeholder="Ej: Estrategia, Familiar"
-                    />
-                  </div>
-                </div>
-
-                {/* DIMENSIONES PARA ENVÍO - NUEVA SECCIÓN */}
                 <div className="md:col-span-2 space-y-3">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
-                    Dimensiones para Envío
+                    Dimensiones para Envio
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Estas dimensiones se usarán para calcular el costo de envío con Chilexpress.
+                    Estas dimensiones se usaran para calcular el costo de envio con Chilexpress.
                   </p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
                     <div className="space-y-2">
-                      <Label htmlFor="weight" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="weight" className={`text-sm flex items-center gap-1 ${errors.weight ? 'text-red-600' : ''}`}>
                         <Weight className="w-3 h-3" /> Peso (kg) *
                       </Label>
                       <Input
@@ -837,14 +884,18 @@ export default function NewProductPage() {
                         min="0.1"
                         required
                         value={formData.weight}
-                        onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, weight: e.target.value })
+                          if (errors.weight) setErrors(prev => ({ ...prev, weight: false }))
+                        }}
+                        className={getFieldClassName('weight')}
                         placeholder="0.5"
                       />
-                      <p className="text-xs text-muted-foreground">Peso real del producto</p>
+                      {errors.weight && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="height" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="height" className={`text-sm flex items-center gap-1 ${errors.height ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Alto (cm) *
                       </Label>
                       <Input
@@ -854,13 +905,18 @@ export default function NewProductPage() {
                         min="1"
                         required
                         value={formData.height}
-                        onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, height: e.target.value })
+                          if (errors.height) setErrors(prev => ({ ...prev, height: false }))
+                        }}
+                        className={getFieldClassName('height')}
                         placeholder="10"
                       />
+                      {errors.height && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="width" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="width" className={`text-sm flex items-center gap-1 ${errors.width ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Ancho (cm) *
                       </Label>
                       <Input
@@ -870,13 +926,18 @@ export default function NewProductPage() {
                         min="1"
                         required
                         value={formData.width}
-                        onChange={(e) => setFormData({ ...formData, width: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, width: e.target.value })
+                          if (errors.width) setErrors(prev => ({ ...prev, width: false }))
+                        }}
+                        className={getFieldClassName('width')}
                         placeholder="15"
                       />
+                      {errors.width && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="length" className="text-sm flex items-center gap-1">
+                      <Label htmlFor="length" className={`text-sm flex items-center gap-1 ${errors.length ? 'text-red-600' : ''}`}>
                         <Ruler className="w-3 h-3" /> Largo (cm) *
                       </Label>
                       <Input
@@ -886,14 +947,28 @@ export default function NewProductPage() {
                         min="1"
                         required
                         value={formData.length}
-                        onChange={(e) => setFormData({ ...formData, length: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, length: e.target.value })
+                          if (errors.length) setErrors(prev => ({ ...prev, length: false }))
+                        }}
+                        className={getFieldClassName('length')}
                         placeholder="20"
                       />
+                      {errors.length && <p className="text-xs text-red-500">Campo requerido</p>}
                     </div>
                   </div>
                 </div>
 
-                {/* Etiquetas del Producto */}
+                <div className="md:col-span-2 border rounded-lg p-4">
+                  <SpecsEditor 
+                    specs={productSpecs} 
+                    onChange={setProductSpecs} 
+                  />
+                  {errors.specs && (
+                    <p className="text-xs text-red-500 mt-2">Debes agregar al menos una caracteristica</p>
+                  )}
+                </div>
+
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Tag className="w-4 h-4" />
@@ -908,7 +983,7 @@ export default function NewProductPage() {
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
                       { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
                       { value: "descuento", label: "DESCUENTO", icon: Percent, description: "Activar oferta especial", color: "bg-orange-500", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
-                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recién llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
+                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recien llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
                       { value: "agotado", label: "AGOTADO", icon: AlertCircle, description: "Sin stock (stock = 0)", color: "bg-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
                     ].map((tag) => {
                       const IconComponent = tag.icon;
@@ -945,7 +1020,6 @@ export default function NewProductPage() {
                     })}
                   </div>
                   
-                  {/* Panel para NORMAL (sin etiqueta) */}
                   {selectedTag === "" && (
                     <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
@@ -953,7 +1027,7 @@ export default function NewProductPage() {
                         Producto Normal
                       </h4>
                       <p className="text-sm text-green-700 mb-3">
-                        Este producto se mostrará sin etiqueta especial.
+                        Este producto se mostrara sin etiqueta especial.
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio (CLP)</Label>
@@ -968,7 +1042,6 @@ export default function NewProductPage() {
                     </div>
                   )}
                   
-                  {/* Panel para DESCUENTO */}
                   {selectedTag === "descuento" && (
                     <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
                       <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
@@ -1003,7 +1076,7 @@ export default function NewProductPage() {
                         </div>
                       </div>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio Final (calculado automáticamente)</Label>
+                        <Label className="text-sm">Precio Final (calculado automaticamente)</Label>
                         <Input
                           type="number"
                           value={formData.price}
@@ -1015,15 +1088,19 @@ export default function NewProductPage() {
                         <div className="mt-3 p-3 bg-white rounded-lg">
                           <p className="text-sm">
                             <span className="font-semibold">Resumen:</span>{' '}
-                            <span className="line-through text-gray-500">${formatCLP(safeToNumber(formData.originalPrice))} CLP</span>{' '}
-                            → <span className="text-orange-600 font-bold">${formatCLP(safeToNumber(formData.price))} CLP</span>
+                            <span className="line-through text-gray-500">
+                              ${formatCLP(safeToNumber(formData.originalPrice))} CLP
+                            </span>{' '}
+                            <span className="mx-1 text-gray-400">→</span>
+                            <span className="text-orange-600 font-bold">
+                              ${formatCLP(safeToNumber(formData.price))} CLP
+                            </span>
                           </p>
                         </div>
                       )}
                     </div>
                   )}
                   
-                  {/* Panel para PREVENTA */}
                   {selectedTag === "preventa" && (
                     <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
@@ -1031,7 +1108,7 @@ export default function NewProductPage() {
                         Producto en Preventa
                       </h4>
                       <p className="text-sm text-amber-700 mb-3">
-                        Este producto se mostrará con la etiqueta "PREVENTA".
+                        Este producto se mostrara con la etiqueta "PREVENTA".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio de Preventa (CLP)</Label>
@@ -1046,7 +1123,6 @@ export default function NewProductPage() {
                     </div>
                   )}
                   
-                  {/* Panel para NOVEDAD */}
                   {selectedTag === "novedad" && (
                     <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
                       <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -1054,7 +1130,7 @@ export default function NewProductPage() {
                         Producto Nuevo
                       </h4>
                       <p className="text-sm text-gray-700 mb-3">
-                        Este producto se mostrará con la etiqueta "NOVEDAD".
+                        Este producto se mostrara con la etiqueta "NOVEDAD".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
                         <Label className="text-sm">Precio (CLP)</Label>
@@ -1068,7 +1144,6 @@ export default function NewProductPage() {
                     </div>
                   )}
                   
-                  {/* Panel para AGOTADO */}
                   {selectedTag === "agotado" && (
                     <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                       <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
@@ -1076,7 +1151,7 @@ export default function NewProductPage() {
                         Producto Agotado
                       </h4>
                       <p className="text-sm text-red-700">
-                        Este producto se mostrará con la etiqueta "AGOTADO". El stock se ha establecido automáticamente a 0.
+                        Este producto se mostrara con la etiqueta "AGOTADO". El stock se ha establecido automaticamente a 0.
                       </p>
                       <div className="mt-3 p-3 bg-white rounded-lg">
                         <p className="text-sm">
@@ -1086,7 +1161,6 @@ export default function NewProductPage() {
                     </div>
                   )}
                   
-                  {/* Vista previa del badge */}
                   {selectedTag && selectedTag !== "" && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
@@ -1116,14 +1190,13 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* Productos Recomendados */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
                     Productos Recomendados
                   </Label>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Selecciona los productos que se mostrarán como "También te podría gustar"
+                    Selecciona los productos que se mostraran como "Tambien te podria gustar"
                   </p>
                   
                   <div className="flex items-center gap-2 mb-4">
@@ -1160,106 +1233,175 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* Stock y Especificaciones */}
                 <div className="space-y-2">
-                  <Label htmlFor="stock">Stock *</Label>
+                  <Label htmlFor="stock" className={errors.stock ? 'text-red-600' : ''}>
+                    Stock *
+                  </Label>
                   <Input
                     id="stock"
                     type="number"
                     required
                     value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, stock: e.target.value })
+                      if (errors.stock) setErrors(prev => ({ ...prev, stock: false }))
+                    }}
                     disabled={selectedTag === "agotado"}
-                    className={selectedTag === "agotado" ? "bg-gray-100" : ""}
+                    className={getFieldClassName('stock', selectedTag === "agotado" ? "bg-gray-100" : "")}
                   />
+                  {errors.stock && <p className="text-xs text-red-500">El stock es requerido</p>}
                   {selectedTag === "agotado" && (
-                    <p className="text-xs text-red-500">El stock está fijado en 0 porque el producto está agotado</p>
+                    <p className="text-xs text-red-500">El stock esta fijado en 0 porque el producto esta agotado</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="age">Edad (ej: 8+) *</Label>
+                  <Label htmlFor="age" className={errors.age ? 'text-red-600' : ''}>
+                    Edad (ej: 8+) *
+                  </Label>
                   <Input
                     id="age"
                     required
                     value={formData.age}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, age: e.target.value })
+                      if (errors.age) setErrors(prev => ({ ...prev, age: false }))
+                    }}
+                    className={getFieldClassName('age')}
+                    placeholder="Ej: 8+"
                   />
+                  {errors.age && <p className="text-xs text-red-500">La edad es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ageMin">Edad Mínima *</Label>
+                  <Label htmlFor="ageMin" className={errors.ageMin ? 'text-red-600' : ''}>
+                    Edad Minima *
+                  </Label>
                   <Input
                     id="ageMin"
                     type="number"
                     required
                     value={formData.ageMin}
-                    onChange={(e) => setFormData({ ...formData, ageMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, ageMin: e.target.value })
+                      if (errors.ageMin) setErrors(prev => ({ ...prev, ageMin: false }))
+                    }}
+                    className={getFieldClassName('ageMin')}
+                    placeholder="8"
                   />
+                  {errors.ageMin && <p className="text-xs text-red-500">La edad minima es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="players">Jugadores (ej: 2-5) *</Label>
+                  <Label htmlFor="players" className={errors.players ? 'text-red-600' : ''}>
+                    Jugadores (ej: 2-5) *
+                  </Label>
                   <Input
                     id="players"
                     required
                     value={formData.players}
-                    onChange={(e) => setFormData({ ...formData, players: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, players: e.target.value })
+                      if (errors.players) setErrors(prev => ({ ...prev, players: false }))
+                    }}
+                    className={getFieldClassName('players')}
+                    placeholder="Ej: 2-5"
                   />
+                  {errors.players && <p className="text-xs text-red-500">Los jugadores son requeridos</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMin">Jugadores Mínimo *</Label>
+                  <Label htmlFor="playersMin" className={errors.playersMin ? 'text-red-600' : ''}>
+                    Jugadores Minimo *
+                  </Label>
                   <Input
                     id="playersMin"
                     type="number"
                     required
                     value={formData.playersMin}
-                    onChange={(e) => setFormData({ ...formData, playersMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, playersMin: e.target.value })
+                      if (errors.playersMin) setErrors(prev => ({ ...prev, playersMin: false }))
+                    }}
+                    className={getFieldClassName('playersMin')}
+                    placeholder="2"
                   />
+                  {errors.playersMin && <p className="text-xs text-red-500">El minimo de jugadores es requerido</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="playersMax">Jugadores Máximo *</Label>
+                  <Label htmlFor="playersMax" className={errors.playersMax ? 'text-red-600' : ''}>
+                    Jugadores Maximo *
+                  </Label>
                   <Input
                     id="playersMax"
                     type="number"
                     required
                     value={formData.playersMax}
-                    onChange={(e) => setFormData({ ...formData, playersMax: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, playersMax: e.target.value })
+                      if (errors.playersMax) setErrors(prev => ({ ...prev, playersMax: false }))
+                    }}
+                    className={getFieldClassName('playersMax')}
+                    placeholder="5"
                   />
+                  {errors.playersMax && <p className="text-xs text-red-500">El maximo de jugadores es requerido</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duración (ej: 15 min) *</Label>
+                  <Label htmlFor="duration" className={errors.duration ? 'text-red-600' : ''}>
+                    Duracion (ej: 15 min) *
+                  </Label>
                   <Input
                     id="duration"
                     required
                     value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, duration: e.target.value })
+                      if (errors.duration) setErrors(prev => ({ ...prev, duration: false }))
+                    }}
+                    className={getFieldClassName('duration')}
+                    placeholder="Ej: 30 min"
                   />
+                  {errors.duration && <p className="text-xs text-red-500">La duracion es requerida</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="durationMin">Duración Mínima (min) *</Label>
+                  <Label htmlFor="durationMin" className={errors.durationMin ? 'text-red-600' : ''}>
+                    Duracion Minima (min) *
+                  </Label>
                   <Input
                     id="durationMin"
                     type="number"
                     required
                     value={formData.durationMin}
-                    onChange={(e) => setFormData({ ...formData, durationMin: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, durationMin: e.target.value })
+                      if (errors.durationMin) setErrors(prev => ({ ...prev, durationMin: false }))
+                    }}
+                    className={getFieldClassName('durationMin')}
+                    placeholder="30"
                   />
+                  {errors.durationMin && <p className="text-xs text-red-500">La duracion minima es requerida</p>}
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Descripción *</Label>
+                  <Label htmlFor="description" className={errors.description ? 'text-red-600' : ''}>
+                    Descripcion *
+                  </Label>
                   <Textarea
                     id="description"
                     required
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, description: e.target.value })
+                      if (errors.description) setErrors(prev => ({ ...prev, description: false }))
+                    }}
+                    className={getFieldClassName('description')}
                     rows={4}
+                    placeholder="Describe el producto..."
                   />
+                  {errors.description && <p className="text-xs text-red-500">La descripcion es requerida</p>}
                 </div>
               </div>
 

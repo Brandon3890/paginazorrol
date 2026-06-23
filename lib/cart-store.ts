@@ -113,7 +113,7 @@ export const useCartStore = create<CartStore>()(
         if (existingItem) {
           const newQuantity = existingItem.quantity + 1
           if (newQuantity > product.stock) {
-            console.warn(`No hay suficiente stock para ${product.name}. Stock disponible: ${product.stock}`)
+            console.warn('No hay suficiente stock para', product.name, '. Stock disponible:', product.stock)
             return
           }
           
@@ -124,7 +124,7 @@ export const useCartStore = create<CartStore>()(
           })
         } else {
           if (product.stock < 1) {
-            console.warn(`No hay stock disponible para ${product.name}`)
+            console.warn('No hay stock disponible para', product.name)
             return
           }
           
@@ -180,7 +180,7 @@ export const useCartStore = create<CartStore>()(
         const items = get().items
         const item = items.find(i => i.id === id)
         if (item && quantity > item.stock) {
-          console.warn(`No hay suficiente stock para ${item.name}. Stock disponible: ${item.stock}`)
+          console.warn('No hay suficiente stock para', item.name, '. Stock disponible:', item.stock)
           return
         }
 

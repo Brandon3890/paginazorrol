@@ -10,12 +10,11 @@ export async function POST(request: NextRequest) {
 
     if (!items || !Array.isArray(items)) {
       return NextResponse.json(
-        { error: 'Items inválidos' },
+        { error: 'Items invalidos' },
         { status: 400 }
       )
     }
 
-    // Limpiar reservas expiradas primero
     await query('DELETE FROM stock_reservations WHERE expires_at < NOW()')
 
     const stockInfo = []

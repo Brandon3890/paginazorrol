@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Transaction } from '@/lib/db-transaction'
 import fs from 'fs'
 import path from 'path'
+import { sendProductOnSaleEmail } from '@/lib/email-service'
 
-// Definir tipos para los resultados
 interface QueryResult {
   [key: string]: any;
 }
@@ -16,47 +16,49 @@ interface SubcategoryRow {
   displayOrder: number;
 }
 
-// Función para guardar imágenes
 async function saveImage(file: File, filename: string): Promise<string> {
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
   
-  const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products')
+  const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
   if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true })
+    fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  const extension = file.type.split('/')[1] || 'jpg'
-  const uniqueFilename = `${filename}-${Date.now()}.${extension}`
-  const filepath = path.join(uploadDir, uniqueFilename)
-
-  fs.writeFileSync(filepath, buffer)
+  let extension = file.type.split('/')[1] || 'jpg';
+  if (extension === 'jpeg') extension = 'jpg';
+  if (extension === 'svg+xml') extension = 'svg';
   
-  return `/uploads/products/${uniqueFilename}`
+  const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
+  const filepath = path.join(uploadDir, uniqueFilename);
+
+  fs.writeFileSync(filepath, buffer);
+  
+  return `/uploads/products/${uniqueFilename}`;
 }
 
-// Función para corregir URL de imagen
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
-    return '/diverse-products-still-life.png'
+    return '/diverse-products-still-life.png';
   }
   
   if (imagePath.startsWith('/')) {
-    return imagePath
+    return imagePath;
   }
   
   if (imagePath.startsWith('uploads/')) {
-    return `/${imagePath}`
+    return `/${imagePath}`;
   }
   
-  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || imagePath.includes('.png')) {
-    return `/uploads/products/${imagePath}`
+  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || 
+      imagePath.includes('.png') || imagePath.includes('.webp') || 
+      imagePath.includes('.gif') || imagePath.includes('.svg')) {
+    return `/uploads/products/${imagePath}`;
   }
   
-  return '/diverse-products-still-life.png'
+  return '/diverse-products-still-life.png';
 }
 
-// Función para normalizar tags
 function normalizeTags(tagsRaw: any): string[] {
   if (!tagsRaw) return [];
   
@@ -75,7 +77,117 @@ function normalizeTags(tagsRaw: any): string[] {
   return [];
 }
 
-// GET /api/products/[id] - Obtener un producto específico (CON TAGS, BRAND Y GENRE)
+async function getUsersWithProductInFavorites(productId: number): Promise<any[]> {
+  try {
+    const { query } = await import('@/lib/db');
+    const users = await query(
+      `SELECT 
+        u.id,
+        u.email,
+        u.first_name,
+        u.last_name
+       FROM user_favorites uf
+       LEFT JOIN users u ON uf.user_id = u.id
+       WHERE uf.product_id = ? AND u.is_active = 1 AND u.email IS NOT NULL AND u.email != ''`,
+      [productId]
+    ) as any[];
+    return users;
+  } catch (error) {
+    console.error('Error obteniendo usuarios favoritos:', error);
+    return [];
+  }
+}
+
+async function notifyUsersAboutPriceDrop(
+  productId: number, 
+  oldPrice: number, 
+  newPrice: number, 
+  productName: string, 
+  productImage: string,
+  forceNotify: boolean = false
+) {
+  try {
+    console.log('===== INICIANDO NOTIFICACION DE OFERTA =====');
+    console.log('Producto ID:', productId);
+    console.log('Producto:', productName);
+    console.log('Precio anterior:', oldPrice);
+    console.log('Nuevo precio:', newPrice);
+    console.log('Forzar notificacion:', forceNotify);
+    
+    if (!forceNotify && newPrice >= oldPrice) {
+      console.log('No hay reduccion de precio y no se fuerza, omitiendo notificacion');
+      return { notified: false, reason: 'No hay reduccion de precio' };
+    }
+
+    const effectiveOldPrice = forceNotify ? (oldPrice > newPrice ? oldPrice : newPrice * 1.2) : oldPrice;
+    const effectiveNewPrice = forceNotify ? newPrice : newPrice;
+    
+    console.log('Precio efectivo anterior:', effectiveOldPrice);
+    console.log('Precio efectivo nuevo:', effectiveNewPrice);
+
+    const users = await getUsersWithProductInFavorites(productId);
+
+    console.log('Usuarios encontrados con este producto en favoritos:', users.length);
+
+    if (users.length === 0) {
+      console.log('No hay usuarios para notificar');
+      return { notified: false, reason: 'Sin usuarios para notificar', usersFound: 0 };
+    }
+
+    const emails = users.map((u: any) => u.email).filter(Boolean);
+    const discountPercent = Math.round(((effectiveOldPrice - effectiveNewPrice) / effectiveOldPrice) * 100);
+
+    console.log('Emails a notificar:', emails);
+    console.log('Porcentaje de descuento:', discountPercent + '%');
+
+    if (emails.length === 0) {
+      console.log('No hay emails validos para notificar');
+      return { notified: false, reason: 'No hay emails validos' };
+    }
+
+    if (discountPercent <= 0) {
+      console.log('No hay descuento valido (0% o negativo), pero se fuerza notificacion con mensaje generico');
+    }
+
+    const emailResult = await sendProductOnSaleEmail(
+      productName,
+      effectiveNewPrice,
+      effectiveOldPrice > effectiveNewPrice ? effectiveOldPrice : effectiveNewPrice * 1.2,
+      productImage,
+      productId,
+      emails,
+      Math.max(1, discountPercent)
+    );
+
+    console.log('Resultado del envio de email:', emailResult);
+
+    if (emailResult) {
+      try {
+        const { query } = await import('@/lib/db');
+        await query(
+          `INSERT INTO price_drop_notifications 
+           (product_id, old_price, new_price, users_notified, notified_at, created_at)
+           VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [productId, effectiveOldPrice, effectiveNewPrice, users.length]
+        );
+        console.log('Notificacion registrada en base de datos');
+      } catch (dbError) {
+        console.error('Error registrando notificacion:', dbError);
+      }
+    }
+
+    return { 
+      notified: emailResult, 
+      usersNotified: users.length,
+      emails: emails 
+    };
+
+  } catch (error) {
+    console.error('Error en notifyUsersAboutPriceDrop:', error);
+    return { notified: false, reason: 'Error interno: ' + (error as Error).message };
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -88,7 +200,7 @@ export async function GET(
 
     if (isNaN(productId)) {
       return NextResponse.json(
-        { error: 'ID de producto inválido' },
+        { error: 'ID de producto invalido' },
         { status: 400 }
       )
     }
@@ -103,6 +215,7 @@ export async function GET(
         p.tags as tagsRaw,
         p.brand as brand,
         p.genre as genre,
+        p.specs as specs,
         GROUP_CONCAT(DISTINCT ps.subcategory_id) as subcategory_ids,
         GROUP_CONCAT(DISTINCT ps.is_primary) as is_primary_flags,
         GROUP_CONCAT(DISTINCT ps.display_order) as display_orders,
@@ -140,7 +253,6 @@ export async function GET(
 
     const recommendedProducts = recommendedResult.map((row: QueryResult) => row.recommended_product_id)
 
-    // Procesar las subcategorías
     const subcategoryIds = product.subcategory_ids 
       ? product.subcategory_ids.split(',').map((id: string) => parseInt(id))
       : []
@@ -186,8 +298,8 @@ export async function GET(
       originalPrice: product.original_price ? parseFloat(product.original_price) : null,
       image: correctImageUrl(product.image),
       youtubeVideoId: product.youtube_video_id || '',
-      category: product.category_name || 'Sin categoría',
-      subcategory: subcategoryNames.length > 0 ? subcategoryNames[0] : 'Sin subcategoría',
+      category: product.category_name || 'Sin categoria',
+      subcategory: subcategoryNames.length > 0 ? subcategoryNames[0] : 'Sin subcategoria',
       categoryId: parseInt(product.category_id),
       subcategoryId: subcategoryIds.length > 0 ? subcategoryIds[0] : null,
       subcategoryIds: subcategoryIds.map((id: number) => id.toString()),
@@ -208,6 +320,11 @@ export async function GET(
       tags: tagsArray,
       brand: product.brand || 'Devir',
       genre: product.genre || 'Estrategia, Familiar',
+      specs: product.specs || null,
+      weight: parseFloat(product.weight) || 0.5,
+      height: parseInt(product.height) || 10,
+      width: parseInt(product.width) || 15,
+      length: parseInt(product.length) || 20,
       createdAt: product.created_at || new Date().toISOString(),
       updatedAt: product.updated_at || new Date().toISOString()
     }
@@ -216,7 +333,7 @@ export async function GET(
     return NextResponse.json(productData)
 
   } catch (error) {
-    console.error(`❌ Error fetching product:`, error)
+    console.error('Error fetching product:', error)
     await transaction.rollback()
     return NextResponse.json(
       { error: 'Error al obtener el producto' },
@@ -225,7 +342,6 @@ export async function GET(
   }
 }
 
-// PUT /api/products/[id] - Actualizar un producto (CON TAGS, BRAND Y GENRE)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -235,6 +351,13 @@ export async function PUT(
   try {
     const resolvedParams = await params
     const productId = parseInt(resolvedParams.id)
+    
+    if (isNaN(productId)) {
+      return NextResponse.json(
+        { error: 'ID de producto invalido' },
+        { status: 400 }
+      )
+    }
     
     const formData = await request.formData()
     
@@ -253,6 +376,7 @@ export async function PUT(
     const tags = formData.get('tags') as string
     const brand = formData.get('brand') as string
     const genre = formData.get('genre') as string
+    const specs = formData.get('specs') as string
     
     const ageMin = parseInt(formData.get('ageMin') as string)
     const ageDisplay = formData.get('ageDisplay') as string
@@ -265,10 +389,15 @@ export async function PUT(
     const inStock = formData.get('inStock') === 'true'
     const isOnSale = formData.get('isOnSale') === 'true'
 
+    const weight = parseFloat(formData.get('weight') as string) || 0.5
+    const height = parseInt(formData.get('height') as string) || 10
+    const width = parseInt(formData.get('width') as string) || 15
+    const length = parseInt(formData.get('length') as string) || 20
+
     if (!name || !price || !categoryId || subcategoryIds.length === 0) {
       await transaction.rollback()
       return NextResponse.json(
-        { error: 'Faltan campos requeridos: nombre, precio, categoría y al menos una subcategoría son obligatorios' },
+        { error: 'Faltan campos requeridos: nombre, precio, categoria y al menos una subcategoria son obligatorios' },
         { status: 400 }
       )
     }
@@ -285,7 +414,7 @@ export async function PUT(
     if (subcategoryCheck[0].count !== subcategoryIds.length) {
       await transaction.rollback()
       return NextResponse.json(
-        { error: 'Todas las subcategorías deben pertenecer a la categoría seleccionada' },
+        { error: 'Todas las subcategorias deben pertenecer a la categoria seleccionada' },
         { status: 400 }
       )
     }
@@ -297,23 +426,42 @@ export async function PUT(
 
     const updateProductQuery = `
       UPDATE products SET 
-        name = ?, slug = ?, description = ?, price = ?, original_price = ?, 
-        image = ?, youtube_video_id = ?, category_id = ?, age_min = ?, age_display = ?, 
-        players_min = ?, players_max = ?, players_display = ?, 
-        duration_min = ?, duration_display = ?, stock = ?, in_stock = ?, is_on_sale = ?,
-        tags = ?, brand = ?, genre = ?,
-        updated_at = CURRENT_TIMESTAMP
+        name = ?, slug = ?, description = ?, price = ?, original_price = ?,
+        image = ?, youtube_video_id = ?, category_id = ?, age_min = ?, age_display = ?,
+        players_min = ?, players_max = ?, players_display = ?,
+        duration_min = ?, duration_display = ?, stock = ?, in_stock = ?,
+        is_on_sale = ?, tags = ?, brand = ?, genre = ?, specs = ?,
+        weight = ?, height = ?, width = ?, length = ?
       WHERE id = ?
     `
 
     await transaction.query(updateProductQuery, [
-      name, slug, description, price, originalPrice, 
-      image, youtubeVideoId, categoryId, ageMin, ageDisplay,
-      playersMin, playersMax, playersDisplay,
-      durationMin, durationDisplay, stock, inStock, isOnSale,
+      name,
+      slug,
+      description,
+      price,
+      originalPrice,
+      image,
+      youtubeVideoId,
+      categoryId,
+      ageMin,
+      ageDisplay,
+      playersMin,
+      playersMax,
+      playersDisplay,
+      durationMin,
+      durationDisplay,
+      stock,
+      inStock,
+      isOnSale,
       tags || null,
       brand || 'Devir',
       genre || 'Estrategia, Familiar',
+      specs || null,
+      weight,
+      height,
+      width,
+      length,
       productId
     ])
 
@@ -364,7 +512,7 @@ export async function PUT(
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
       if (imageFile && imageFile.size > 0) {
-        const imageUrl = await saveImage(imageFile, `${slug}-additional-${i + 1}`)
+        const imageUrl = await saveImage(imageFile, `${slug}-additional-${Date.now()}-${i}`)
         await transaction.query(
           'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
           [productId, imageUrl, i]
@@ -374,6 +522,81 @@ export async function PUT(
 
     await transaction.commit()
 
+    try {
+      console.log('===== INICIANDO VERIFICACION DE OFERTA =====');
+      
+      const { query } = await import('@/lib/db');
+      
+      const oldProduct = await query(
+        'SELECT price, original_price, name, image FROM products WHERE id = ?',
+        [productId]
+      ) as any[];
+
+      if (oldProduct.length > 0) {
+        const oldPrice = parseFloat(oldProduct[0].price);
+        const oldOriginalPrice = oldProduct[0].original_price ? parseFloat(oldProduct[0].original_price) : null;
+        const newPriceValue = price;
+        const newOriginalPrice = originalPrice;
+        const productName = oldProduct[0].name;
+        const productImage = oldProduct[0].image;
+
+        const wasOnSale = oldOriginalPrice !== null && oldOriginalPrice > oldPrice;
+        const isNowOnSale = newOriginalPrice !== null && newOriginalPrice > newPriceValue;
+
+        const tagsField = formData.get('tags') as string;
+        const isDiscountTag = tagsField === 'descuento';
+
+        console.log('=== VERIFICANDO OFERTA ===');
+        console.log('Producto ID:', productId);
+        console.log('Producto:', productName);
+        console.log('Precio anterior:', oldPrice);
+        console.log('Precio original anterior:', oldOriginalPrice);
+        console.log('Precio nuevo:', newPriceValue);
+        console.log('Precio original nuevo:', newOriginalPrice);
+        console.log('Estaba en oferta antes:', wasOnSale);
+        console.log('Ahora esta en oferta:', isNowOnSale);
+        console.log('El precio bajo:', newPriceValue < oldPrice);
+        console.log('Etiqueta seleccionada (tags):', tagsField);
+        console.log('Es etiqueta DESCUENTO:', isDiscountTag);
+
+        const priceDrop = newPriceValue < oldPrice;
+        const isOnSaleFlag = isNowOnSale;
+        const adminSelectedDiscount = isDiscountTag && newOriginalPrice !== null && newOriginalPrice > 0;
+
+        const shouldNotify = (isOnSaleFlag && priceDrop) || adminSelectedDiscount;
+        const forceNotify = adminSelectedDiscount;
+
+        console.log('Precio bajo:', priceDrop);
+        console.log('Admin selecciono Descuento:', adminSelectedDiscount);
+        console.log('Forzar notificacion:', forceNotify);
+        console.log('Deberia notificar:', shouldNotify);
+
+        if (shouldNotify) {
+          console.log('PRODUCTO EN OFERTA! Enviando notificaciones...');
+          
+          setTimeout(async () => {
+            try {
+              const result = await notifyUsersAboutPriceDrop(
+                productId, 
+                oldPrice, 
+                newPriceValue, 
+                productName, 
+                productImage,
+                forceNotify
+              );
+              console.log('Resultado de notificacion:', result);
+            } catch (error) {
+              console.error('Error en notificacion de oferta:', error);
+            }
+          }, 1000);
+        } else {
+          console.log('No se enviaran notificaciones.');
+        }
+      }
+    } catch (notifyError) {
+      console.error('Error al verificar notificacion de oferta:', notifyError);
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: 'Producto actualizado correctamente',
@@ -382,7 +605,7 @@ export async function PUT(
     })
 
   } catch (error) {
-    console.error(`❌ Error updating product:`, error)
+    console.error('Error updating product:', error)
     await transaction.rollback()
     return NextResponse.json(
       { error: 'Error al actualizar el producto' },
@@ -391,7 +614,6 @@ export async function PUT(
   }
 }
 
-// DELETE /api/products/[id] - Desactivar producto (soft delete)
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -399,12 +621,12 @@ export async function DELETE(
   const transaction = new Transaction()
   
   try {
-    const { id } = await params
-    const productId = parseInt(id)
+    const resolvedParams = await params
+    const productId = parseInt(resolvedParams.id)
 
     if (isNaN(productId)) {
       return NextResponse.json(
-        { error: 'ID de producto inválido' },
+        { error: 'ID de producto invalido' },
         { status: 400 }
       )
     }
@@ -437,7 +659,7 @@ export async function DELETE(
     })
     
   } catch (error) {
-    console.error(`❌ Error deactivating product:`, error)
+    console.error('Error deactivating product:', error)
     await transaction.rollback()
     return NextResponse.json(
       { error: 'Error al desactivar el producto' },

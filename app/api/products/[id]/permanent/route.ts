@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import { query, queryExecute } from '@/lib/db';
+import fs from 'fs';
+import path from 'path';
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // FIX: Await params for Next.js 13+
-    const { id } = await params;
-    const productId = parseInt(id);
-    
+    const resolvedParams = await params;
+    const productId = parseInt(resolvedParams.id);
 
     if (isNaN(productId)) {
       return NextResponse.json(
@@ -39,59 +39,67 @@ export async function DELETE(
 
     const hasOrderItems = orderItems[0].count > 0;
 
+    // Si tiene órdenes, solo desactivar
     if (hasOrderItems) {
+      await queryExecute(
+        'UPDATE products SET is_active = 0 WHERE id = ?',
+        [productId]
+      );
       
-      return NextResponse.json(
-        { 
-          error: 'No se puede eliminar el producto permanentemente',
-          details: `El producto tiene ${orderItems[0].count} pedidos asociados. En lugar de eliminarlo, se recomienda desactivarlo.`,
-          hasOrders: true,
-          orderCount: orderItems[0].count
-        },
-        { status: 409 } // Conflict
-      );
+      return NextResponse.json({ 
+        message: 'Producto desactivado (tiene pedidos asociados)',
+        productId: productId,
+        success: true,
+        desactivated: true
+      });
     }
 
-
-    // 1. Eliminar de coupon_products
-    try {
-      await queryExecute(
-        'DELETE FROM coupon_products WHERE product_id = ?',
-        [productId]
-      );
-      console.log(`✅ Removed coupon records`);
-    } catch (error) {
-      console.log(`ℹ️ No coupon records or already deleted`);
-    }
-
-    // 2. Eliminar de product_subcategories
-    try {
-      await queryExecute(
-        'DELETE FROM product_subcategories WHERE product_id = ?',
-        [productId]
-      );
-      console.log(`✅ Removed subcategories records`);
-    } catch (error) {
-      console.log(`ℹ️ No subcategories records or already deleted`);
-    }
-
-    // 3. Eliminar de product_images
-    try {
-      await queryExecute(
-        'DELETE FROM product_images WHERE product_id = ?',
-        [productId]
-      );
-      console.log(`✅ Removed product_images records`);
-    } catch (error) {
-      console.log(`ℹ️ No product_images records or already deleted`);
-    }
-
-    // 4. Finalmente eliminar el producto (solo si no tiene órdenes)
-    const productResult = await queryExecute(
-      'DELETE FROM products WHERE id = ?',
+    // Obtener las imágenes para eliminarlas del sistema de archivos
+    const productImages: any = await query(
+      'SELECT image_url FROM product_images WHERE product_id = ?',
       [productId]
     );
 
+    const mainProduct: any = await query(
+      'SELECT image FROM products WHERE id = ?',
+      [productId]
+    );
+
+    // Eliminar archivos de imágenes
+    const allImages = [
+      ...(mainProduct[0]?.image ? [mainProduct[0].image] : []),
+      ...productImages.map((img: any) => img.image_url)
+    ];
+
+    for (const imagePath of allImages) {
+      if (imagePath) {
+        try {
+          // Extraer el nombre del archivo de la ruta
+          const fileName = imagePath.split('/').pop();
+          if (fileName) {
+            const filePath = path.join(process.cwd(), 'public', 'uploads', 'products', fileName);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`✅ Eliminado archivo: ${filePath}`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ No se pudo eliminar la imagen: ${imagePath}`);
+        }
+      }
+    }
+
+    // Eliminar registros relacionados
+    await queryExecute('DELETE FROM coupon_products WHERE product_id = ?', [productId]);
+    await queryExecute('DELETE FROM product_subcategories WHERE product_id = ?', [productId]);
+    await queryExecute('DELETE FROM product_images WHERE product_id = ?', [productId]);
+    await queryExecute('DELETE FROM product_recommendations WHERE product_id = ? OR recommended_product_id = ?', [productId, productId]);
+    await queryExecute('DELETE FROM user_favorites WHERE product_id = ?', [productId]);
+    await queryExecute('DELETE FROM stock_reservations WHERE product_id = ?', [productId]);
+    await queryExecute('DELETE FROM price_drop_notifications WHERE product_id = ?', [productId]);
+
+    // Finalmente eliminar el producto
+    await queryExecute('DELETE FROM products WHERE id = ?', [productId]);
 
     return NextResponse.json({ 
       message: 'Producto eliminado permanentemente',
@@ -100,7 +108,7 @@ export async function DELETE(
     });
 
   } catch (error) {
-    console.error(`❌ Error permanently deleting product:`, error);
+    console.error('❌ Error permanently deleting product:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     
