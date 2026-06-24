@@ -26,7 +26,11 @@ async function saveImage(file: File, filename: string): Promise<string> {
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
-    return '/diverse-products-still-life.png';
+    return '/uploads/products/diverse-products-still-life.png';
+  }
+  
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
   }
   
   if (imagePath.startsWith('/')) {
@@ -43,7 +47,7 @@ function correctImageUrl(imagePath: string | null): string {
     return `/uploads/products/${imagePath}`;
   }
   
-  return '/diverse-products-still-life.png';
+  return '/uploads/products/diverse-products-still-life.png';
 }
 
 export async function GET(request: Request) {
