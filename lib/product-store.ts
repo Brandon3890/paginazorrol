@@ -71,7 +71,7 @@ interface ProductStore {
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
   fetchProducts: (options?: { includeInactive?: boolean; isAdmin?: boolean; force?: boolean }) => Promise<void>;
-  fetchProduct: (id: number) => Promise<Product | null>;
+  fetchProduct: (id: number, force?: boolean) => Promise<Product | null>;
   addProduct: (formData: FormData) => Promise<void>;
   updateProduct: (id: number, formData: FormData) => Promise<void>;
   deactivateProduct: (id: number) => Promise<void>;
@@ -88,6 +88,7 @@ interface ProductStore {
   getProductsBySubcategory: (subcategoryId: number) => Product[];
   getRecommendedProducts: (productId: number) => Product[];
   getSortedProducts: () => Product[];
+  forceRefresh: () => Promise<void>;
 }
 
 const normalizeTags = (tags: any): string[] => {
@@ -190,8 +191,19 @@ export const useProductStore = create<ProductStore>()(
         set({ globalSearchQuery: query });
       },
       
+      forceRefresh: async () => {
+        console.log('🔄 Force refresh products...');
+        set({ productsLoaded: false });
+        await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+      },
+      
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
+        
+        if (get().productsLoaded && !force) {
+          console.log('📦 Using cached products (not forcing refresh)');
+          return;
+        }
         
         set({ loading: true, error: null });
         
@@ -255,8 +267,17 @@ export const useProductStore = create<ProductStore>()(
         }
       },
 
-      fetchProduct: async (id: number) => {
+      fetchProduct: async (id: number, force: boolean = false) => {
         try {
+          // Si ya tenemos el producto y no forzamos, devolverlo
+          if (!force) {
+            const existing = get().products.find(p => p.id === id);
+            if (existing) {
+              console.log(`📦 Returning cached product: ${existing.name}`);
+              return existing;
+            }
+          }
+          
           const url = `/api/products/${id}?_=${Date.now()}`;
           console.log('🌐 Fetching product from:', url);
           
@@ -275,6 +296,8 @@ export const useProductStore = create<ProductStore>()(
           
           const product = await response.json();
           console.log(`📦 Received product: ${product.name}`);
+          console.log(`📦 Specs:`, product.specs);
+          console.log(`📦 Image:`, product.image);
           
           const normalizedProduct = {
             ...product,
@@ -377,6 +400,8 @@ export const useProductStore = create<ProductStore>()(
           
           console.log('✅ Product updated successfully');
           
+          // Forzar recarga del producto específico
+          await get().fetchProduct(id, true);
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -503,9 +528,8 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 5,
+      version: 6,
       migrate: migrateStore,
-      // SOLO GUARDAR VERSIÓN Y BÚSQUEDA - NO PRODUCTOS
       partialize: (state) => ({ 
         version: state.version,
         globalSearchQuery: state.globalSearchQuery

@@ -72,7 +72,7 @@ type MediaItem = {
 interface ProductDetailViewProps {
   productId: number;
   onBack?: () => void;
-  imageTimestamp?: number; // NUEVO: timestamp para forzar recarga de imágenes
+  imageTimestamp?: number;
 }
 
 export function ProductDetailView({ productId, onBack, imageTimestamp }: ProductDetailViewProps) {
@@ -96,7 +96,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
 
-  // Usar el timestamp de la página para forzar recarga
+  // Usar el timestamp para forzar recarga
   useEffect(() => {
     if (imageTimestamp) {
       setImageReloadKey(prev => prev + 1)
@@ -120,25 +120,26 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
       setLoading(true);
       try {
         console.log('🔄 Cargando producto ID:', productId)
-        const productData = await fetchProduct(productId);
+        // Forzar recarga del producto
+        const productData = await fetchProduct(productId, true)
         if (!productData) { 
           if (onBack) onBack();
           else router.push("/"); 
           return; 
         }
         console.log('✅ Producto cargado:', productData.name)
-        console.log('📸 Imagen del producto:', productData.image)
-        setProduct(productData);
-        setImageReloadKey(prev => prev + 1);
+        console.log('📸 Imagen:', productData.image)
+        console.log('📋 Specs:', productData.specs)
+        
+        setProduct(productData)
+        setImageReloadKey(prev => prev + 1)
         
         if (productData.recommendedProducts?.length) {
-          if (products.length > 0) {
-            setRecommendedProducts(products.filter(p => productData.recommendedProducts?.includes(p.id) && p.isActive));
-          } else {
-            await fetchProducts({ force: true });
-            const updatedProducts = useProductStore.getState().products;
-            setRecommendedProducts(updatedProducts.filter(p => productData.recommendedProducts?.includes(p.id) && p.isActive));
-          }
+          const allProducts = useProductStore.getState().products
+          const recs = allProducts.filter(p => 
+            productData.recommendedProducts?.includes(p.id) && p.isActive
+          )
+          setRecommendedProducts(recs)
         }
       } catch (error) { 
         console.error('Error:', error); 
@@ -148,13 +149,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
       finally { setLoading(false); }
     };
     if (productId) loadEverything();
-  }, [productId, fetchProduct, fetchProducts, onBack, router]);
-
-  useEffect(() => {
-    if (product && product.recommendedProducts?.length && products.length) {
-      setRecommendedProducts(products.filter(p => product.recommendedProducts?.includes(p.id) && p.isActive));
-    }
-  }, [product, products]);
+  }, [productId, fetchProduct, onBack, router]);
 
   const correctImageUrl = (url: string): string => {
     if (!url) return '/diverse-products-still-life.png';
@@ -176,7 +171,6 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
 
   const categoriesInfo = getProductCategoriesInfo();
 
-  // CONSTRUIR LA LISTA DE MEDIA CON TIMESTAMP PARA FORZAR RECARGA
   const allMedia: MediaItem[] = [
     ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
     ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
@@ -286,11 +280,12 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
 
   const discountPercent = product.originalPrice && product.originalPrice > product.price ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) : 0;
   const currentMedia = allMedia[selectedMediaIndex];
+  
+  // Parsear specs correctamente
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : [];
+  console.log('📋 Product specs parsed:', productSpecs);
 
-  // GENERAR KEY ÚNICA CON TIMESTAMP PARA LA IMAGEN
   const imageKey = `${currentMedia.url}?t=${imageReloadKey}`;
-  console.log('🖼️ Cargando imagen con key:', imageKey);
 
   return (
     <div className="min-h-screen bg-white">
@@ -394,7 +389,6 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                           unoptimized={true}
                           onError={(e) => {
                             console.error('❌ Error cargando imagen:', currentMedia.url)
-                            // Fallback a imagen por defecto
                             const target = e.target as HTMLImageElement
                             target.src = '/diverse-products-still-life.png'
                           }}
@@ -479,6 +473,10 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                         height={80} 
                         className="object-cover w-full h-full"
                         unoptimized={true}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = '/diverse-products-still-life.png'
+                        }}
                       />
                       {media.type === 'video' && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">

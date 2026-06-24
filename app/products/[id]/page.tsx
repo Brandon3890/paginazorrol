@@ -8,20 +8,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
   
-  // Estado para forzar recarga de imagen
   const [imageTimestamp, setImageTimestamp] = useState(Date.now())
   const { fetchProduct } = useProductStore()
   
-  // Precargar el producto y forzar actualización de imagen
   useEffect(() => {
     const preloadProduct = async () => {
       try {
-        // Forzar recarga del producto con timestamp
-        const product = await fetchProduct(productId)
+        console.log('🔄 Precargando producto ID:', productId)
+        const product = await fetchProduct(productId, true)
         if (product) {
-          // Actualizar timestamp para forzar recarga de imagen
           setImageTimestamp(Date.now())
-          console.log('✅ Producto precargado con imagen:', product.image)
+          console.log('✅ Producto precargado:', product.name)
+          console.log('📸 Imagen:', product.image)
+          console.log('📋 Specs:', product.specs)
         }
       } catch (error) {
         console.error('Error precargando producto:', error)
