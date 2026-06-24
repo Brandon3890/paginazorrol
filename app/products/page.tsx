@@ -22,7 +22,7 @@ function ProductPageContent() {
   if (loading) return <div>Cargando...</div>
   if (!productId) return null
   
-  return <ProductDetailView productId={parseInt(productId)} imageTimestamp={Date.now()} />
+  return <ProductDetailView productId={parseInt(productId)} />
 }
 
 export default function ProductPage() {

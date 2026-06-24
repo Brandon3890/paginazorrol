@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -8,8 +8,7 @@ import { useProductStore } from "@/lib/product-store"
 import { useCartStore } from "@/lib/cart-store"
 import { useAuthStore } from "@/lib/auth-store"
 import { Button } from "@/components/ui/button"
-import { ShoppingCart, ArrowLeft, Check, ChevronLeft, ChevronRight, Youtube, Play, Heart } from "lucide-react"
-import Link from "next/link"
+import { ShoppingCart, ArrowLeft, Check, ChevronLeft, ChevronRight, Youtube, Play } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { useCategoryStore } from "@/lib/category-store"
@@ -72,12 +71,11 @@ type MediaItem = {
 interface ProductDetailViewProps {
   productId: number;
   onBack?: () => void;
-  imageTimestamp?: number;
 }
 
-export function ProductDetailView({ productId, onBack, imageTimestamp }: ProductDetailViewProps) {
+export function ProductDetailView({ productId, onBack }: ProductDetailViewProps) {
   const router = useRouter()
-  const { products, fetchProduct, fetchProducts } = useProductStore()
+  const { fetchProduct } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
   const { isAuthenticated } = useAuthStore()
   const addItem = useCartStore((state) => state.addItem)
@@ -87,22 +85,13 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
   const [isAddingToCart, setIsAddingToCart] = useState(false)
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
-  const [imageReloadKey, setImageReloadKey] = useState(0)
-  const hasLoaded = useRef(false)
-  
+  const [imageTimestamp, setImageTimestamp] = useState(Date.now())
+
   const [product, setProduct] = useState<ProductType | null>(null)
   const [loading, setLoading] = useState(true)
   const [recommendedProducts, setRecommendedProducts] = useState<ProductType[]>([])
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
-
-  // Usar el timestamp para forzar recarga
-  useEffect(() => {
-    if (imageTimestamp) {
-      setImageReloadKey(prev => prev + 1)
-      console.log('🔄 Forzando recarga de imágenes con timestamp:', imageTimestamp)
-    }
-  }, [imageTimestamp])
 
   useEffect(() => {
     const checkScreenSize = () => setIsMobileOrTablet(window.innerWidth < 1024)
@@ -114,97 +103,139 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
   useEffect(() => {
-    if (hasLoaded.current) return;
-    const loadEverything = async () => {
-      hasLoaded.current = true;
-      setLoading(true);
+    let cancelled = false
+
+    const loadProduct = async () => {
+      setLoading(true)
+      setProduct(null)
+      setSelectedMediaIndex(0)
+      setShowVideo(false)
+
       try {
-        console.log('🔄 Cargando producto ID:', productId)
-        // Forzar recarga del producto
-        const productData = await fetchProduct(productId, true)
-        if (!productData) { 
-          if (onBack) onBack();
-          else router.push("/"); 
-          return; 
+        const productData = await fetchProduct(productId)
+        if (cancelled) return
+
+        if (!productData) {
+          if (onBack) onBack()
+          else router.push("/")
+          return
         }
-        console.log('✅ Producto cargado:', productData.name)
-        console.log('📸 Imagen:', productData.image)
-        console.log('📋 Specs:', productData.specs)
-        
+
         setProduct(productData)
-        setImageReloadKey(prev => prev + 1)
-        
+        setImageTimestamp(Date.now())
+
         if (productData.recommendedProducts?.length) {
           const allProducts = useProductStore.getState().products
-          const recs = allProducts.filter(p => 
+          const recs = allProducts.filter(p =>
             productData.recommendedProducts?.includes(p.id) && p.isActive
           )
           setRecommendedProducts(recs)
         }
-      } catch (error) { 
-        console.error('Error:', error); 
-        if (onBack) onBack();
-        else router.push("/"); 
+      } catch (error) {
+        console.error('Error cargando producto:', error)
+        if (!cancelled) {
+          if (onBack) onBack()
+          else router.push("/")
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-      finally { setLoading(false); }
-    };
-    if (productId) loadEverything();
-  }, [productId, fetchProduct, onBack, router]);
+    }
+
+    if (productId) loadProduct()
+
+    return () => { cancelled = true }
+  }, [productId])
 
   const correctImageUrl = (url: string): string => {
-    if (!url) return '/diverse-products-still-life.png';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (url.startsWith('/')) return url;
-    if (url.startsWith('uploads/')) return `/${url}`;
-    return `/uploads/products/${url}`;
-  };
+    if (!url) return '/diverse-products-still-life.png'
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    if (url.startsWith('/')) return url
+    if (url.startsWith('uploads/')) return `/${url}`
+    return `/uploads/products/${url}`
+  }
+
+  const getImageUrlWithTimestamp = (url: string): string => {
+    const corrected = correctImageUrl(url)
+    if (corrected.startsWith('http://') || corrected.startsWith('https://')) return corrected
+    return `${corrected}?t=${imageTimestamp}`
+  }
 
   const getProductCategoriesInfo = () => {
-    if (!product) return { category: null, subcategories: [] };
-    const categoryInfo = dbCategories.find(cat => cat.id === product.categoryId || cat.name === product.category);
-    const allSubcategories = product.subcategories || [];
+    if (!product) return { category: null, subcategories: [] }
+    const categoryInfo = dbCategories.find(cat => cat.id === product.categoryId || cat.name === product.category)
+    const allSubcategories = [...(product.subcategories || [])]
     if (!allSubcategories.length && product.subcategory) {
-      allSubcategories.push({ id: product.subcategoryId || 0, name: product.subcategory, slug: product.subcategory.toLowerCase().replace(/\s+/g, '-'), isPrimary: true, displayOrder: 1 });
+      allSubcategories.push({
+        id: product.subcategoryId || 0,
+        name: product.subcategory,
+        slug: product.subcategory.toLowerCase().replace(/\s+/g, '-'),
+        isPrimary: true,
+        displayOrder: 1
+      })
     }
-    return { category: categoryInfo || { id: product.categoryId, name: product.category, slug: product.category.toLowerCase().replace(/\s+/g, '-') }, subcategories: allSubcategories };
-  };
+    return {
+      category: categoryInfo || { id: product.categoryId, name: product.category, slug: product.category.toLowerCase().replace(/\s+/g, '-') },
+      subcategories: allSubcategories
+    }
+  }
 
-  const categoriesInfo = getProductCategoriesInfo();
+  const categoriesInfo = getProductCategoriesInfo()
 
   const allMedia: MediaItem[] = [
     ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
     ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
-    ...(product?.youtubeVideoId ? [{ type: 'video' as const, url: `https://img.youtube.com/vi/${product.youtubeVideoId}/maxresdefault.jpg`, thumbnail: `https://img.youtube.com/vi/${product.youtubeVideoId}/mqdefault.jpg` }] : [])
-  ];
+    ...(product?.youtubeVideoId ? [{
+      type: 'video' as const,
+      url: `https://img.youtube.com/vi/${product.youtubeVideoId}/maxresdefault.jpg`,
+      thumbnail: `https://img.youtube.com/vi/${product.youtubeVideoId}/mqdefault.jpg`
+    }] : [])
+  ]
 
-  const hasStock = () => product && product.inStock && product.stock > 0;
-  const formatCLP = (price: number) => Math.round(price).toLocaleString('es-CL');
+  const hasStock = () => product && product.inStock && product.stock > 0
+  const formatCLP = (price: number) => Math.round(price).toLocaleString('es-CL')
 
-  const nextMedia = () => { if (allMedia.length > 1) { setSelectedMediaIndex((prev) => (prev + 1) % allMedia.length); setShowVideo(false); } };
-  const prevMedia = () => { if (allMedia.length > 1) { setSelectedMediaIndex((prev) => (prev - 1 + allMedia.length) % allMedia.length); setShowVideo(false); } };
-  const handleMediaClick = () => { if (allMedia[selectedMediaIndex].type === 'video' && product?.youtubeVideoId) setShowVideo(true); };
+  const nextMedia = () => {
+    if (allMedia.length > 1) {
+      setSelectedMediaIndex((prev) => (prev + 1) % allMedia.length)
+      setShowVideo(false)
+    }
+  }
+
+  const prevMedia = () => {
+    if (allMedia.length > 1) {
+      setSelectedMediaIndex((prev) => (prev - 1 + allMedia.length) % allMedia.length)
+      setShowVideo(false)
+    }
+  }
+
+  const handleMediaClick = () => {
+    if (allMedia[selectedMediaIndex]?.type === 'video' && product?.youtubeVideoId) {
+      setShowVideo(true)
+    }
+  }
 
   const handleAddToCart = () => {
-    if (!product || !hasStock()) return;
-    setIsAddingToCart(true);
-    
-    addItem({ 
-      id: product.id, 
-      name: product.name, 
-      price: product.price, 
-      image: product.image, 
-      category: product.category, 
-      inStock: product.inStock, 
-      stock: product.stock, 
-      categoryId: product.categoryId, 
+    if (!product || !hasStock()) return
+    setIsAddingToCart(true)
+
+    addItem({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+      category: product.category,
+      inStock: product.inStock,
+      stock: product.stock,
+      categoryId: product.categoryId,
       subcategoryId: product.subcategoryId,
       weight: product.weight || 0.5,
       height: product.height || 10,
       width: product.width || 15,
       length: product.length || 20,
-    });
-    
-    toast({ 
+    })
+
+    toast({
       description: (
         <motion.div className="flex items-center gap-3 w-full" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 10 }} className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
@@ -215,33 +246,32 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
             <span className="text-xs text-muted-foreground line-clamp-1">{product.name}</span>
           </div>
           <motion.div className="w-10 h-10 relative flex-shrink-0 overflow-hidden rounded-md border border-border/50" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1 }}>
-            <Image 
-              src={correctImageUrl(product.image)} 
-              alt={product.name} 
-              fill 
-              className="object-cover" 
+            <Image
+              src={correctImageUrl(product.image)}
+              alt={product.name}
+              fill
+              className="object-cover"
               sizes="40px"
               unoptimized={true}
             />
           </motion.div>
         </motion.div>
-      ), 
-      duration: 3000, 
-      className: isMobileOrTablet ? "fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md shadow-lg z-50" : "fixed bottom-6 right-6 w-auto max-w-md shadow-lg z-50" 
-    });
-    
-    setShowCheckmark(true);
-    setTimeout(() => setIsAddingToCart(false), 800);
-    setTimeout(() => setShowCheckmark(false), 1500);
+      ),
+      duration: 3000,
+      className: isMobileOrTablet
+        ? "fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md shadow-lg z-50"
+        : "fixed bottom-6 right-6 w-auto max-w-md shadow-lg z-50"
+    })
+
+    setShowCheckmark(true)
+    setTimeout(() => setIsAddingToCart(false), 800)
+    setTimeout(() => setShowCheckmark(false), 1500)
   }
 
   const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      router.push("/");
-    }
-  };
+    if (onBack) onBack()
+    else router.push("/")
+  }
 
   if (loading) {
     return (
@@ -278,20 +308,18 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
     )
   }
 
-  const discountPercent = product.originalPrice && product.originalPrice > product.price ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) : 0;
-  const currentMedia = allMedia[selectedMediaIndex];
-  
-  // Parsear specs correctamente
-  const productSpecs = product.specs ? parseProductSpecs(product.specs) : [];
-  console.log('📋 Product specs parsed:', productSpecs);
+  const discountPercent = product.originalPrice && product.originalPrice > product.price
+    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    : 0
 
-  const imageKey = `${currentMedia.url}?t=${imageReloadKey}`;
+  const currentMedia = allMedia[selectedMediaIndex]
+  const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
 
   return (
     <div className="min-h-screen bg-white">
       <Header />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
-        <motion.div 
+        <motion.div
           className="mb-6"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -305,23 +333,16 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <motion.div 
+            <motion.div
               className="absolute inset-0 bg-orange-600 rounded-lg"
               initial={{ scale: 0, opacity: 0 }}
-              animate={{ 
-                scale: isHoveringBack ? 1 : 0,
-                opacity: isHoveringBack ? 1 : 0
-              }}
+              animate={{ scale: isHoveringBack ? 1 : 0, opacity: isHoveringBack ? 1 : 0 }}
               transition={{ duration: 0.3 }}
             />
-            <motion.div
-              animate={{ x: isHoveringBack ? -5 : 0 }}
-              transition={{ duration: 0.2 }}
-              className="relative z-10"
-            >
+            <motion.div animate={{ x: isHoveringBack ? -5 : 0 }} transition={{ duration: 0.2 }} className="relative z-10">
               <ArrowLeft className={`w-4 h-4 transition-colors duration-300 ${isHoveringBack ? 'text-white' : 'text-gray-600'}`} />
             </motion.div>
-            <motion.span 
+            <motion.span
               className={`relative z-10 transition-colors duration-300 ${isHoveringBack ? 'text-white' : 'text-gray-600'}`}
               animate={{ x: isHoveringBack ? 3 : 0 }}
               transition={{ duration: 0.2 }}
@@ -332,15 +353,16 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          {/* Columna izquierda: imágenes */}
           <div className="space-y-4">
-            <motion.div 
+            <motion.div
               className="border-2 border-gray-200 rounded-2xl p-2 relative bg-white shadow-sm"
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
             >
               {product.stock <= 10 && hasStock() && (
-                <motion.div 
+                <motion.div
                   className="absolute top-4 left-4 bg-orange-500 text-white text-xs px-3 py-1 rounded-full font-poppins font-bold italic z-10"
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -349,7 +371,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                   POCAS UNIDADES
                 </motion.div>
               )}
-              
+
               <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
                 <div className="relative w-full h-full cursor-pointer" onClick={handleMediaClick}>
                   <AnimatePresence mode="wait">
@@ -372,31 +394,30 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                       </motion.div>
                     ) : (
                       <motion.div
-                        key={imageKey}
-                        initial={{ opacity: 0, scale: 1.1 }}
+                        key={currentMedia?.url}
+                        initial={{ opacity: 0, scale: 1.05 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.3 }}
                         className="relative w-full h-full"
                       >
-                        <Image
-                          key={imageKey}
-                          src={currentMedia.url}
-                          alt={product.name}
-                          fill
-                          className="object-cover transition-transform duration-500 group-hover:scale-110"
-                          priority
-                          unoptimized={true}
-                          onError={(e) => {
-                            console.error('❌ Error cargando imagen:', currentMedia.url)
-                            const target = e.target as HTMLImageElement
-                            target.src = '/diverse-products-still-life.png'
-                          }}
-                          onLoad={() => console.log('✅ Imagen cargada:', currentMedia.url)}
-                        />
-                        {currentMedia.type === 'video' && !showVideo && (
+                        {currentMedia && (
+                          <Image
+                            src={getImageUrlWithTimestamp(currentMedia.url)}
+                            alt={product.name}
+                            fill
+                            className="object-cover transition-transform duration-500 group-hover:scale-110"
+                            priority
+                            unoptimized={true}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.src = '/diverse-products-still-life.png'
+                            }}
+                          />
+                        )}
+                        {currentMedia?.type === 'video' && !showVideo && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
-                            <motion.div 
+                            <motion.div
                               className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg"
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.95 }}
@@ -428,7 +449,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                     >
                       <ChevronRight className="w-5 h-5" />
                     </motion.button>
-                    <motion.div 
+                    <motion.div
                       className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-1 rounded-full font-poppins"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -441,85 +462,68 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
               </div>
             </motion.div>
 
-            <motion.div 
+            {/* Thumbnails */}
+            <motion.div
               className="border border-gray-200 rounded-xl p-3 bg-gray-50"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}
             >
               <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
-                {allMedia.map((media, i) => {
-                  const thumbKey = `${media.url}?t=${imageReloadKey}`;
-                  return (
-                    <motion.div
-                      key={i}
-                      onClick={() => { setSelectedMediaIndex(i); setShowVideo(false); }}
-                      className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
-                        selectedMediaIndex === i 
-                          ? "border-orange-500 ring-2 ring-orange-200" 
-                          : "border-gray-300 hover:border-orange-400"
-                      }`}
-                      whileHover={{ scale: 1.05, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                    >
-                      <Image 
-                        key={thumbKey}
-                        src={media.type === 'video' ? media.thumbnail || media.url : media.url} 
-                        alt={`Media ${i + 1}`} 
-                        width={80} 
-                        height={80} 
-                        className="object-cover w-full h-full"
-                        unoptimized={true}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = '/diverse-products-still-life.png'
-                        }}
-                      />
-                      {media.type === 'video' && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                          <Youtube className="text-white w-5 h-5" />
-                        </div>
-                      )}
-                    </motion.div>
-                  )
-                })}
+                {allMedia.map((media, i) => (
+                  <motion.div
+                    key={i}
+                    onClick={() => { setSelectedMediaIndex(i); setShowVideo(false) }}
+                    className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
+                      selectedMediaIndex === i
+                        ? "border-orange-500 ring-2 ring-orange-200"
+                        : "border-gray-300 hover:border-orange-400"
+                    }`}
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    <Image
+                      src={getImageUrlWithTimestamp(media.type === 'video' ? (media.thumbnail || media.url) : media.url)}
+                      alt={`Media ${i + 1}`}
+                      width={80}
+                      height={80}
+                      className="object-cover w-full h-full"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/diverse-products-still-life.png'
+                      }}
+                    />
+                    {media.type === 'video' && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <Youtube className="text-white w-5 h-5" />
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           </div>
 
-          <motion.div 
+          {/* Columna derecha: info */}
+          <motion.div
             className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <motion.p 
-              className="text-sm font-bold font-poppins tracking-wide text-gray-700"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
+            <motion.p className="text-sm font-bold font-poppins tracking-wide text-gray-700" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
               {product.brand || "DEVIR"}
             </motion.p>
 
-            <motion.h1 
-              className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-            >
+            <motion.h1 className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
               {product.name}
             </motion.h1>
 
-            <motion.div 
-              className="flex gap-2 flex-wrap mt-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
+            <motion.div className="flex gap-2 flex-wrap mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
               {categoriesInfo.subcategories.map((sub, idx) => (
                 <motion.span
                   key={idx}
@@ -533,34 +537,18 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
               ))}
             </motion.div>
 
-            <motion.p 
-              className="text-sm font-normal font-poppins text-gray-700 mt-6"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
+            <motion.p className="text-sm font-normal font-poppins text-gray-700 mt-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
               <span className="font-semibold">Stock disponible:</span> {product.stock}
             </motion.p>
 
-            <motion.p 
-              className="text-sm font-normal font-poppins leading-relaxed text-gray-600 mt-6"
-              style={{ fontWeight: 500 }} 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.45 }}
-            >
+            <motion.p className="text-sm font-normal font-poppins leading-relaxed text-gray-600 mt-6" style={{ fontWeight: 500 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}>
               {product.description}
             </motion.p>
 
             <div className="mt-8 border-t border-gray-100"></div>
 
             <div className="mt-auto pt-4">
-              <motion.div 
-                className="mb-6"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.55 }}
-              >
+              <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
                 {product.originalPrice && product.originalPrice > product.price ? (
                   <div className="flex items-start gap-3">
                     <span className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins" style={{ backgroundColor: "rgba(228, 78, 43)" }}>
@@ -605,18 +593,8 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                         </motion.div>
                       ) : (
                         <motion.div key="normal" className="flex items-center justify-center">
-                          <motion.div animate={hasStock() ? { rotate: [0, -10, 10, -5, 5, 0] } : {}} transition={{ duration: 0.5 }}>
-                            <ShoppingCart className="w-4 h-4 mr-2" />
-                          </motion.div>
+                          <ShoppingCart className="w-4 h-4 mr-2" />
                           {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    
-                    <AnimatePresence>
-                      {isAddingToCart && (
-                        <motion.div className="absolute inset-0 pointer-events-none" initial={{ scale: 0, opacity: 0.5 }} animate={{ scale: 2, opacity: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-                          <div className="w-full h-full bg-white/20 rounded-full" />
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -624,11 +602,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                 </motion.div>
 
                 {isAuthenticated && (
-                  <motion.div 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex-shrink-0"
-                  >
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-shrink-0">
                     <FavoriteButton productId={product.id} size="lg" />
                   </motion.div>
                 )}
@@ -637,14 +611,15 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
           </motion.div>
         </div>
 
-        <motion.div 
+        {/* Specs */}
+        <motion.div
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.7 }}
         >
           <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
-          
+
           {productSpecs.length > 0 ? (
             <div className="space-y-2 text-sm">
               {productSpecs.map((spec, index) => (
@@ -661,15 +636,16 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
           )}
         </motion.div>
 
+        {/* Productos recomendados */}
         {recommendedProducts.length > 0 && (
-          <motion.div 
+          <motion.div
             className="mt-10"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.8 }}
           >
             <div className="flex items-center gap-4 mb-8">
-              <motion.h2 
+              <motion.h2
                 className="text-2xl md:text-3xl font-semibold font-poppins mb-4 text-gray-900"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -677,7 +653,7 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
               >
                 PODRÍA GUSTARTE
               </motion.h2>
-              <motion.div 
+              <motion.div
                 className="flex-1 h-px bg-gradient-to-r from-[#C2410C] to-transparent"
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
@@ -689,19 +665,9 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                 <motion.div
                   key={recProduct.id}
                   className="group cursor-pointer border border-gray-200 rounded-xl overflow-hidden hover:border-orange-500 hover:shadow-lg transition-all duration-300"
-                  onClick={() => { 
-                    if (onBack) {
-                      window.scrollTo(0, 0);
-                      setProduct(null);
-                      setLoading(true);
-                      hasLoaded.current = false;
-                      setTimeout(() => {
-                        window.location.href = `/products/${recProduct.id}`;
-                      }, 100);
-                    } else {
-                      router.push(`/products/${recProduct.id}`);
-                      window.scrollTo(0, 0);
-                    }
+                  onClick={() => {
+                    router.push(`/products/${recProduct.id}`)
+                    window.scrollTo(0, 0)
                   }}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -710,7 +676,6 @@ export function ProductDetailView({ productId, onBack, imageTimestamp }: Product
                 >
                   <div className="relative aspect-square bg-gray-100">
                     <Image
-                      key={`${recProduct.image}?t=${imageReloadKey}`}
                       src={correctImageUrl(recProduct.image)}
                       alt={recProduct.name}
                       fill
