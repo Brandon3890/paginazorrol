@@ -72,9 +72,10 @@ type MediaItem = {
 interface ProductDetailViewProps {
   productId: number;
   onBack?: () => void;
+  imageTimestamp?: number; // NUEVO: timestamp para forzar recarga de imágenes
 }
 
-export function ProductDetailView({ productId, onBack }: ProductDetailViewProps) {
+export function ProductDetailView({ productId, onBack, imageTimestamp }: ProductDetailViewProps) {
   const router = useRouter()
   const { products, fetchProduct, fetchProducts } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
@@ -95,6 +96,14 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
 
+  // Usar el timestamp de la página para forzar recarga
+  useEffect(() => {
+    if (imageTimestamp) {
+      setImageReloadKey(prev => prev + 1)
+      console.log('🔄 Forzando recarga de imágenes con timestamp:', imageTimestamp)
+    }
+  }, [imageTimestamp])
+
   useEffect(() => {
     const checkScreenSize = () => setIsMobileOrTablet(window.innerWidth < 1024)
     checkScreenSize()
@@ -110,12 +119,15 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       hasLoaded.current = true;
       setLoading(true);
       try {
+        console.log('🔄 Cargando producto ID:', productId)
         const productData = await fetchProduct(productId);
         if (!productData) { 
           if (onBack) onBack();
           else router.push("/"); 
           return; 
         }
+        console.log('✅ Producto cargado:', productData.name)
+        console.log('📸 Imagen del producto:', productData.image)
         setProduct(productData);
         setImageReloadKey(prev => prev + 1);
         
@@ -136,7 +148,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       finally { setLoading(false); }
     };
     if (productId) loadEverything();
-  }, [productId]);
+  }, [productId, fetchProduct, fetchProducts, onBack, router]);
 
   useEffect(() => {
     if (product && product.recommendedProducts?.length && products.length) {
@@ -144,7 +156,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     }
   }, [product, products]);
 
-  const correctImageUrl = (url: string) => {
+  const correctImageUrl = (url: string): string => {
     if (!url) return '/diverse-products-still-life.png';
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     if (url.startsWith('/')) return url;
@@ -164,6 +176,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   const categoriesInfo = getProductCategoriesInfo();
 
+  // CONSTRUIR LA LISTA DE MEDIA CON TIMESTAMP PARA FORZAR RECARGA
   const allMedia: MediaItem[] = [
     ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
     ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
@@ -275,7 +288,9 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const currentMedia = allMedia[selectedMediaIndex];
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : [];
 
+  // GENERAR KEY ÚNICA CON TIMESTAMP PARA LA IMAGEN
   const imageKey = `${currentMedia.url}?t=${imageReloadKey}`;
+  console.log('🖼️ Cargando imagen con key:', imageKey);
 
   return (
     <div className="min-h-screen bg-white">
@@ -377,6 +392,13 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                           className="object-cover transition-transform duration-500 group-hover:scale-110"
                           priority
                           unoptimized={true}
+                          onError={(e) => {
+                            console.error('❌ Error cargando imagen:', currentMedia.url)
+                            // Fallback a imagen por defecto
+                            const target = e.target as HTMLImageElement
+                            target.src = '/diverse-products-still-life.png'
+                          }}
+                          onLoad={() => console.log('✅ Imagen cargada:', currentMedia.url)}
                         />
                         {currentMedia.type === 'video' && !showVideo && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
@@ -432,36 +454,40 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
               transition={{ duration: 0.4, delay: 0.2 }}
             >
               <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
-                {allMedia.map((media, i) => (
-                  <motion.div
-                    key={i}
-                    onClick={() => { setSelectedMediaIndex(i); setShowVideo(false); }}
-                    className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
-                      selectedMediaIndex === i 
-                        ? "border-orange-500 ring-2 ring-orange-200" 
-                        : "border-gray-300 hover:border-orange-400"
-                    }`}
-                    whileHover={{ scale: 1.05, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                  >
-                    <Image 
-                      src={media.type === 'video' ? media.thumbnail || media.url : media.url} 
-                      alt={`Media ${i + 1}`} 
-                      width={80} 
-                      height={80} 
-                      className="object-cover w-full h-full"
-                      unoptimized={true}
-                    />
-                    {media.type === 'video' && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Youtube className="text-white w-5 h-5" />
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
+                {allMedia.map((media, i) => {
+                  const thumbKey = `${media.url}?t=${imageReloadKey}`;
+                  return (
+                    <motion.div
+                      key={i}
+                      onClick={() => { setSelectedMediaIndex(i); setShowVideo(false); }}
+                      className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
+                        selectedMediaIndex === i 
+                          ? "border-orange-500 ring-2 ring-orange-200" 
+                          : "border-gray-300 hover:border-orange-400"
+                      }`}
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                    >
+                      <Image 
+                        key={thumbKey}
+                        src={media.type === 'video' ? media.thumbnail || media.url : media.url} 
+                        alt={`Media ${i + 1}`} 
+                        width={80} 
+                        height={80} 
+                        className="object-cover w-full h-full"
+                        unoptimized={true}
+                      />
+                      {media.type === 'video' && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <Youtube className="text-white w-5 h-5" />
+                        </div>
+                      )}
+                    </motion.div>
+                  )
+                })}
               </div>
             </motion.div>
           </div>
@@ -686,11 +712,16 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 >
                   <div className="relative aspect-square bg-gray-100">
                     <Image
+                      key={`${recProduct.image}?t=${imageReloadKey}`}
                       src={correctImageUrl(recProduct.image)}
                       alt={recProduct.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
                       unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/diverse-products-still-life.png'
+                      }}
                     />
                     {recProduct.isOnSale && (
                       <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
