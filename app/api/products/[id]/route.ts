@@ -42,6 +42,10 @@ function correctImageUrl(imagePath: string | null): string {
     return '/diverse-products-still-life.png';
   }
   
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
+  }
+  
   if (imagePath.startsWith('/')) {
     return imagePath;
   }
@@ -330,7 +334,17 @@ export async function GET(
     }
 
     await transaction.commit()
-    return NextResponse.json(productData)
+    
+    // HEADERS ANTI-CACHÉ
+    return new NextResponse(JSON.stringify(productData), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
 
   } catch (error) {
     console.error('Error fetching product:', error)
@@ -374,8 +388,6 @@ export async function PUT(
     const deletedImages = formData.getAll('deletedImages') as string[]
     const recommendedProducts = formData.getAll('recommendedProducts') as string[]
     const tags = formData.get('tags') as string
-    const brand = formData.get('brand') as string
-    const genre = formData.get('genre') as string
     const specs = formData.get('specs') as string
     
     const ageMin = parseInt(formData.get('ageMin') as string)
@@ -424,13 +436,22 @@ export async function PUT(
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
 
+    // Obtener el producto antes de actualizar para notificaciones
+    const oldProductData = await transaction.query(
+      'SELECT price, original_price, name, image FROM products WHERE id = ?',
+      [productId]
+    ) as QueryResult[]
+
+    const oldPrice = oldProductData.length > 0 ? parseFloat(oldProductData[0].price) : 0;
+    const oldOriginalPrice = oldProductData.length > 0 && oldProductData[0].original_price ? parseFloat(oldProductData[0].original_price) : null;
+
     const updateProductQuery = `
       UPDATE products SET 
         name = ?, slug = ?, description = ?, price = ?, original_price = ?,
         image = ?, youtube_video_id = ?, category_id = ?, age_min = ?, age_display = ?,
         players_min = ?, players_max = ?, players_display = ?,
         duration_min = ?, duration_display = ?, stock = ?, in_stock = ?,
-        is_on_sale = ?, tags = ?, brand = ?, genre = ?, specs = ?,
+        is_on_sale = ?, tags = ?, specs = ?,
         weight = ?, height = ?, width = ?, length = ?
       WHERE id = ?
     `
@@ -455,8 +476,6 @@ export async function PUT(
       inStock,
       isOnSale,
       tags || null,
-      brand || 'Devir',
-      genre || 'Estrategia, Familiar',
       specs || null,
       weight,
       height,
@@ -465,6 +484,7 @@ export async function PUT(
       productId
     ])
 
+    // Eliminar y recrear subcategorías
     await transaction.query('DELETE FROM product_subcategories WHERE product_id = ?', [productId])
     
     for (let i = 0; i < subcategoryIds.length; i++) {
@@ -476,6 +496,7 @@ export async function PUT(
       )
     }
 
+    // Eliminar y recrear recomendaciones
     await transaction.query('DELETE FROM product_recommendations WHERE product_id = ?', [productId])
     
     for (const recProductId of recommendedProducts) {
@@ -485,12 +506,14 @@ export async function PUT(
       )
     }
 
+    // Procesar imagen principal
     const mainImageFile = formData.get('mainImage') as File
     if (mainImageFile && mainImageFile.size > 0) {
       const mainImageUrl = await saveImage(mainImageFile, slug)
       await transaction.query('UPDATE products SET image = ? WHERE id = ?', [mainImageUrl, productId])
     }
 
+    // Eliminar imágenes marcadas
     if (deletedImages.length > 0) {
       for (const imageUrl of deletedImages) {
         await transaction.query(
@@ -508,6 +531,7 @@ export async function PUT(
       }
     }
 
+    // Procesar imágenes adicionales nuevas
     const additionalImages = formData.getAll('additionalImages') as File[]
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
@@ -522,76 +546,36 @@ export async function PUT(
 
     await transaction.commit()
 
+    // Notificaciones de descuento (si aplica)
     try {
-      console.log('===== INICIANDO VERIFICACION DE OFERTA =====');
+      const productName = oldProductData.length > 0 ? oldProductData[0].name : name;
+      const productImage = oldProductData.length > 0 ? oldProductData[0].image : image;
+      const newPriceValue = price;
+      const newOriginalPrice = originalPrice;
       
-      const { query } = await import('@/lib/db');
+      const isDiscountTag = tags === 'descuento';
+      const isNowOnSale = newOriginalPrice !== null && newOriginalPrice > newPriceValue;
+      const priceDrop = newPriceValue < oldPrice;
+      const adminSelectedDiscount = isDiscountTag && newOriginalPrice !== null && newOriginalPrice > 0;
       
-      const oldProduct = await query(
-        'SELECT price, original_price, name, image FROM products WHERE id = ?',
-        [productId]
-      ) as any[];
-
-      if (oldProduct.length > 0) {
-        const oldPrice = parseFloat(oldProduct[0].price);
-        const oldOriginalPrice = oldProduct[0].original_price ? parseFloat(oldProduct[0].original_price) : null;
-        const newPriceValue = price;
-        const newOriginalPrice = originalPrice;
-        const productName = oldProduct[0].name;
-        const productImage = oldProduct[0].image;
-
-        const wasOnSale = oldOriginalPrice !== null && oldOriginalPrice > oldPrice;
-        const isNowOnSale = newOriginalPrice !== null && newOriginalPrice > newPriceValue;
-
-        const tagsField = formData.get('tags') as string;
-        const isDiscountTag = tagsField === 'descuento';
-
-        console.log('=== VERIFICANDO OFERTA ===');
-        console.log('Producto ID:', productId);
-        console.log('Producto:', productName);
-        console.log('Precio anterior:', oldPrice);
-        console.log('Precio original anterior:', oldOriginalPrice);
-        console.log('Precio nuevo:', newPriceValue);
-        console.log('Precio original nuevo:', newOriginalPrice);
-        console.log('Estaba en oferta antes:', wasOnSale);
-        console.log('Ahora esta en oferta:', isNowOnSale);
-        console.log('El precio bajo:', newPriceValue < oldPrice);
-        console.log('Etiqueta seleccionada (tags):', tagsField);
-        console.log('Es etiqueta DESCUENTO:', isDiscountTag);
-
-        const priceDrop = newPriceValue < oldPrice;
-        const isOnSaleFlag = isNowOnSale;
-        const adminSelectedDiscount = isDiscountTag && newOriginalPrice !== null && newOriginalPrice > 0;
-
-        const shouldNotify = (isOnSaleFlag && priceDrop) || adminSelectedDiscount;
-        const forceNotify = adminSelectedDiscount;
-
-        console.log('Precio bajo:', priceDrop);
-        console.log('Admin selecciono Descuento:', adminSelectedDiscount);
-        console.log('Forzar notificacion:', forceNotify);
-        console.log('Deberia notificar:', shouldNotify);
-
-        if (shouldNotify) {
-          console.log('PRODUCTO EN OFERTA! Enviando notificaciones...');
-          
-          setTimeout(async () => {
-            try {
-              const result = await notifyUsersAboutPriceDrop(
-                productId, 
-                oldPrice, 
-                newPriceValue, 
-                productName, 
-                productImage,
-                forceNotify
-              );
-              console.log('Resultado de notificacion:', result);
-            } catch (error) {
-              console.error('Error en notificacion de oferta:', error);
-            }
-          }, 1000);
-        } else {
-          console.log('No se enviaran notificaciones.');
-        }
+      const shouldNotify = (isNowOnSale && priceDrop) || adminSelectedDiscount;
+      const forceNotify = adminSelectedDiscount;
+      
+      if (shouldNotify) {
+        setTimeout(async () => {
+          try {
+            await notifyUsersAboutPriceDrop(
+              productId, 
+              oldPrice, 
+              newPriceValue, 
+              productName, 
+              productImage,
+              forceNotify
+            );
+          } catch (error) {
+            console.error('Error en notificacion de oferta:', error);
+          }
+        }, 1000);
       }
     } catch (notifyError) {
       console.error('Error al verificar notificacion de oferta:', notifyError);
@@ -600,8 +584,7 @@ export async function PUT(
     return NextResponse.json({ 
       success: true, 
       message: 'Producto actualizado correctamente',
-      subcategories: subcategoryIds,
-      recommendedProducts: recommendedProducts
+      productId: productId
     })
 
   } catch (error) {

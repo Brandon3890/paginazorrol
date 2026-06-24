@@ -86,6 +86,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [isAddingToCart, setIsAddingToCart] = useState(false)
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
+  const [imageReloadKey, setImageReloadKey] = useState(0)
   const hasLoaded = useRef(false)
   
   const [product, setProduct] = useState<ProductType | null>(null)
@@ -116,6 +117,9 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return; 
         }
         setProduct(productData);
+        // Forzar recarga de imágenes
+        setImageReloadKey(prev => prev + 1);
+        
         if (productData.recommendedProducts?.length) {
           if (products.length > 0) {
             setRecommendedProducts(products.filter(p => productData.recommendedProducts?.includes(p.id) && p.isActive));
@@ -143,9 +147,9 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   const correctImageUrl = (url: string) => {
     if (!url) return '/diverse-products-still-life.png';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     if (url.startsWith('/')) return url;
     if (url.startsWith('uploads/')) return `/${url}`;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return `/uploads/products/${url}`;
   };
 
@@ -205,7 +209,14 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             <span className="text-xs text-muted-foreground line-clamp-1">{product.name}</span>
           </div>
           <motion.div className="w-10 h-10 relative flex-shrink-0 overflow-hidden rounded-md border border-border/50" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1 }}>
-            <Image src={correctImageUrl(product.image)} alt={product.name} fill className="object-cover" sizes="40px" />
+            <Image 
+              src={correctImageUrl(product.image)} 
+              alt={product.name} 
+              fill 
+              className="object-cover" 
+              sizes="40px"
+              unoptimized={true}
+            />
           </motion.div>
         </motion.div>
       ), 
@@ -264,6 +275,9 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const discountPercent = product.originalPrice && product.originalPrice > product.price ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) : 0;
   const currentMedia = allMedia[selectedMediaIndex];
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : [];
+
+  // Generar key única para la imagen con timestamp y reloadKey
+  const imageKey = `${currentMedia.url}?t=${imageReloadKey}`;
 
   return (
     <div className="min-h-screen bg-white">
@@ -350,7 +364,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       </motion.div>
                     ) : (
                       <motion.div
-                        key="image"
+                        key={imageKey}
                         initial={{ opacity: 0, scale: 1.1 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
@@ -358,11 +372,13 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                         className="relative w-full h-full"
                       >
                         <Image
+                          key={imageKey}
                           src={currentMedia.url}
                           alt={product.name}
                           fill
                           className="object-cover transition-transform duration-500 group-hover:scale-110"
                           priority
+                          unoptimized={true}
                         />
                         {currentMedia.type === 'video' && !showVideo && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
@@ -439,6 +455,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       width={80} 
                       height={80} 
                       className="object-cover w-full h-full"
+                      unoptimized={true}
                     />
                     {media.type === 'video' && (
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -584,7 +601,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                   </Button>
                 </motion.div>
 
-                {/* Corazón - Solo visible si el usuario está autenticado */}
                 {isAuthenticated && (
                   <motion.div 
                     whileHover={{ scale: 1.05 }}
@@ -682,6 +698,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       alt={recProduct.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      unoptimized={true}
                     />
                     {recProduct.isOnSale && (
                       <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
