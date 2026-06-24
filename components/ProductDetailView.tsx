@@ -117,7 +117,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return; 
         }
         setProduct(productData);
-        // Forzar recarga de imágenes
         setImageReloadKey(prev => prev + 1);
         
         if (productData.recommendedProducts?.length) {
@@ -276,7 +275,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const currentMedia = allMedia[selectedMediaIndex];
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : [];
 
-  // Generar key única para la imagen con timestamp y reloadKey
   const imageKey = `${currentMedia.url}?t=${imageReloadKey}`;
 
   return (
@@ -615,12 +613,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </motion.div>
         </div>
 
-        {/*
-          ============================================================
-          TODAS LAS CARACTERÍSTICAS - COMPLETAMENTE DINÁMICO
-          SOLO MUESTRA LO QUE EL ADMIN AÑADE EN EL SPECS EDITOR
-          ============================================================
-        */}
         <motion.div 
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}

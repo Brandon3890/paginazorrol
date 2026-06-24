@@ -88,7 +88,6 @@ interface ProductStore {
   getProductsBySubcategory: (subcategoryId: number) => Product[];
   getRecommendedProducts: (productId: number) => Product[];
   getSortedProducts: () => Product[];
-  forceRefresh: () => Promise<void>;
 }
 
 const normalizeTags = (tags: any): string[] => {
@@ -191,20 +190,8 @@ export const useProductStore = create<ProductStore>()(
         set({ globalSearchQuery: query });
       },
       
-      // FORZAR REFRESH - Método nuevo para recargar desde el servidor
-      forceRefresh: async () => {
-        console.log('🔄 Force refresh products...');
-        await get().fetchProducts({ force: true, includeInactive: true, isAdmin: true });
-      },
-      
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
-        
-        // Si no es forzado y ya hay productos cargados, no hacer nada
-        if (get().productsLoaded && !force) {
-          console.log('📦 Using cached products (not forcing refresh)');
-          return;
-        }
         
         set({ loading: true, error: null });
         
@@ -217,7 +204,6 @@ export const useProductStore = create<ProductStore>()(
             params.append('admin', 'true');
           }
           
-          // TIMESTAMP PARA EVITAR CACHÉ
           const url = `/api/products?${params.toString()}&_=${Date.now()}`;
           console.log('🌐 Fetching products from:', url);
           
@@ -366,7 +352,6 @@ export const useProductStore = create<ProductStore>()(
           const result = await response.json();
           console.log('✅ Product created with ID:', result.id);
           
-          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -392,7 +377,6 @@ export const useProductStore = create<ProductStore>()(
           
           console.log('✅ Product updated successfully');
           
-          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -417,7 +401,6 @@ export const useProductStore = create<ProductStore>()(
           
           console.log('✅ Product deactivated');
           
-          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -443,7 +426,6 @@ export const useProductStore = create<ProductStore>()(
           
           console.log('✅ Product reactivated');
           
-          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -469,7 +451,6 @@ export const useProductStore = create<ProductStore>()(
           
           console.log('✅ Product permanently deleted');
           
-          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -522,14 +503,12 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 4,
+      version: 5,
       migrate: migrateStore,
-      // NO GUARDAR PRODUCTOS EN LOCALSTORAGE PARA EVITAR CACHÉ
+      // SOLO GUARDAR VERSIÓN Y BÚSQUEDA - NO PRODUCTOS
       partialize: (state) => ({ 
-        // Solo guardar lo mínimo necesario
         version: state.version,
         globalSearchQuery: state.globalSearchQuery
-        // NO guardar products ni productsLoaded
       }),
     }
   )
