@@ -344,7 +344,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const productTag = extractProductTag(productData)
           setSelectedTag(productTag)
 
-          const parsedSpecs = productData.specs ? parseProductSpecs(productData.specs) : []
+          // =====================================================
+          // CORRECCIÓN: Parsear specs correctamente
+          // =====================================================
+          let parsedSpecs: ProductSpec[] = []
+          if (productData.specs) {
+            parsedSpecs = parseProductSpecs(productData.specs)
+            console.log('📋 Specs cargados:', parsedSpecs)
+          }
           setProductSpecs(parsedSpecs)
 
           let price = safeToString(productData.price)
@@ -651,7 +658,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('categoryId', safeToString(formData.categoryId))
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('tags', selectedTag)
-      formDataToSend.append('specs', JSON.stringify(productSpecs))
+      
+      // =====================================================
+      // CORRECCIÓN: Enviar specs correctamente
+      // =====================================================
+      const specsString = JSON.stringify(productSpecs)
+      console.log('📋 Enviando specs:', specsString)
+      formDataToSend.append('specs', specsString)
       
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
@@ -680,13 +693,29 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
 
+      // =====================================================
+      // CORRECCIÓN: Enviar la imagen correctamente
+      // =====================================================
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
-      } else {
+        console.log('📸 Enviando nueva imagen principal:', imageFile.name)
+      } else if (formData.image) {
         formDataToSend.append('image', safeToString(formData.image))
+        console.log('📸 Manteniendo imagen existente:', formData.image)
       }
 
-      newAdditionalImageFiles.forEach(file => formDataToSend.append('additionalImages', file))
+      newAdditionalImageFiles.forEach(file => {
+        formDataToSend.append('additionalImages', file)
+        console.log('📸 Enviando imagen adicional:', file.name)
+      })
+
+      console.log('📦 Enviando formData con:', {
+        name: formData.name,
+        price: formData.price,
+        image: formData.image || imageFile?.name || 'ninguna',
+        specs: productSpecs,
+        tags: selectedTag
+      })
 
       await updateProduct(productId, formDataToSend)
       
