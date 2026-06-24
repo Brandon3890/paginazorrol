@@ -88,6 +88,7 @@ interface ProductStore {
   getProductsBySubcategory: (subcategoryId: number) => Product[];
   getRecommendedProducts: (productId: number) => Product[];
   getSortedProducts: () => Product[];
+  forceRefresh: () => Promise<void>;
 }
 
 const normalizeTags = (tags: any): string[] => {
@@ -190,8 +191,20 @@ export const useProductStore = create<ProductStore>()(
         set({ globalSearchQuery: query });
       },
       
+      // FORZAR REFRESH - Método nuevo para recargar desde el servidor
+      forceRefresh: async () => {
+        console.log('🔄 Force refresh products...');
+        await get().fetchProducts({ force: true, includeInactive: true, isAdmin: true });
+      },
+      
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
+        
+        // Si no es forzado y ya hay productos cargados, no hacer nada
+        if (get().productsLoaded && !force) {
+          console.log('📦 Using cached products (not forcing refresh)');
+          return;
+        }
         
         set({ loading: true, error: null });
         
@@ -204,11 +217,12 @@ export const useProductStore = create<ProductStore>()(
             params.append('admin', 'true');
           }
           
-          // AÑADIR TIMESTAMP PARA EVITAR CACHÉ
+          // TIMESTAMP PARA EVITAR CACHÉ
           const url = `/api/products?${params.toString()}&_=${Date.now()}`;
+          console.log('🌐 Fetching products from:', url);
           
           const response = await fetch(url, {
-            cache: 'no-store', // <--- CLAVE: Deshabilita caché
+            cache: 'no-store',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
@@ -221,6 +235,7 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const productsData = await response.json();
+          console.log(`📦 Received ${productsData.length} products from API`);
           
           const normalizedProducts = productsData.map((product: any) => ({
             ...product,
@@ -243,6 +258,8 @@ export const useProductStore = create<ProductStore>()(
             error: null 
           });
           
+          console.log(`✅ ${validProducts.length} products loaded in store`);
+          
         } catch (error) {
           console.error('Error in fetchProducts:', error);
           set({ 
@@ -254,9 +271,11 @@ export const useProductStore = create<ProductStore>()(
 
       fetchProduct: async (id: number) => {
         try {
-          // TIMESTAMP PARA EVITAR CACHÉ
-          const response = await fetch(`/api/products/${id}?_=${Date.now()}`, {
-            cache: 'no-store', // <--- CLAVE: Deshabilita caché
+          const url = `/api/products/${id}?_=${Date.now()}`;
+          console.log('🌐 Fetching product from:', url);
+          
+          const response = await fetch(url, {
+            cache: 'no-store',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
@@ -269,6 +288,8 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const product = await response.json();
+          console.log(`📦 Received product: ${product.name}`);
+          
           const normalizedProduct = {
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
@@ -331,6 +352,7 @@ export const useProductStore = create<ProductStore>()(
 
       addProduct: async (formData: FormData) => {
         try {
+          console.log('➕ Creating product...');
           const response = await fetch('/api/products', {
             method: 'POST',
             body: formData,
@@ -341,9 +363,13 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error creating product');
           }
           
-          // Recargar productos
+          const result = await response.json();
+          console.log('✅ Product created with ID:', result.id);
+          
+          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
+          
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
           set({ error: errorMessage });
@@ -353,6 +379,7 @@ export const useProductStore = create<ProductStore>()(
 
       updateProduct: async (id: number, formData: FormData) => {
         try {
+          console.log(`✏️ Updating product ${id}...`);
           const response = await fetch(`/api/products/${id}`, {
             method: 'PUT',
             body: formData,
@@ -363,7 +390,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error updating product');
           }
           
-          // Recargar productos después de actualizar
+          console.log('✅ Product updated successfully');
+          
+          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -376,6 +405,7 @@ export const useProductStore = create<ProductStore>()(
 
       deactivateProduct: async (id: number) => {
         try {
+          console.log(`🗑️ Deactivating product ${id}...`);
           const response = await fetch(`/api/products/${id}`, {
             method: 'DELETE',
           });
@@ -385,13 +415,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deactivating product');
           }
           
-          set(state => ({
-            products: state.products.map(p =>
-              p.id === id ? { ...p, isActive: false } : p
-            )
-          }));
+          console.log('✅ Product deactivated');
           
-          // Recargar productos
+          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -405,6 +431,7 @@ export const useProductStore = create<ProductStore>()(
 
       reactivateProduct: async (id: number) => {
         try {
+          console.log(`🔄 Reactivating product ${id}...`);
           const response = await fetch(`/api/products/${id}/reactivate`, {
             method: 'PUT',
           });
@@ -414,13 +441,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error reactivating product');
           }
           
-          set(state => ({
-            products: state.products.map(p =>
-              p.id === id ? { ...p, isActive: true } : p
-            )
-          }));
+          console.log('✅ Product reactivated');
           
-          // Recargar productos
+          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -434,6 +457,7 @@ export const useProductStore = create<ProductStore>()(
 
       permanentlyDeleteProduct: async (id: number) => {
         try {
+          console.log(`💀 Permanently deleting product ${id}...`);
           const response = await fetch(`/api/products/${id}/permanent`, {
             method: 'DELETE',
           });
@@ -443,11 +467,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deleting product permanently');
           }
           
-          set(state => ({
-            products: state.products.filter(p => p.id !== id)
-          }));
+          console.log('✅ Product permanently deleted');
           
-          // Recargar productos
+          // RECARGAR PRODUCTOS INMEDIATAMENTE
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -502,11 +524,12 @@ export const useProductStore = create<ProductStore>()(
       name: 'product-store',
       version: 4,
       migrate: migrateStore,
+      // NO GUARDAR PRODUCTOS EN LOCALSTORAGE PARA EVITAR CACHÉ
       partialize: (state) => ({ 
-        products: state.products,
-        productsLoaded: state.productsLoaded,
+        // Solo guardar lo mínimo necesario
         version: state.version,
         globalSearchQuery: state.globalSearchQuery
+        // NO guardar products ni productsLoaded
       }),
     }
   )

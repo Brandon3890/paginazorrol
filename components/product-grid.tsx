@@ -131,6 +131,22 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [fetchProducts])
 
+
+  useEffect(() => {
+    const handleProductUpdate = () => {
+      console.log('Product update detected, refreshing...');
+      fetchProducts({ force: true });
+    };
+    
+    window.addEventListener('product-updated', handleProductUpdate);
+    window.addEventListener('payment-complete', handleProductUpdate);
+    
+    return () => {
+      window.removeEventListener('product-updated', handleProductUpdate);
+      window.removeEventListener('payment-complete', handleProductUpdate);
+    };
+  }, [fetchProducts]);
+
   useEffect(() => {
     const handlePaymentComplete = () => {
       fetchProducts({ force: true })

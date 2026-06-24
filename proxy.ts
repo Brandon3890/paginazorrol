@@ -133,6 +133,10 @@ export async function proxy(request: NextRequest) {
         requestHeaders.set('x-user-email', String(payload.email))
         requestHeaders.set('x-user-role', String(payload.role))
         requestHeaders.set('x-client-ip', clientIP)
+        response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private')
+        response.headers.set('Pragma', 'no-cache')
+        response.headers.set('Expires', '0')
+        response.headers.set('Surrogate-Control', 'no-store')
 
         return NextResponse.next({
           request: { headers: requestHeaders },

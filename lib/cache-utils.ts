@@ -2,7 +2,7 @@
 
 const CACHE_KEY = 'products_cache';
 const CACHE_TIMESTAMP_KEY = 'products_cache_timestamp';
-const CACHE_DURATION = 2 * 60 * 1000; 
+const CACHE_DURATION = 10 * 1000;
 
 interface CacheData {
   products: any[];
