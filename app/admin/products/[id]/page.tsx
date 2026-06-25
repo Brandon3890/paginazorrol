@@ -64,7 +64,7 @@ const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<F
           } else {
             reject(new Error('Error al crear el blob'));
           }
-        }, file.type, 0.8);
+        }, file.type, 0.7);
       };
       img.onerror = () => reject(new Error('Error al cargar la imagen'));
       img.src = e.target?.result as string;
@@ -204,6 +204,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [selectedTag, setSelectedTag] = useState<string>("")
   const [productSpecs, setProductSpecs] = useState<ProductSpec[]>([])
   const [errors, setErrors] = useState<Record<string, boolean>>({})
+  const [imageTimestamp, setImageTimestamp] = useState(Date.now())
   const [formData, setFormData] = useState({
     name: "",
     price: "",
@@ -252,6 +253,27 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
   const totalImages = (imageFile ? 1 : 0) + existingAdditionalImages.length + newAdditionalImageFiles.length
   const MAX_TOTAL_IMAGES = 6
+
+  // Escuchar evento de actualización de productos
+  useEffect(() => {
+    const handleProductUpdate = () => {
+      console.log('🔄 Producto actualizado, forzando recarga de imágenes en admin...')
+      setImageTimestamp(Date.now())
+      // Recargar el producto
+      if (productId) {
+        fetchProduct(productId, true).then((data) => {
+          if (data) {
+            setProduct(data)
+            setImagePreview(data.image || '/uploads/products/diverse-products-still-life.png')
+            setFormData(prev => ({ ...prev, image: data.image || '/uploads/products/diverse-products-still-life.png' }))
+          }
+        })
+      }
+    }
+    
+    window.addEventListener('product-updated', handleProductUpdate)
+    return () => window.removeEventListener('product-updated', handleProductUpdate)
+  }, [productId, fetchProduct])
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
@@ -304,11 +326,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     if (!validateField('width', formData.width)) newErrors.width = true
     if (!validateField('length', formData.length)) newErrors.length = true
     
-    // No validar imagen como obligatoria
-    // if (!formData.image && !imageFile) {
-    //   newErrors.image = true
-    // }
-    
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -316,6 +333,12 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
     const hasError = errors[fieldName]
     return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
+  }
+
+  const getImageWithTimestamp = (url: string): string => {
+    if (!url) return '/uploads/products/diverse-products-still-life.png'
+    if (url.includes('diverse-products-still-life.png')) return url
+    return `${url}?v=${imageTimestamp}`
   }
 
   useEffect(() => {
@@ -329,6 +352,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         if (productData) {
           console.log('📦 Producto cargado:', productData)
           setProduct(productData)
+          setImageTimestamp(Date.now())
           
           let allSubcategoryIds: string[] = []
           if (productData.subcategoryIds && Array.isArray(productData.subcategoryIds)) {
@@ -578,7 +602,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
-          // Limpiar formData.image para que no se use la URL antigua
+          setImageTimestamp(Date.now())
           setFormData(prev => ({ ...prev, image: "" }))
           if (errors.image) setErrors(prev => ({ ...prev, image: false }))
         } catch (error) {
@@ -597,6 +621,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     if (imagePreview) URL.revokeObjectURL(imagePreview)
     setImageFile(null)
     setImagePreview("")
+    setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: "/uploads/products/diverse-products-still-life.png" }))
   }, [imagePreview])
 
@@ -615,6 +640,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setNewAdditionalImageFiles(prev => [...prev, resizedFile])
           setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
+          setImageTimestamp(Date.now())
         } catch (error) {
           console.error("Error procesando imagen adicional:", error)
           alert("Error al procesar la imagen")
@@ -630,12 +656,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const removeExistingAdditionalImage = useCallback((index: number) => {
     setDeletedExistingImages(prev => [...prev, existingAdditionalImages[index]])
     setExistingAdditionalImages(prev => prev.filter((_, i) => i !== index))
+    setImageTimestamp(Date.now())
   }, [existingAdditionalImages])
 
   const removeNewAdditionalImage = useCallback((index: number) => {
     URL.revokeObjectURL(newAdditionalImagePreviews[index])
     setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
+    setImageTimestamp(Date.now())
   }, [newAdditionalImagePreviews])
 
   const filteredProducts = useMemo(() => {
@@ -696,9 +724,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
 
-      // ============================================================
-      // CORRECCIÓN: Asegurar que la imagen nunca sea null
-      // ============================================================
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
         console.log('📸 Enviando NUEVA imagen principal:', imageFile.name)
@@ -896,6 +921,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                             setFormData({ ...formData, image: e.target.value })
                             setImagePreview(e.target.value)
                             setImageFile(null)
+                            setImageTimestamp(Date.now())
                             if (errors.image) setErrors(prev => ({ ...prev, image: false }))
                           }}
                           placeholder="URL de imagen web"
@@ -906,7 +932,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
-                          src={imagePreview || "/uploads/products/diverse-products-still-life.png"}
+                          src={getImageWithTimestamp(imagePreview)}
                           alt="Preview"
                           className="w-48 h-48 object-cover rounded-lg border"
                           onError={(e) => {
@@ -951,7 +977,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           {allAdditionalImagePreviews.map(({ type, url, index }) => (
                             <div key={`${type}-${index}`} className="relative group">
                               <img
-                                src={url || "/uploads/products/diverse-products-still-life.png"}
+                                src={getImageWithTimestamp(url)}
                                 alt={`Additional ${index + 1}`}
                                 className="w-full h-32 object-cover rounded-lg border"
                                 onError={(e) => {
