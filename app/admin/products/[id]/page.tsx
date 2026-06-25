@@ -208,7 +208,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     name: "",
     price: "",
     originalPrice: "",
-    image: "",
+    image: "/uploads/products/diverse-products-still-life.png",
     youtubeVideoId: "",
     categoryId: "",
     subcategoryIds: [] as string[],
@@ -304,9 +304,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     if (!validateField('width', formData.width)) newErrors.width = true
     if (!validateField('length', formData.length)) newErrors.length = true
     
-    if (!formData.image && !imageFile) {
-      newErrors.image = true
-    }
+    // No validar imagen como obligatoria
+    // if (!formData.image && !imageFile) {
+    //   newErrors.image = true
+    // }
     
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -345,19 +346,15 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const productTag = extractProductTag(productData)
           setSelectedTag(productTag)
 
-          // ============================================================
-          // CORRECCIÓN: Parsear specs correctamente desde el producto
-          // ============================================================
           let parsedSpecs: ProductSpec[] = []
           if (productData.specs) {
             try {
-              // Si specs viene como array de objetos
               if (Array.isArray(productData.specs)) {
                 parsedSpecs = productData.specs
               } else if (typeof productData.specs === 'string') {
                 parsedSpecs = parseProductSpecs(productData.specs)
               }
-              console.log('📋 Specs parseados desde el producto:', parsedSpecs)
+              console.log('📋 Specs parseados:', parsedSpecs)
             } catch (e) {
               console.error('Error parseando specs:', e)
             }
@@ -401,7 +398,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             name: safeToString(productData.name),
             price: price,
             originalPrice: originalPrice,
-            image: safeToString(productData.image),
+            image: safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png',
             youtubeVideoId: productData.youtubeVideoId || '',
             categoryId: categoryId,
             subcategoryIds: validSubcategoryIds,
@@ -425,7 +422,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           })
           
           setSelectedCategory(categoryId)
-          setImagePreview(safeToString(productData.image))
+          setImagePreview(safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png')
           setYoutubeUrl(productData.youtubeVideoId || '')
           
           if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
@@ -581,6 +578,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
+          // Limpiar formData.image para que no se use la URL antigua
+          setFormData(prev => ({ ...prev, image: "" }))
           if (errors.image) setErrors(prev => ({ ...prev, image: false }))
         } catch (error) {
           console.error("Error procesando imagen:", error)
@@ -598,7 +597,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     if (imagePreview) URL.revokeObjectURL(imagePreview)
     setImageFile(null)
     setImagePreview("")
-    setFormData(prev => ({ ...prev, image: "" }))
+    setFormData(prev => ({ ...prev, image: "/uploads/products/diverse-products-still-life.png" }))
   }, [imagePreview])
 
   const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -668,13 +667,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('categoryId', safeToString(formData.categoryId))
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('tags', selectedTag)
-      
-      // ============================================================
-      // CORRECCIÓN: Enviar specs siempre como JSON string
-      // ============================================================
-      const specsString = JSON.stringify(productSpecs)
-      console.log('📋 Enviando specs al servidor:', specsString)
-      formDataToSend.append('specs', specsString)
+      formDataToSend.append('specs', JSON.stringify(productSpecs))
       
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
@@ -703,12 +696,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
 
+      // ============================================================
+      // CORRECCIÓN: Asegurar que la imagen nunca sea null
+      // ============================================================
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
-        console.log('📸 Enviando nueva imagen principal:', imageFile.name)
+        console.log('📸 Enviando NUEVA imagen principal:', imageFile.name)
       } else if (formData.image) {
         formDataToSend.append('image', safeToString(formData.image))
         console.log('📸 Manteniendo imagen existente:', formData.image)
+      } else {
+        formDataToSend.append('image', '/uploads/products/diverse-products-still-life.png')
+        console.log('📸 Usando imagen por defecto')
       }
 
       newAdditionalImageFiles.forEach(file => {
@@ -721,10 +720,15 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       if (imageFile) URL.revokeObjectURL(imagePreview)
       newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
       
+      // Emitir evento de actualización
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('product-updated'))
+      }
+      
       router.push("/admin/products")
     } catch (error) {
       console.error("Error updating product:", error)
-      alert("Error al actualizar el producto")
+      alert("Error al actualizar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'))
     } finally {
       setIsUploading(false)
     }
@@ -864,16 +868,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
-                    <Label className={errors.image ? 'text-red-600' : ''}>
-                      Imagenes del Producto *
-                    </Label>
+                    <Label>Imagenes del Producto</Label>
                     <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
                       {totalImages}/{MAX_TOTAL_IMAGES} imagenes
                     </span>
                   </div>
 
                   <div className={`border rounded-lg p-4 ${errors.image ? 'border-red-500' : ''}`}>
-                    <Label className="text-sm font-medium">Imagen Principal *</Label>
+                    <Label className="text-sm font-medium">Imagen Principal</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -901,7 +903,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                         />
                       </div>
                     </div>
-                    {errors.image && <p className="text-xs text-red-500 mt-2">Debes agregar al menos una imagen principal</p>}
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
@@ -1139,9 +1140,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </div>
 
-                {/* ============================================================
-                    SPECS EDITOR - Aquí se muestran los specs del producto
-                    ============================================================ */}
                 <div className="md:col-span-2 border rounded-lg p-4">
                   <SpecsEditor 
                     specs={productSpecs} 

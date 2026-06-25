@@ -269,7 +269,6 @@ export const useProductStore = create<ProductStore>()(
 
       fetchProduct: async (id: number, force: boolean = false) => {
         try {
-          // Si ya tenemos el producto y no forzamos, devolverlo
           if (!force) {
             const existing = get().products.find(p => p.id === id);
             if (existing) {
@@ -291,6 +290,8 @@ export const useProductStore = create<ProductStore>()(
           });
           
           if (!response.ok) {
+            const text = await response.text();
+            console.error('❌ Error response:', text);
             throw new Error(`Error fetching product: ${response.status}`);
           }
           
@@ -312,7 +313,6 @@ export const useProductStore = create<ProductStore>()(
             length: product.length ?? 20,
           };
           
-          // Actualizar en el store
           set(state => {
             const existingProductIndex = state.products.findIndex(p => p.id === id);
             if (existingProductIndex >= 0) {
@@ -323,7 +323,6 @@ export const useProductStore = create<ProductStore>()(
             return { products: [...state.products, normalizedProduct] };
           });
           
-          // Emitir evento de actualización
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('product-updated', { 
               detail: { productId: id }
@@ -332,7 +331,7 @@ export const useProductStore = create<ProductStore>()(
           
           return normalizedProduct;
         } catch (error) {
-          console.error('Error fetching product:', error);
+          console.error('❌ Error fetching product:', error);
           set({ 
             error: error instanceof Error ? error.message : 'Error al cargar el producto' 
           });
@@ -383,11 +382,9 @@ export const useProductStore = create<ProductStore>()(
           const result = await response.json();
           console.log('✅ Product created with ID:', result.id);
           
-          // Forzar recarga de productos
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
-          // Emitir evento para actualizar UI
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('product-updated'));
           }
@@ -408,18 +405,23 @@ export const useProductStore = create<ProductStore>()(
           });
 
           if (!response.ok) {
-            const errorData = await response.json();
+            const text = await response.text();
+            console.error('❌ Error response:', text);
+            let errorData;
+            try {
+              errorData = JSON.parse(text);
+            } catch {
+              errorData = { error: text || 'Error desconocido' };
+            }
             throw new Error(errorData.error || 'Error updating product');
           }
           
           console.log('✅ Product updated successfully');
           
-          // Forzar recarga del producto específico y de la lista
           await get().fetchProduct(id, true);
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
-          // Emitir evento para actualizar UI
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('product-updated', { 
               detail: { productId: id }
@@ -427,6 +429,7 @@ export const useProductStore = create<ProductStore>()(
           }
           
         } catch (error) {
+          console.error('❌ Error en updateProduct:', error);
           const errorMessage = error instanceof Error ? error.message : 'Error al actualizar el producto';
           set({ error: errorMessage });
           throw error;
@@ -563,7 +566,6 @@ export const useProductStore = create<ProductStore>()(
       name: 'product-store',
       version: 6,
       migrate: migrateStore,
-      // Solo guardar versión y búsqueda, NO productos (para evitar caché)
       partialize: (state) => ({ 
         version: state.version,
         globalSearchQuery: state.globalSearchQuery
