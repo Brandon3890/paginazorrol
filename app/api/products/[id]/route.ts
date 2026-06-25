@@ -39,7 +39,7 @@ async function saveImage(file: File, filename: string): Promise<string> {
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
-    return '/uploads/products/diverse-products-still-life.png';
+    return '/diverse-products-still-life.png';
   }
   
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
@@ -60,7 +60,7 @@ function correctImageUrl(imagePath: string | null): string {
     return `/uploads/products/${imagePath}`;
   }
   
-  return '/uploads/products/diverse-products-still-life.png';
+  return '/diverse-products-still-life.png';
 }
 
 function normalizeTags(tagsRaw: any): string[] {

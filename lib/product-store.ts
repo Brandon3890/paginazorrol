@@ -71,7 +71,7 @@ interface ProductStore {
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
   fetchProducts: (options?: { includeInactive?: boolean; isAdmin?: boolean; force?: boolean }) => Promise<void>;
-  fetchProduct: (id: number, force?: boolean) => Promise<Product | null>;
+  fetchProduct: (id: number) => Promise<Product | null>;
   addProduct: (formData: FormData) => Promise<void>;
   updateProduct: (id: number, formData: FormData) => Promise<void>;
   deactivateProduct: (id: number) => Promise<void>;
@@ -88,7 +88,6 @@ interface ProductStore {
   getProductsBySubcategory: (subcategoryId: number) => Product[];
   getRecommendedProducts: (productId: number) => Product[];
   getSortedProducts: () => Product[];
-  forceRefresh: () => Promise<void>;
 }
 
 const normalizeTags = (tags: any): string[] => {
@@ -191,19 +190,8 @@ export const useProductStore = create<ProductStore>()(
         set({ globalSearchQuery: query });
       },
       
-      forceRefresh: async () => {
-        console.log('🔄 Force refresh products...');
-        set({ productsLoaded: false });
-        await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-      },
-      
       fetchProducts: async (options = {}) => {
         const { includeInactive = false, isAdmin = false, force = false } = options;
-        
-        if (get().productsLoaded && !force) {
-          console.log('📦 Using cached products (not forcing refresh)');
-          return;
-        }
         
         set({ loading: true, error: null });
         
@@ -216,11 +204,11 @@ export const useProductStore = create<ProductStore>()(
             params.append('admin', 'true');
           }
           
+          // AÑADIR TIMESTAMP PARA EVITAR CACHÉ
           const url = `/api/products?${params.toString()}&_=${Date.now()}`;
-          console.log('🌐 Fetching products from:', url);
           
           const response = await fetch(url, {
-            cache: 'no-store',
+            cache: 'no-store', // <--- CLAVE: Deshabilita caché
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
@@ -233,7 +221,6 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const productsData = await response.json();
-          console.log(`📦 Received ${productsData.length} products from API`);
           
           const normalizedProducts = productsData.map((product: any) => ({
             ...product,
@@ -256,8 +243,6 @@ export const useProductStore = create<ProductStore>()(
             error: null 
           });
           
-          console.log(`✅ ${validProducts.length} products loaded in store`);
-          
         } catch (error) {
           console.error('Error in fetchProducts:', error);
           set({ 
@@ -267,22 +252,11 @@ export const useProductStore = create<ProductStore>()(
         }
       },
 
-      fetchProduct: async (id: number, force: boolean = false) => {
+      fetchProduct: async (id: number) => {
         try {
-          // Si ya tenemos el producto y no forzamos, devolverlo
-          if (!force) {
-            const existing = get().products.find(p => p.id === id);
-            if (existing) {
-              console.log(`📦 Returning cached product: ${existing.name}`);
-              return existing;
-            }
-          }
-          
-          const url = `/api/products/${id}?_=${Date.now()}`;
-          console.log('🌐 Fetching product from:', url);
-          
-          const response = await fetch(url, {
-            cache: 'no-store',
+          // TIMESTAMP PARA EVITAR CACHÉ
+          const response = await fetch(`/api/products/${id}?_=${Date.now()}`, {
+            cache: 'no-store', // <--- CLAVE: Deshabilita caché
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
               'Pragma': 'no-cache',
@@ -295,10 +269,6 @@ export const useProductStore = create<ProductStore>()(
           }
           
           const product = await response.json();
-          console.log(`📦 Received product: ${product.name}`);
-          console.log(`📦 Specs:`, product.specs);
-          console.log(`📦 Image:`, product.image);
-          
           const normalizedProduct = {
             ...product,
             tags: normalizeTags(product.tags || product.tagsRaw),
@@ -361,7 +331,6 @@ export const useProductStore = create<ProductStore>()(
 
       addProduct: async (formData: FormData) => {
         try {
-          console.log('➕ Creating product...');
           const response = await fetch('/api/products', {
             method: 'POST',
             body: formData,
@@ -372,12 +341,9 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error creating product');
           }
           
-          const result = await response.json();
-          console.log('✅ Product created with ID:', result.id);
-          
+          // Recargar productos
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
-          
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
           set({ error: errorMessage });
@@ -387,7 +353,6 @@ export const useProductStore = create<ProductStore>()(
 
       updateProduct: async (id: number, formData: FormData) => {
         try {
-          console.log(`✏️ Updating product ${id}...`);
           const response = await fetch(`/api/products/${id}`, {
             method: 'PUT',
             body: formData,
@@ -398,10 +363,7 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error updating product');
           }
           
-          console.log('✅ Product updated successfully');
-          
-          // Forzar recarga del producto específico
-          await get().fetchProduct(id, true);
+          // Recargar productos después de actualizar
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -414,7 +376,6 @@ export const useProductStore = create<ProductStore>()(
 
       deactivateProduct: async (id: number) => {
         try {
-          console.log(`🗑️ Deactivating product ${id}...`);
           const response = await fetch(`/api/products/${id}`, {
             method: 'DELETE',
           });
@@ -424,8 +385,13 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deactivating product');
           }
           
-          console.log('✅ Product deactivated');
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: false } : p
+            )
+          }));
           
+          // Recargar productos
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -439,7 +405,6 @@ export const useProductStore = create<ProductStore>()(
 
       reactivateProduct: async (id: number) => {
         try {
-          console.log(`🔄 Reactivating product ${id}...`);
           const response = await fetch(`/api/products/${id}/reactivate`, {
             method: 'PUT',
           });
@@ -449,8 +414,13 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error reactivating product');
           }
           
-          console.log('✅ Product reactivated');
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: true } : p
+            )
+          }));
           
+          // Recargar productos
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -464,7 +434,6 @@ export const useProductStore = create<ProductStore>()(
 
       permanentlyDeleteProduct: async (id: number) => {
         try {
-          console.log(`💀 Permanently deleting product ${id}...`);
           const response = await fetch(`/api/products/${id}/permanent`, {
             method: 'DELETE',
           });
@@ -474,8 +443,11 @@ export const useProductStore = create<ProductStore>()(
             throw new Error(errorData.error || 'Error deleting product permanently');
           }
           
-          console.log('✅ Product permanently deleted');
+          set(state => ({
+            products: state.products.filter(p => p.id !== id)
+          }));
           
+          // Recargar productos
           await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
           get().incrementVersion();
           
@@ -528,9 +500,11 @@ export const useProductStore = create<ProductStore>()(
     }),
     {
       name: 'product-store',
-      version: 6,
+      version: 4,
       migrate: migrateStore,
       partialize: (state) => ({ 
+        products: state.products,
+        productsLoaded: state.productsLoaded,
         version: state.version,
         globalSearchQuery: state.globalSearchQuery
       }),
