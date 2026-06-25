@@ -64,7 +64,7 @@ class SimpleRateLimiter {
 // Export rate limiters
 export const loginRateLimiter = new SimpleRateLimiter(80, 900) // 80 intentos en 15 minutos
 export const apiRateLimiter = new SimpleRateLimiter(500, 60) // 500 peticiones por minuto
-export const adminRateLimiter = new SimpleRateLimiter(100, 60) // 100 acciones admin por minuto
+export const adminRateLimiter = new SimpleRateLimiter(200, 60) // 100 acciones admin por minuto
 
 // Cleanup cada hora
 setInterval(() => {

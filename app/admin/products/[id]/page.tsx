@@ -254,27 +254,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const totalImages = (imageFile ? 1 : 0) + existingAdditionalImages.length + newAdditionalImageFiles.length
   const MAX_TOTAL_IMAGES = 6
 
-  // Escuchar evento de actualización de productos
-  useEffect(() => {
-    const handleProductUpdate = () => {
-      console.log('🔄 Producto actualizado, forzando recarga de imágenes en admin...')
-      setImageTimestamp(Date.now())
-      // Recargar el producto
-      if (productId) {
-        fetchProduct(productId, true).then((data) => {
-          if (data) {
-            setProduct(data)
-            setImagePreview(data.image || '/uploads/products/diverse-products-still-life.png')
-            setFormData(prev => ({ ...prev, image: data.image || '/uploads/products/diverse-products-still-life.png' }))
-          }
-        })
-      }
-    }
-    
-    window.addEventListener('product-updated', handleProductUpdate)
-    return () => window.removeEventListener('product-updated', handleProductUpdate)
-  }, [productId, fetchProduct])
-
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
       router.push("/")
@@ -338,8 +317,44 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const getImageWithTimestamp = (url: string): string => {
     if (!url) return '/uploads/products/diverse-products-still-life.png'
     if (url.includes('diverse-products-still-life.png')) return url
+    // Si ya tiene timestamp, reemplazarlo
+    if (url.includes('?v=')) {
+      return url.replace(/v=\d+/, `v=${imageTimestamp}`)
+    }
     return `${url}?v=${imageTimestamp}`
   }
+
+  // Función para recargar el producto después de guardar
+  const reloadProduct = useCallback(async () => {
+    if (!productId) return
+    try {
+      console.log('🔄 Recargando producto después de guardar...')
+      const productData = await fetchProduct(productId, true)
+      if (productData) {
+        setProduct(productData)
+        setImageTimestamp(Date.now())
+        const newImage = productData.image || '/uploads/products/diverse-products-still-life.png'
+        setImagePreview(newImage)
+        setFormData(prev => ({ ...prev, image: newImage }))
+        // Limpiar imageFile para que no se use la imagen temporal
+        setImageFile(null)
+        console.log('✅ Producto recargado, imagen:', newImage)
+      }
+    } catch (error) {
+      console.error('Error recargando producto:', error)
+    }
+  }, [productId, fetchProduct])
+
+  // Escuchar evento de actualización de productos
+  useEffect(() => {
+    const handleProductUpdate = () => {
+      console.log('🔄 Evento product-updated recibido, recargando...')
+      reloadProduct()
+    }
+    
+    window.addEventListener('product-updated', handleProductUpdate)
+    return () => window.removeEventListener('product-updated', handleProductUpdate)
+  }, [reloadProduct])
 
   useEffect(() => {
     const loadProduct = async () => {
@@ -418,11 +433,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             isOnSale = false
           }
 
+          const imageUrl = safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png'
+          setImagePreview(imageUrl)
+          
           setFormData({
             name: safeToString(productData.name),
             price: price,
             originalPrice: originalPrice,
-            image: safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png',
+            image: imageUrl,
             youtubeVideoId: productData.youtubeVideoId || '',
             categoryId: categoryId,
             subcategoryIds: validSubcategoryIds,
@@ -446,7 +464,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           })
           
           setSelectedCategory(categoryId)
-          setImagePreview(safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png')
           setYoutubeUrl(productData.youtubeVideoId || '')
           
           if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
@@ -618,12 +635,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }
 
   const removeMainImage = useCallback(() => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    if (imagePreview && !imagePreview.includes('blob:')) {
+      // Solo revocar si es un blob
+    }
     setImageFile(null)
-    setImagePreview("")
+    setImagePreview('/uploads/products/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
-    setFormData(prev => ({ ...prev, image: "/uploads/products/diverse-products-still-life.png" }))
-  }, [imagePreview])
+    setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
+  }, [])
 
   const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -742,13 +761,19 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       await updateProduct(productId, formDataToSend)
       
-      if (imageFile) URL.revokeObjectURL(imagePreview)
+      if (imageFile) {
+        URL.revokeObjectURL(imagePreview)
+      }
       newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
       
-      // Emitir evento de actualización
+      // Emitir evento de actualización - esto disparará reloadProduct
       if (typeof window !== 'undefined') {
+        console.log('📡 Emitiendo evento product-updated...')
         window.dispatchEvent(new CustomEvent('product-updated'))
       }
+      
+      // También recargar inmediatamente
+      await reloadProduct()
       
       router.push("/admin/products")
     } catch (error) {
@@ -936,9 +961,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           alt="Preview"
                           className="w-48 h-48 object-cover rounded-lg border"
                           onError={(e) => {
+                            console.warn('Error cargando preview:', imagePreview)
                             const target = e.target as HTMLImageElement;
                             target.src = '/uploads/products/diverse-products-still-life.png';
                           }}
+                          onLoad={() => console.log('✅ Preview cargado:', imagePreview)}
                         />
                         <Button
                           type="button"
