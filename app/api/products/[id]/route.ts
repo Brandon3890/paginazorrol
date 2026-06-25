@@ -21,18 +21,26 @@ async function saveImage(file: File, filename: string): Promise<string> {
   const buffer = Buffer.from(bytes);
   
   const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
+  
+  // Crear la carpeta si no existe
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('📁 Creada carpeta:', uploadDir);
   }
 
-  let extension = file.type.split('/')[1] || 'jpg';
+  // Obtener la extensión correcta
+  let extension = file.type.split('/')[1] || 'png';
   if (extension === 'jpeg') extension = 'jpg';
   if (extension === 'svg+xml') extension = 'svg';
+  if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
+  // Generar nombre único
   const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
+  // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
+  console.log('✅ Imagen guardada:', filepath);
   
   return `/uploads/products/${uniqueFilename}`;
 }

@@ -96,6 +96,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
 
+  // Timeout para evitar carga infinita
+  const [timeoutReached, setTimeoutReached] = useState(false)
+
   useEffect(() => {
     const checkScreenSize = () => setIsMobileOrTablet(window.innerWidth < 1024)
     checkScreenSize()
@@ -109,13 +112,26 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     let isMounted = true
+    let timeoutId: NodeJS.Timeout
 
     const loadProduct = async () => {
       console.log(`🔄 Cargando producto ID: ${productId}`)
       setLoading(true)
       setError(null)
+      setTimeoutReached(false)
+      
+      // Timeout de 10 segundos para evitar carga infinita
+      timeoutId = setTimeout(() => {
+        if (isMounted && loading) {
+          console.error('❌ Timeout cargando producto')
+          setTimeoutReached(true)
+          setLoading(false)
+          setError('El producto está tardando demasiado en cargar. Intenta nuevamente.')
+        }
+      }, 10000)
       
       try {
+        console.log('📡 Llamando a fetchProduct...')
         const productData = await fetchProduct(productId, true)
         console.log('📦 ProductData recibido:', productData)
         
@@ -131,7 +147,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         console.log('✅ Producto cargado:', productData.name)
         console.log('📋 Specs:', productData.specs)
         console.log('📸 Imagen:', productData.image)
-        console.log('📸 Imágenes adicionales:', productData.additionalImages)
         
         setProduct(productData)
 
@@ -150,6 +165,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           setError(error instanceof Error ? error.message : 'Error al cargar el producto')
           setLoading(false)
         }
+      } finally {
+        clearTimeout(timeoutId)
       }
     }
 
@@ -160,7 +177,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       setError('ID de producto inválido')
     }
 
-    return () => { isMounted = false }
+    return () => { 
+      isMounted = false
+      clearTimeout(timeoutId)
+    }
   }, [productId, fetchProduct, refreshKey])
 
   // Escuchar evento de actualización
@@ -321,19 +341,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   }
 
   // Mostrar error si ocurrió
-  if (error) {
+  if (error || timeoutReached) {
     return (
       <div className="min-h-screen bg-white">
         <Header />
         <main className="container mx-auto px-4 py-8">
           <div className="text-center py-16">
             <h1 className="text-2xl font-semibold font-poppins mb-4">Error al cargar el producto</h1>
-            <p className="text-gray-600 mb-6">{error}</p>
-            <div className="flex gap-4 justify-center">
-              <Button onClick={() => window.location.reload()} className="bg-orange-600 hover:bg-orange-700">
+            <p className="text-gray-600 mb-6">{error || 'Tiempo de espera agotado'}</p>
+            <div className="flex gap-4 justify-center flex-wrap">
+              <Button 
+                onClick={() => window.location.reload()} 
+                className="bg-orange-600 hover:bg-orange-700"
+              >
                 Reintentar
               </Button>
-              <Button onClick={handleBack} variant="outline">
+              <Button 
+                onClick={handleBack} 
+                variant="outline"
+              >
                 Volver a la tienda
               </Button>
             </div>
@@ -353,6 +379,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             <div className="text-center">
               <div className="w-12 h-12 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <p className="font-poppins text-gray-600">Cargando producto...</p>
+              <p className="text-xs text-gray-400 mt-2">ID: {productId}</p>
             </div>
           </div>
         </main>
@@ -440,7 +467,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          {/* GALERÍA */}
+          {/* GALERÍA - Igual que antes */}
           <div className="space-y-4">
             <motion.div
               className="border-2 border-gray-200 rounded-2xl p-2 relative bg-white shadow-sm"
@@ -500,9 +527,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                             console.error('❌ Error cargando imagen:', currentMedia?.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
-                          }}
-                          onLoad={() => {
-                            console.log('✅ Imagen cargada:', currentMedia?.url)
                           }}
                         />
                         {currentMedia?.type === 'video' && !showVideo && (
@@ -600,7 +624,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             </motion.div>
           </div>
 
-          {/* INFO */}
+          {/* INFO - Igual que antes */}
           <motion.div
             className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
             initial={{ opacity: 0, x: 30 }}
