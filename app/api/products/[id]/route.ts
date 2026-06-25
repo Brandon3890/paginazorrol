@@ -3,6 +3,7 @@ import { Transaction } from '@/lib/db-transaction'
 import fs from 'fs'
 import path from 'path'
 import { sendProductOnSaleEmail } from '@/lib/email-service'
+import { normalizeProductName, generateUniqueFilename } from '@/lib/normalize-filename'
 
 interface QueryResult {
   [key: string]: any;
@@ -16,7 +17,7 @@ interface SubcategoryRow {
   displayOrder: number;
 }
 
-async function saveImage(file: File, filename: string): Promise<string> {
+async function saveImage(file: File, productName: string, isAdditional: boolean = false): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   
@@ -34,20 +35,22 @@ async function saveImage(file: File, filename: string): Promise<string> {
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
-  // Generar nombre único
-  const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
+  // NORMALIZAR EL NOMBRE - eliminar ñ, acentos, etc.
+  const baseName = normalizeProductName(productName);
+  const prefix = isAdditional ? `${baseName}-additional` : baseName;
+  const uniqueFilename = generateUniqueFilename(prefix, extension);
   const filepath = path.join(uploadDir, uniqueFilename);
 
   // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
-  console.log('✅ Imagen guardada:', filepath);
+  console.log(`✅ Imagen guardada: ${filepath} (nombre original: ${file.name})`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
-    return '/diverse-products-still-life.png';
+    return '/uploads/products/diverse-products-still-life.png';
   }
   
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
@@ -68,7 +71,7 @@ function correctImageUrl(imagePath: string | null): string {
     return `/uploads/products/${imagePath}`;
   }
   
-  return '/diverse-products-still-life.png';
+  return '/uploads/products/diverse-products-still-life.png';
 }
 
 function normalizeTags(tagsRaw: any): string[] {
@@ -514,11 +517,13 @@ export async function PUT(
       )
     }
 
-    // Procesar imagen principal
+    // Procesar imagen principal NUEVA
     const mainImageFile = formData.get('mainImage') as File
     if (mainImageFile && mainImageFile.size > 0) {
-      const mainImageUrl = await saveImage(mainImageFile, slug)
+      // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
+      const mainImageUrl = await saveImage(mainImageFile, name, false)
       await transaction.query('UPDATE products SET image = ? WHERE id = ?', [mainImageUrl, productId])
+      console.log('✅ Main image updated:', mainImageUrl)
     }
 
     // Eliminar imágenes marcadas
@@ -534,21 +539,24 @@ export async function PUT(
           const filePath = path.join(process.cwd(), 'public', 'uploads', 'products', filename)
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath)
+            console.log(`🗑️ Imagen eliminada: ${filePath}`)
           }
         }
       }
     }
 
-    // Procesar imágenes adicionales nuevas
+    // Procesar imágenes adicionales NUEVAS
     const additionalImages = formData.getAll('additionalImages') as File[]
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
       if (imageFile && imageFile.size > 0) {
-        const imageUrl = await saveImage(imageFile, `${slug}-additional-${Date.now()}-${i}`)
+        // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
+        const imageUrl = await saveImage(imageFile, name, true)
         await transaction.query(
           'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
           [productId, imageUrl, i]
         )
+        console.log(`✅ Additional image ${i + 1} saved: ${imageUrl}`)
       }
     }
 

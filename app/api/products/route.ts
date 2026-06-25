@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { Transaction } from '@/lib/db-transaction';
 import fs from 'fs';
 import path from 'path';
+import { normalizeProductName, generateUniqueFilename } from '@/lib/normalize-filename';
 
-async function saveImage(file: File, filename: string): Promise<string> {
+async function saveImage(file: File, productName: string, isAdditional: boolean = false): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   
@@ -21,13 +22,15 @@ async function saveImage(file: File, filename: string): Promise<string> {
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
-  // Generar nombre único
-  const uniqueFilename = `${filename}-${Date.now()}.${extension}`;
+  // NORMALIZAR EL NOMBRE - eliminar ñ, acentos, etc.
+  const baseName = normalizeProductName(productName);
+  const prefix = isAdditional ? `${baseName}-additional` : baseName;
+  const uniqueFilename = generateUniqueFilename(prefix, extension);
   const filepath = path.join(uploadDir, uniqueFilename);
 
   // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
-  console.log('✅ Imagen guardada:', filepath);
+  console.log(`✅ Imagen guardada: ${filepath} (nombre original: ${file.name})`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
@@ -275,7 +278,8 @@ export async function POST(request: Request) {
 
     if (mainImageFile && mainImageFile.size > 0) {
       try {
-        mainImageUrl = await saveImage(mainImageFile, slug);
+        // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
+        mainImageUrl = await saveImage(mainImageFile, name, false);
         console.log('✅ Main image saved:', mainImageUrl);
       } catch (error) {
         console.error('❌ Error saving main image:', error);
@@ -339,12 +343,13 @@ export async function POST(request: Request) {
       const imageFile = additionalImages[i];
       if (imageFile && imageFile.size > 0) {
         try {
-          const imageUrl = await saveImage(imageFile, `${slug}-additional-${i + 1}`);
+          // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
+          const imageUrl = await saveImage(imageFile, name, true);
           await transaction.query(
             'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
             [productId, imageUrl, i]
           );
-          console.log(`✅ Additional image ${i + 1} saved`);
+          console.log(`✅ Additional image ${i + 1} saved: ${imageUrl}`);
         } catch (error) {
           console.error(`❌ Error saving additional image ${i + 1}:`, error);
         }
