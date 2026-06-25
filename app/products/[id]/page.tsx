@@ -78,7 +78,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
 
-  const { products, fetchProduct, fetchProducts } = useProductStore()
+  const { fetchProduct } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
   const { isAuthenticated } = useAuthStore()
   const addItem = useCartStore((state) => state.addItem)
@@ -107,14 +107,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     fetchCategories()
   }, [fetchCategories])
 
-  // Cargar producto cuando cambia el ID
   useEffect(() => {
     let isMounted = true
 
     const loadProduct = async () => {
       setLoading(true)
       try {
-        // Forzar recarga desde la API
         const productData = await fetchProduct(productId, true)
         if (!isMounted) return
         
@@ -122,6 +120,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           router.push('/')
           return
         }
+        
+        console.log('📦 Producto cargado:', productData.name)
+        console.log('📋 Specs:', productData.specs)
         
         setProduct(productData)
         setImageReloadKey(prev => prev + 1)
@@ -146,7 +147,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     return () => { isMounted = false }
   }, [productId, fetchProduct, router])
 
-  // Escuchar eventos de actualización
   useEffect(() => {
     const handleUpdate = () => {
       console.log('🔄 Producto actualizado, recargando...')
@@ -342,7 +342,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
       : 0
   const currentMedia = allMedia[selectedMediaIndex] || allMedia[0]
+  
+  // ============================================================
+  // CORRECCIÓN: Parsear specs desde el producto
+  // ============================================================
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
+  console.log('📋 Specs mostrados en vista:', productSpecs)
 
   const imageKey = `${currentMedia?.url || ''}?t=${imageReloadKey}`
 
@@ -350,7 +355,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     <div className="min-h-screen bg-white">
       <Header />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Botón volver */}
         <motion.div
           className="mb-6"
           initial={{ opacity: 0, x: -20 }}
@@ -455,11 +459,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                           priority
                           unoptimized={true}
                           onError={(e) => {
-                            console.error('❌ Error cargando imagen:', currentMedia?.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
                           }}
-                          onLoad={() => console.log('✅ Imagen cargada:', currentMedia?.url)}
                         />
                         {currentMedia?.type === 'video' && !showVideo && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
@@ -732,7 +734,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </motion.div>
         </div>
 
-        {/* TODAS LAS CARACTERÍSTICAS - dinámico desde specs */}
+        {/* ============================================================
+            TODAS LAS CARACTERÍSTICAS - Mostrando specs del producto
+            ============================================================ */}
         <motion.div
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}

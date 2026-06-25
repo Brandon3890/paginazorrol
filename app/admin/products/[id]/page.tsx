@@ -304,9 +304,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       newErrors.image = true
     }
     
-    if (productSpecs.length === 0) {
-      newErrors.specs = true
-    }
+    // NO obligar a tener specs (puede estar vacío)
     
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -323,9 +321,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       
       setLoading(true)
       try {
-        const productData = await fetchProduct(productId)
+        // Forzar recarga desde la API
+        const productData = await fetchProduct(productId, true)
         
         if (productData) {
+          console.log('📦 Producto cargado:', productData)
           setProduct(productData)
           
           let allSubcategoryIds: string[] = []
@@ -344,7 +344,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const productTag = extractProductTag(productData)
           setSelectedTag(productTag)
 
-          const parsedSpecs = productData.specs ? parseProductSpecs(productData.specs) : []
+          // ============================================================
+          // CORRECCIÓN: Parsear specs correctamente desde el producto
+          // ============================================================
+          let parsedSpecs: ProductSpec[] = []
+          if (productData.specs) {
+            try {
+              parsedSpecs = parseProductSpecs(productData.specs)
+              console.log('📋 Specs parseados desde el producto:', parsedSpecs)
+            } catch (e) {
+              console.error('Error parseando specs:', e)
+            }
+          }
           setProductSpecs(parsedSpecs)
 
           let price = safeToString(productData.price)
@@ -651,7 +662,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('categoryId', safeToString(formData.categoryId))
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('tags', selectedTag)
-      formDataToSend.append('specs', JSON.stringify(productSpecs))
+      
+      // ============================================================
+      // CORRECCIÓN: Enviar specs siempre como JSON string
+      // ============================================================
+      const specsString = JSON.stringify(productSpecs)
+      console.log('📋 Enviando specs al servidor:', specsString)
+      formDataToSend.append('specs', specsString)
       
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
@@ -682,11 +699,16 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
-      } else {
+        console.log('📸 Enviando nueva imagen principal:', imageFile.name)
+      } else if (formData.image) {
         formDataToSend.append('image', safeToString(formData.image))
+        console.log('📸 Manteniendo imagen existente:', formData.image)
       }
 
-      newAdditionalImageFiles.forEach(file => formDataToSend.append('additionalImages', file))
+      newAdditionalImageFiles.forEach(file => {
+        formDataToSend.append('additionalImages', file)
+        console.log('📸 Enviando imagen adicional:', file.name)
+      })
 
       await updateProduct(productId, formDataToSend)
       
@@ -1103,14 +1125,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   </div>
                 </div>
 
+                {/* ============================================================
+                    SPECS EDITOR - Aquí se muestran los specs del producto
+                    ============================================================ */}
                 <div className="md:col-span-2 border rounded-lg p-4">
                   <SpecsEditor 
                     specs={productSpecs} 
                     onChange={setProductSpecs} 
                   />
-                  {errors.specs && (
-                    <p className="text-xs text-red-500 mt-2">Debes agregar al menos una caracteristica</p>
-                  )}
                 </div>
 
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
