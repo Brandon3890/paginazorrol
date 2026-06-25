@@ -77,7 +77,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
 
-  const { fetchProduct } = useProductStore()
+  const { fetchProduct, products } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
   const { isAuthenticated } = useAuthStore()
   const addItem = useCartStore((state) => state.addItem)
@@ -87,8 +87,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [isAddingToCart, setIsAddingToCart] = useState(false)
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
-  const [imageReloadKey, setImageReloadKey] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const [product, setProduct] = useState<ProductType | null>(null)
   const [recommendedProducts, setRecommendedProducts] = useState<ProductType[]>([])
@@ -106,12 +106,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     fetchCategories()
   }, [fetchCategories])
 
+  // Cargar producto SOLO cuando cambia el ID o el refreshKey
   useEffect(() => {
     let isMounted = true
 
     const loadProduct = async () => {
       setLoading(true)
       try {
+        // Forzar recarga desde la API con timestamp
         const productData = await fetchProduct(productId, true)
         if (!isMounted) return
         
@@ -121,10 +123,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         }
         
         console.log('📦 Producto cargado:', productData.name)
-        console.log('📋 Specs:', productData.specs)
+        console.log('📋 Specs desde API:', productData.specs)
+        console.log('📸 Imagen:', productData.image)
+        console.log('📸 Imágenes adicionales:', productData.additionalImages)
         
         setProduct(productData)
-        setImageReloadKey(prev => prev + 1)
 
         if (productData.recommendedProducts?.length) {
           const allProducts = useProductStore.getState().products
@@ -144,23 +147,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     if (productId) loadProduct()
 
     return () => { isMounted = false }
-  }, [productId, fetchProduct, router])
+  }, [productId, fetchProduct, router, refreshKey])
 
-  // Escuchar evento de actualización
+  // Escuchar evento de actualización - SOLO cuando se emite desde admin
   useEffect(() => {
     const handleUpdate = () => {
       console.log('🔄 Producto actualizado, recargando...')
-      fetchProduct(productId, true).then((data) => {
-        if (data) {
-          setProduct(data)
-          setImageReloadKey(prev => prev + 1)
-        }
-      })
+      // Incrementar refreshKey para forzar recarga
+      setRefreshKey(prev => prev + 1)
     }
     
     window.addEventListener('product-updated', handleUpdate)
     return () => window.removeEventListener('product-updated', handleUpdate)
-  }, [productId, fetchProduct])
+  }, [])
 
   const correctImageUrl = (url: string): string => {
     if (!url) return '/uploads/products/diverse-products-still-life.png'
@@ -168,6 +167,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     if (url.startsWith('/')) return url
     if (url.startsWith('uploads/')) return `/${url}`
     return `/uploads/products/${url}`
+  }
+
+  const getImageWithTimestamp = (url: string): string => {
+    const corrected = correctImageUrl(url)
+    // Si es la imagen por defecto, no agregar timestamp para evitar recargas innecesarias
+    if (corrected.includes('diverse-products-still-life.png')) return corrected
+    return `${corrected}?v=${refreshKey}`
   }
 
   const getProductCategoriesInfo = () => {
@@ -196,8 +202,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const categoriesInfo = getProductCategoriesInfo()
 
   const allMedia: MediaItem[] = [
-    ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
-    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
+    ...(product ? [{ type: 'image' as const, url: getImageWithTimestamp(product.image) }] : []),
+    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: getImageWithTimestamp(img) })) || []),
     ...(product?.youtubeVideoId
       ? [
           {
@@ -277,7 +283,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             transition={{ delay: 0.1 }}
           >
             <Image
-              src={correctImageUrl(product.image)}
+              src={getImageWithTimestamp(product.image)}
               alt={product.name}
               fill
               className="object-cover"
@@ -348,8 +354,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   // ============================================================
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
   console.log('📋 Specs mostrados en vista:', productSpecs)
-
-  const imageKey = `${currentMedia?.url || ''}?t=${imageReloadKey}`
 
   return (
     <div className="min-h-screen bg-white">
@@ -444,7 +448,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                       </motion.div>
                     ) : (
                       <motion.div
-                        key={imageKey}
+                        key={currentMedia?.url || 'default'}
                         initial={{ opacity: 0, scale: 1.1 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
@@ -452,7 +456,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                         className="relative w-full h-full"
                       >
                         <Image
-                          key={imageKey}
+                          key={currentMedia?.url || 'default'}
                           src={currentMedia?.url || '/uploads/products/diverse-products-still-life.png'}
                           alt={product.name}
                           fill
@@ -463,6 +467,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                             console.error('❌ Error cargando imagen:', currentMedia?.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
+                          }}
+                          onLoad={() => {
+                            console.log('✅ Imagen cargada:', currentMedia?.url)
                           }}
                         />
                         {currentMedia?.type === 'video' && !showVideo && (
@@ -519,47 +526,43 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               transition={{ duration: 0.4, delay: 0.2 }}
             >
               <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
-                {allMedia.map((media, i) => {
-                  const thumbKey = `${media.url}?t=${imageReloadKey}`
-                  return (
-                    <motion.div
-                      key={i}
-                      onClick={() => {
-                        setSelectedMediaIndex(i)
-                        setShowVideo(false)
+                {allMedia.map((media, i) => (
+                  <motion.div
+                    key={i}
+                    onClick={() => {
+                      setSelectedMediaIndex(i)
+                      setShowVideo(false)
+                    }}
+                    className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
+                      selectedMediaIndex === i
+                        ? 'border-orange-500 ring-2 ring-orange-200'
+                        : 'border-gray-300 hover:border-orange-400'
+                    }`}
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    <Image
+                      src={media.url}
+                      alt={`Media ${i + 1}`}
+                      width={80}
+                      height={80}
+                      className="object-cover w-full h-full"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/uploads/products/diverse-products-still-life.png'
                       }}
-                      className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
-                        selectedMediaIndex === i
-                          ? 'border-orange-500 ring-2 ring-orange-200'
-                          : 'border-gray-300 hover:border-orange-400'
-                      }`}
-                      whileHover={{ scale: 1.05, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                    >
-                      <Image
-                        key={thumbKey}
-                        src={media.type === 'video' ? media.thumbnail || media.url : media.url}
-                        alt={`Media ${i + 1}`}
-                        width={80}
-                        height={80}
-                        className="object-cover w-full h-full"
-                        unoptimized={true}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = '/uploads/products/diverse-products-still-life.png'
-                        }}
-                      />
-                      {media.type === 'video' && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                          <Youtube className="text-white w-5 h-5" />
-                        </div>
-                      )}
-                    </motion.div>
-                  )
-                })}
+                    />
+                    {media.type === 'video' && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <Youtube className="text-white w-5 h-5" />
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           </div>
@@ -805,8 +808,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 >
                   <div className="relative aspect-square bg-gray-100">
                     <Image
-                      key={`${recProduct.image}?t=${imageReloadKey}`}
-                      src={correctImageUrl(recProduct.image)}
+                      src={getImageWithTimestamp(recProduct.image)}
                       alt={recProduct.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
