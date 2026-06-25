@@ -71,9 +71,10 @@ type MediaItem = {
 interface ProductDetailViewProps {
   productId: number;
   onBack?: () => void;
+  imageTimestamp?: number;
 }
 
-export function ProductDetailView({ productId, onBack }: ProductDetailViewProps) {
+export function ProductDetailView({ productId, onBack, imageTimestamp }: ProductDetailViewProps) {
   const router = useRouter()
   const { fetchProduct } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
@@ -85,7 +86,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [isAddingToCart, setIsAddingToCart] = useState(false)
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
-  const [imageTimestamp, setImageTimestamp] = useState(Date.now())
+  const [localImageTimestamp, setLocalImageTimestamp] = useState(Date.now())
 
   const [product, setProduct] = useState<ProductType | null>(null)
   const [loading, setLoading] = useState(true)
@@ -102,6 +103,9 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
+  // Usar timestamp externo si se proporciona, sino el local
+  const effectiveTimestamp = imageTimestamp || localImageTimestamp
+
   useEffect(() => {
     let cancelled = false
 
@@ -112,7 +116,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       setShowVideo(false)
 
       try {
-        const productData = await fetchProduct(productId)
+        const productData = await fetchProduct(productId, true) // fuerza recarga
         if (cancelled) return
 
         if (!productData) {
@@ -122,7 +126,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
         }
 
         setProduct(productData)
-        setImageTimestamp(Date.now())
+        setLocalImageTimestamp(Date.now())
 
         if (productData.recommendedProducts?.length) {
           const allProducts = useProductStore.getState().products
@@ -145,7 +149,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     if (productId) loadProduct()
 
     return () => { cancelled = true }
-  }, [productId])
+  }, [productId, onBack, router, fetchProduct])
 
   const correctImageUrl = (url: string): string => {
     if (!url) return '/diverse-products-still-life.png'
@@ -158,7 +162,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const getImageUrlWithTimestamp = (url: string): string => {
     const corrected = correctImageUrl(url)
     if (corrected.startsWith('http://') || corrected.startsWith('https://')) return corrected
-    return `${corrected}?t=${imageTimestamp}`
+    return `${corrected}?t=${effectiveTimestamp}`
   }
 
   const getProductCategoriesInfo = () => {
@@ -183,8 +187,8 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const categoriesInfo = getProductCategoriesInfo()
 
   const allMedia: MediaItem[] = [
-    ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
-    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
+    ...(product ? [{ type: 'image' as const, url: product.image }] : []),
+    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: img })) || []),
     ...(product?.youtubeVideoId ? [{
       type: 'video' as const,
       url: `https://img.youtube.com/vi/${product.youtubeVideoId}/maxresdefault.jpg`,
@@ -353,7 +357,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          {/* Columna izquierda: imágenes */}
           <div className="space-y-4">
             <motion.div
               className="border-2 border-gray-200 rounded-2xl p-2 relative bg-white shadow-sm"
@@ -394,7 +397,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       </motion.div>
                     ) : (
                       <motion.div
-                        key={currentMedia?.url}
+                        key={currentMedia?.url + effectiveTimestamp}
                         initial={{ opacity: 0, scale: 1.05 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
@@ -462,7 +465,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
               </div>
             </motion.div>
 
-            {/* Thumbnails */}
             <motion.div
               className="border border-gray-200 rounded-xl p-3 bg-gray-50"
               initial={{ opacity: 0, y: 20 }}
@@ -508,7 +510,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             </motion.div>
           </div>
 
-          {/* Columna derecha: info */}
           <motion.div
             className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
             initial={{ opacity: 0, x: 30 }}
@@ -611,7 +612,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </motion.div>
         </div>
 
-        {/* Specs */}
         <motion.div
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}
@@ -636,7 +636,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           )}
         </motion.div>
 
-        {/* Productos recomendados */}
         {recommendedProducts.length > 0 && (
           <motion.div
             className="mt-10"
