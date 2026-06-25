@@ -317,7 +317,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const getImageWithTimestamp = (url: string): string => {
     if (!url) return '/uploads/products/diverse-products-still-life.png'
     if (url.includes('diverse-products-still-life.png')) return url
-    // Si ya tiene timestamp, reemplazarlo
     if (url.includes('?v=')) {
       return url.replace(/v=\d+/, `v=${imageTimestamp}`)
     }
@@ -331,14 +330,16 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       console.log('🔄 Recargando producto después de guardar...')
       const productData = await fetchProduct(productId, true)
       if (productData) {
+        console.log('📦 Producto recargado:', productData)
         setProduct(productData)
         setImageTimestamp(Date.now())
         const newImage = productData.image || '/uploads/products/diverse-products-still-life.png'
+        console.log('📸 Nueva imagen:', newImage)
+        // ACTUALIZAR imagePreview con la nueva imagen
         setImagePreview(newImage)
         setFormData(prev => ({ ...prev, image: newImage }))
-        // Limpiar imageFile para que no se use la imagen temporal
         setImageFile(null)
-        console.log('✅ Producto recargado, imagen:', newImage)
+        console.log('✅ Producto recargado correctamente')
       }
     } catch (error) {
       console.error('Error recargando producto:', error)
@@ -365,9 +366,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         const productData = await fetchProduct(productId, true)
         
         if (productData) {
-          console.log('📦 Producto cargado:', productData)
+          console.log('📦 Producto cargado inicialmente:', productData)
           setProduct(productData)
-          setImageTimestamp(Date.now())
           
           let allSubcategoryIds: string[] = []
           if (productData.subcategoryIds && Array.isArray(productData.subcategoryIds)) {
@@ -434,6 +434,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           }
 
           const imageUrl = safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png'
+          console.log('📸 Imagen inicial:', imageUrl)
           setImagePreview(imageUrl)
           
           setFormData({
@@ -635,9 +636,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }
 
   const removeMainImage = useCallback(() => {
-    if (imagePreview && !imagePreview.includes('blob:')) {
-      // Solo revocar si es un blob
-    }
     setImageFile(null)
     setImagePreview('/uploads/products/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
@@ -761,20 +759,26 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       await updateProduct(productId, formDataToSend)
       
-      if (imageFile) {
+      // Limpiar URLs de blob
+      if (imageFile && imagePreview && imagePreview.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreview)
       }
-      newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
+      newAdditionalImagePreviews.forEach(url => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url)
+        }
+      })
       
-      // Emitir evento de actualización - esto disparará reloadProduct
+      // Primero emitir evento para que otros componentes se actualicen
       if (typeof window !== 'undefined') {
         console.log('📡 Emitiendo evento product-updated...')
         window.dispatchEvent(new CustomEvent('product-updated'))
       }
       
-      // También recargar inmediatamente
+      // Luego recargar el producto inmediatamente
       await reloadProduct()
       
+      // Finalmente redirigir
       router.push("/admin/products")
     } catch (error) {
       console.error("Error updating product:", error)
@@ -961,11 +965,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           alt="Preview"
                           className="w-48 h-48 object-cover rounded-lg border"
                           onError={(e) => {
-                            console.warn('Error cargando preview:', imagePreview)
+                            console.warn('⚠️ Error cargando preview, usando imagen por defecto')
                             const target = e.target as HTMLImageElement;
                             target.src = '/uploads/products/diverse-products-still-life.png';
                           }}
-                          onLoad={() => console.log('✅ Preview cargado:', imagePreview)}
                         />
                         <Button
                           type="button"
