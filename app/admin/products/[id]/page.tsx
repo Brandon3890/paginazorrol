@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, use, useCallback, useMemo } from "react"
+import React, { useEffect, useState, use, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -199,6 +199,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
 
+  // REFS PARA CONTROLAR CARGAS
+  const isLoadingRef = useRef(false)
+  const isInitialLoadRef = useRef(true)
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [selectedTag, setSelectedTag] = useState<string>("")
@@ -323,19 +328,26 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     return `${url}?v=${imageTimestamp}`
   }
 
-  // Función para recargar el producto después de guardar
-  const reloadProduct = useCallback(async () => {
+  // Función para recargar el producto con protección contra múltiples llamadas
+  const reloadProduct = useCallback(async (force: boolean = false) => {
+    if (isLoadingRef.current && !force) {
+      console.log('⏳ Ya hay una carga en progreso, ignorando...')
+      return
+    }
+
     if (!productId) return
+
+    isLoadingRef.current = true
+    console.log('🔄 Recargando producto...')
+
     try {
-      console.log('🔄 Recargando producto después de guardar...')
       const productData = await fetchProduct(productId, true)
       if (productData) {
-        console.log('📦 Producto recargado:', productData)
+        console.log('📦 Producto recargado:', productData.name)
         setProduct(productData)
-        // ACTUALIZAR TIMESTAMP PARA FORZAR RECARGA DE IMÁGENES
         setImageTimestamp(Date.now())
+        
         const newImage = productData.image || '/uploads/products/diverse-products-still-life.png'
-        console.log('📸 Nueva imagen:', newImage)
         setImagePreview(newImage)
         setFormData(prev => ({ ...prev, image: newImage }))
         setImageFile(null)
@@ -343,34 +355,51 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       }
     } catch (error) {
       console.error('Error recargando producto:', error)
+    } finally {
+      isLoadingRef.current = false
     }
   }, [productId, fetchProduct])
 
-  // Escuchar evento de actualización de productos
+  // ESCUCHAR EVENTO DE ACTUALIZACIÓN - SOLO UNA VEZ
   useEffect(() => {
     const handleProductUpdate = () => {
-      console.log('🔄 Evento product-updated recibido, recargando...')
-      // ACTUALIZAR TIMESTAMP AL RECIBIR EVENTO
-      setImageTimestamp(Date.now())
-      reloadProduct()
+      console.log('🔄 Evento product-updated recibido')
+      // Limpiar timeout anterior
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current)
+      }
+      // Recargar con debounce
+      loadTimeoutRef.current = setTimeout(() => {
+        reloadProduct(true)
+      }, 300)
     }
     
     window.addEventListener('product-updated', handleProductUpdate)
-    return () => window.removeEventListener('product-updated', handleProductUpdate)
+    return () => {
+      window.removeEventListener('product-updated', handleProductUpdate)
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current)
+      }
+    }
   }, [reloadProduct])
 
+  // CARGA INICIAL DEL PRODUCTO - SOLO UNA VEZ
   useEffect(() => {
+    if (!productId || categories.length === 0) return
+    if (!isInitialLoadRef.current) return
+    
     const loadProduct = async () => {
-      if (!productId) return
-      
+      if (isLoadingRef.current) return
+      isLoadingRef.current = true
       setLoading(true)
+      
       try {
+        console.log('📦 Cargando producto inicial...')
         const productData = await fetchProduct(productId, true)
         
         if (productData) {
-          console.log('📦 Producto cargado inicialmente:', productData)
+          console.log('📦 Producto cargado:', productData.name)
           setProduct(productData)
-          // ACTUALIZAR TIMESTAMP AL CARGAR
           setImageTimestamp(Date.now())
           
           let allSubcategoryIds: string[] = []
@@ -397,7 +426,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
               } else if (typeof productData.specs === 'string') {
                 parsedSpecs = parseProductSpecs(productData.specs)
               }
-              console.log('📋 Specs parseados:', parsedSpecs)
+              console.log('📋 Specs parseados:', parsedSpecs.length)
             } catch (e) {
               console.error('Error parseando specs:', e)
             }
@@ -474,17 +503,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
             setExistingAdditionalImages(productData.additionalImages)
           }
+          
+          isInitialLoadRef.current = false
         }
       } catch (error) {
         console.error('Error loading product:', error)
       } finally {
         setLoading(false)
+        isLoadingRef.current = false
       }
     }
 
-    if (categories.length > 0) {
-      loadProduct()
-    }
+    loadProduct()
   }, [productId, fetchProduct, categories])
 
   const handleTagSelect = (tagValue: string) => {
@@ -624,7 +654,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
-          // ACTUALIZAR TIMESTAMP AL SUBIR NUEVA IMAGEN
           setImageTimestamp(Date.now())
           setFormData(prev => ({ ...prev, image: "" }))
           if (errors.image) setErrors(prev => ({ ...prev, image: false }))
@@ -643,7 +672,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const removeMainImage = useCallback(() => {
     setImageFile(null)
     setImagePreview('/uploads/products/diverse-products-still-life.png')
-    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
   }, [])
@@ -663,7 +691,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setNewAdditionalImageFiles(prev => [...prev, resizedFile])
           setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
-          // ACTUALIZAR TIMESTAMP AL SUBIR IMAGEN ADICIONAL
           setImageTimestamp(Date.now())
         } catch (error) {
           console.error("Error procesando imagen adicional:", error)
@@ -680,7 +707,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const removeExistingAdditionalImage = useCallback((index: number) => {
     setDeletedExistingImages(prev => [...prev, existingAdditionalImages[index]])
     setExistingAdditionalImages(prev => prev.filter((_, i) => i !== index))
-    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN ADICIONAL
     setImageTimestamp(Date.now())
   }, [existingAdditionalImages])
 
@@ -688,7 +714,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     URL.revokeObjectURL(newAdditionalImagePreviews[index])
     setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
-    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN ADICIONAL
     setImageTimestamp(Date.now())
   }, [newAdditionalImagePreviews])
 
@@ -711,7 +736,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       return
     }
 
+    if (isLoadingRef.current) {
+      alert("Espera a que termine la carga actual antes de guardar")
+      return
+    }
+
     setIsUploading(true)
+    isLoadingRef.current = true
+    
     try {
       const formDataToSend = new FormData()
       
@@ -778,23 +810,26 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         }
       })
       
-      // PRIMERO: Emitir evento para que otros componentes se actualicen
+      // Emitir evento para actualizar otros componentes
       if (typeof window !== 'undefined') {
         console.log('📡 Emitiendo evento product-updated...')
         window.dispatchEvent(new CustomEvent('product-updated'))
       }
       
-      // SEGUNDO: Recargar el producto inmediatamente
-      await reloadProduct()
+      // Recargar el producto después de guardar (con delay para evitar race conditions)
+      setTimeout(() => {
+        reloadProduct(true)
+      }, 500)
       
-      // TERCERO: Actualizar timestamp para forzar recarga de imágenes
-      setImageTimestamp(Date.now())
+      // Redirigir después de un tiempo
+      setTimeout(() => {
+        router.push("/admin/products")
+      }, 1500)
       
-      // FINALMENTE: Redirigir
-      router.push("/admin/products")
     } catch (error) {
       console.error("Error updating product:", error)
       alert("Error al actualizar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'))
+      isLoadingRef.current = false
     } finally {
       setIsUploading(false)
     }
@@ -1652,7 +1687,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
               </div>
 
               <div className="flex gap-4">
-                <Button type="submit" disabled={isUploading} className="bg-[#C2410C] hover:bg-[#9A3412]">
+                <Button type="submit" disabled={isUploading || isLoadingRef.current} className="bg-[#C2410C] hover:bg-[#9A3412]">
                   {isUploading ? "Guardando..." : "Guardar Cambios"}
                 </Button>
                 <Link href="/admin/products">

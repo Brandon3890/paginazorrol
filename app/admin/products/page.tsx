@@ -1,7 +1,6 @@
-// app/admin/products/page.tsx - COMPLETO CON DIÁLOGOS CORREGIDOS
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -50,7 +49,6 @@ interface Product {
   updatedAt: string;
 }
 
-// Función auxiliar para asegurar que el precio sea número
 const ensureNumber = (value: any): number => {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -60,18 +58,15 @@ const ensureNumber = (value: any): number => {
   return 0;
 };
 
-// Función para formatear precio en CLP
 const formatCLP = (price: number): string => {
   return Math.round(price).toLocaleString('es-CL');
 };
 
-// Función para calcular porcentaje de descuento
 const calculateDiscountPercent = (originalPrice: number, currentPrice: number): number => {
   if (!originalPrice || originalPrice <= currentPrice) return 0;
   return Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
 };
 
-// Componente de imagen con manejo de errores
 const ProductImage = ({ src, alt, className }: { src: string; alt: string; className: string }) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -145,22 +140,41 @@ export default function AdminProductsPage() {
   const [productNameForDelete, setProductNameForDelete] = useState<string>("")
   const [actionLoading, setActionLoading] = useState(false)
 
+  // REF PARA CONTROLAR REFRESCOS
+  const isFetchingRef = useRef(false)
+  const lastRefreshRef = useRef<number>(0)
+  const MIN_REFRESH_INTERVAL = 3000 // 3 segundos mínimo entre refrescos
+
   // Cargar productos al montar el componente
   useEffect(() => {
-    console.log('🔄 AdminProductsPage mounted, fetching products with admin parameters...');
-    fetchProducts({ includeInactive: true, isAdmin: true });
-  }, [fetchProducts]);
+    console.log('🔄 AdminProductsPage mounted, fetching products...');
+    fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+  }, []); // Solo se ejecuta una vez
 
-  // Debug del estado actual
+  // Escuchar evento de actualización de productos
   useEffect(() => {
-    if (products.length > 0) {
-      console.log('📦 Current products state:', {
-        total: products.length,
-        active: products.filter(p => p.isActive).length,
-        inactive: products.filter(p => !p.isActive).length,
-      });
+    const handleProductUpdate = () => {
+      console.log('🔄 Evento product-updated recibido en lista de productos')
+      // Recargar con debounce
+      const now = Date.now()
+      if (now - lastRefreshRef.current < MIN_REFRESH_INTERVAL) {
+        console.log('⏳ Demasiado pronto para refrescar, ignorando...')
+        return
+      }
+      lastRefreshRef.current = now
+      
+      if (!isFetchingRef.current) {
+        isFetchingRef.current = true
+        fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+          .finally(() => {
+            isFetchingRef.current = false
+          })
+      }
     }
-  }, [products]);
+    
+    window.addEventListener('product-updated', handleProductUpdate)
+    return () => window.removeEventListener('product-updated', handleProductUpdate)
+  }, [fetchProducts])
 
   const handleDeactivate = (id: number, productName: string) => {
     setProductToDelete(id)
@@ -177,6 +191,10 @@ export default function AdminProductsPage() {
         setDeleteDialogOpen(false)
         setProductToDelete(null)
         setProductNameForDelete("")
+        // Recargar después de desactivar
+        setTimeout(() => {
+          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        }, 500)
       } catch (error) {
         console.error('Error deactivating product:', error)
       } finally {
@@ -200,6 +218,10 @@ export default function AdminProductsPage() {
         setPermanentDeleteDialogOpen(false)
         setProductToPermanentlyDelete(null)
         setProductNameForDelete("")
+        // Recargar después de eliminar
+        setTimeout(() => {
+          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        }, 500)
       } catch (error) {
         console.error('Error permanently deleting product:', error)
       } finally {
@@ -223,6 +245,10 @@ export default function AdminProductsPage() {
         setReactivateDialogOpen(false)
         setProductToReactivate(null)
         setProductNameForDelete("")
+        // Recargar después de reactivar
+        setTimeout(() => {
+          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        }, 500)
       } catch (error) {
         console.error('Error reactivating product:', error)
       } finally {
@@ -233,13 +259,32 @@ export default function AdminProductsPage() {
 
   const handleRetry = () => {
     clearError()
-    fetchProducts({ includeInactive: true, isAdmin: true })
+    if (!isFetchingRef.current) {
+      isFetchingRef.current = true
+      fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        .finally(() => {
+          isFetchingRef.current = false
+        })
+    }
   }
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
+    const now = Date.now()
+    if (now - lastRefreshRef.current < MIN_REFRESH_INTERVAL) {
+      console.log('⏳ Demasiado pronto para refrescar, ignorando...')
+      return
+    }
+    lastRefreshRef.current = now
+    
     console.log('🔄 Manual refresh triggered');
-    fetchProducts({ includeInactive: true, isAdmin: true })
-  }
+    if (!isFetchingRef.current) {
+      isFetchingRef.current = true
+      fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        .finally(() => {
+          isFetchingRef.current = false
+        })
+    }
+  }, [fetchProducts])
 
   const ProductCard = ({ product, isInactive = false }: { product: Product; isInactive?: boolean }) => {
     const price = ensureNumber(product.price);
@@ -362,7 +407,7 @@ export default function AdminProductsPage() {
   const activeProducts = products.filter((p) => p.isActive)
   const inactiveProducts = products.filter((p) => !p.isActive)
 
-  if (loading) {
+  if (loading && products.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -396,6 +441,16 @@ export default function AdminProductsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh}
+                disabled={isFetchingRef.current}
+                className="flex items-center gap-1"
+              >
+                <RefreshCw className={`w-4 h-4 ${isFetchingRef.current ? 'animate-spin' : ''}`} />
+                {isFetchingRef.current ? 'Actualizando...' : 'Actualizar'}
+              </Button>
               <Link href="/admin/products/new">
                 <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412]" disabled={actionLoading}>
                   <Plus className="w-4 h-4" />
