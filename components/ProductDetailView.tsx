@@ -155,12 +155,28 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   }, [product, products]);
 
   const correctImageUrl = (url: string) => {
-    if (!url) return '/uploads/products/diverse-products-still-life.png';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (url.startsWith('/')) return url;
-    if (url.startsWith('uploads/')) return `/${url}`;
-    return `/uploads/products/${url}`;
-  };
+  console.log('🔍 Corrigiendo URL de imagen:', url);
+  if (!url) {
+    console.log('⚠️ URL vacía, usando imagen por defecto');
+    return '/uploads/products/diverse-products-still-life.png';
+  }
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    console.log('✅ URL externa:', url);
+    return url;
+  }
+  if (url.startsWith('/')) {
+    console.log('✅ URL absoluta:', url);
+    return url;
+  }
+  if (url.startsWith('uploads/')) {
+    const corrected = `/${url}`;
+    console.log('✅ URL corregida (uploads/):', corrected);
+    return corrected;
+  }
+  const corrected = `/uploads/products/${url}`;
+  console.log('✅ URL corregida (productos):', corrected);
+  return corrected;
+};
 
   // Función para obtener URL de imagen con timestamp para forzar recarga
   const getImageUrlWithTimestamp = (url: string) => {
