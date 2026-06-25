@@ -77,7 +77,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
 
-  const { fetchProduct, products } = useProductStore()
+  const { fetchProduct } = useProductStore()
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
   const { isAuthenticated } = useAuthStore()
   const addItem = useCartStore((state) => state.addItem)
@@ -88,6 +88,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [product, setProduct] = useState<ProductType | null>(null)
@@ -106,24 +107,29 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     fetchCategories()
   }, [fetchCategories])
 
-  // Cargar producto SOLO cuando cambia el ID o el refreshKey
   useEffect(() => {
     let isMounted = true
 
     const loadProduct = async () => {
+      console.log(`🔄 Cargando producto ID: ${productId}`)
       setLoading(true)
+      setError(null)
+      
       try {
-        // Forzar recarga desde la API con timestamp
         const productData = await fetchProduct(productId, true)
+        console.log('📦 ProductData recibido:', productData)
+        
         if (!isMounted) return
         
         if (!productData) {
-          router.push('/')
+          console.error('❌ Producto no encontrado')
+          setError('Producto no encontrado')
+          setLoading(false)
           return
         }
         
-        console.log('📦 Producto cargado:', productData.name)
-        console.log('📋 Specs desde API:', productData.specs)
+        console.log('✅ Producto cargado:', productData.name)
+        console.log('📋 Specs:', productData.specs)
         console.log('📸 Imagen:', productData.image)
         console.log('📸 Imágenes adicionales:', productData.additionalImages)
         
@@ -136,24 +142,31 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           )
           setRecommendedProducts(recs)
         }
+        setLoading(false)
+        
       } catch (error) {
-        console.error('Error cargando producto:', error)
-        if (isMounted) router.push('/')
-      } finally {
-        if (isMounted) setLoading(false)
+        console.error('❌ Error cargando producto:', error)
+        if (isMounted) {
+          setError(error instanceof Error ? error.message : 'Error al cargar el producto')
+          setLoading(false)
+        }
       }
     }
 
-    if (productId) loadProduct()
+    if (productId) {
+      loadProduct()
+    } else {
+      setLoading(false)
+      setError('ID de producto inválido')
+    }
 
     return () => { isMounted = false }
-  }, [productId, fetchProduct, router, refreshKey])
+  }, [productId, fetchProduct, refreshKey])
 
-  // Escuchar evento de actualización - SOLO cuando se emite desde admin
+  // Escuchar evento de actualización
   useEffect(() => {
     const handleUpdate = () => {
       console.log('🔄 Producto actualizado, recargando...')
-      // Incrementar refreshKey para forzar recarga
       setRefreshKey(prev => prev + 1)
     }
     
@@ -171,7 +184,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   const getImageWithTimestamp = (url: string): string => {
     const corrected = correctImageUrl(url)
-    // Si es la imagen por defecto, no agregar timestamp para evitar recargas innecesarias
     if (corrected.includes('diverse-products-still-life.png')) return corrected
     return `${corrected}?v=${refreshKey}`
   }
@@ -308,6 +320,30 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     router.push('/')
   }
 
+  // Mostrar error si ocurrió
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="text-center py-16">
+            <h1 className="text-2xl font-semibold font-poppins mb-4">Error al cargar el producto</h1>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <div className="flex gap-4 justify-center">
+              <Button onClick={() => window.location.reload()} className="bg-orange-600 hover:bg-orange-700">
+                Reintentar
+              </Button>
+              <Button onClick={handleBack} variant="outline">
+                Volver a la tienda
+              </Button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -349,9 +385,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       : 0
   const currentMedia = allMedia[selectedMediaIndex] || allMedia[0]
   
-  // ============================================================
-  // CORRECCIÓN: Parsear specs desde el producto
-  // ============================================================
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
   console.log('📋 Specs mostrados en vista:', productSpecs)
 
@@ -739,9 +772,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           </motion.div>
         </div>
 
-        {/* ============================================================
-            TODAS LAS CARACTERÍSTICAS - Mostrando specs del producto
-            ============================================================ */}
+        {/* TODAS LAS CARACTERÍSTICAS */}
         <motion.div
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}
