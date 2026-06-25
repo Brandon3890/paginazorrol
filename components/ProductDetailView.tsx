@@ -158,17 +158,30 @@ const correctImageUrl = (url: string) => {
   if (!url) return '/uploads/products/diverse-products-still-life.png';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/api/images/')) return url;
-  if (url.startsWith('/uploads/')) {
-    // Usar el endpoint de API para servir imágenes
-    const filename = url.replace('/uploads/products/', '');
-    return `/api/images/${filename}`;
+  
+  // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
+  if (url.includes('/uploads/products/')) {
+    const filename = url.split('/uploads/products/')[1];
+    // Codificar caracteres especiales para URL
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
   }
+  
+  if (url.startsWith('/uploads/')) {
+    const filename = url.replace('/uploads/products/', '');
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  }
+  
   if (url.startsWith('uploads/')) {
     const filename = url.replace('uploads/products/', '');
-    return `/api/images/${filename}`;
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
   }
+  
   // Si es solo el nombre del archivo
-  return `/api/images/${url}`;
+  const encoded = encodeURIComponent(url);
+  return `/api/images/${encoded}`;
 };
 
   // Función para obtener URL de imagen con timestamp para forzar recarga
