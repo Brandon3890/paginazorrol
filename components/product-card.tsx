@@ -42,6 +42,15 @@ interface ProductCardProps {
   index?: number
 }
 
+// Función para corregir URL de imagen (replicada aquí para evitar dependencias)
+const correctImageUrl = (url: string): string => {
+  if (!url) return '/uploads/products/diverse-products-still-life.png'
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/')) return url
+  if (url.startsWith('uploads/')) return `/${url}`
+  return `/uploads/products/${url}`
+}
+
 const formatCLP = (price: number): string => {
   return Math.round(price).toLocaleString('es-CL');
 };
@@ -111,9 +120,7 @@ const getAllBadges = (product: Product): Array<{ text: string; color: string; pr
           priority: config.priority
         });
       }
-      if (config.priority === 1) {
-        break;
-      }
+      if (config.priority === 1) break;
     }
   }
   
@@ -128,32 +135,30 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   
-  const allImages = [product.image, ...(product.additionalImages || [])];
+  // Asegurar que todas las URLs de imágenes están corregidas
+  const allImages = [
+    correctImageUrl(product.image),
+    ...(product.additionalImages || []).map(img => correctImageUrl(img))
+  ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png'); // filtramos la imagen por defecto para que solo aparezca si no hay otra
+
+  // Si no hay imágenes, usar la imagen por defecto
+  const imagesToShow = allImages.length > 0 ? allImages : ['/uploads/products/diverse-products-still-life.png'];
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
-    if (isHovered && allImages.length > 1 && !outOfStock) {
+    if (isHovered && imagesToShow.length > 1 && !outOfStock) {
       interval = setInterval(() => {
-        setCurrentImageIndex((prev) => (prev + 1) % allImages.length);
+        setCurrentImageIndex((prev) => (prev + 1) % imagesToShow.length);
       }, 2000);
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isHovered, allImages.length, outOfStock]);
+    return () => { if (interval) clearInterval(interval); };
+  }, [isHovered, imagesToShow.length, outOfStock]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ 
-        duration: 0.4, 
-        delay: index * 0.05,
-        type: "spring",
-        stiffness: 100
-      }}
+      transition={{ duration: 0.4, delay: index * 0.05, type: "spring", stiffness: 100 }}
       whileHover={{ y: -5 }}
       className="h-full"
     >
@@ -161,10 +166,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         <Card
           className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col w-full cursor-pointer border-border/50 relative overflow-hidden"
           onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => {
-            setIsHovered(false);
-            setCurrentImageIndex(0);
-          }}
+          onMouseLeave={() => { setIsHovered(false); setCurrentImageIndex(0); }}
         >
           <CardContent className="p-4 flex-1 flex flex-col relative z-10">
             <motion.div 
@@ -182,23 +184,28 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                   className="relative w-full h-full"
                 >
                   <Image
-                    src={allImages[currentImageIndex] || "/placeholder.svg"}
+                    src={imagesToShow[currentImageIndex] || "/uploads/products/diverse-products-still-life.png"}
                     alt={product.name}
                     fill
                     className="object-cover"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    unoptimized={true}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = '/uploads/products/diverse-products-still-life.png';
+                    }}
                   />
                 </motion.div>
               </AnimatePresence>
 
-              {allImages.length > 1 && !outOfStock && (
+              {imagesToShow.length > 1 && !outOfStock && (
                 <motion.div 
                   className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
                 >
-                  {allImages.map((_, idx) => (
+                  {imagesToShow.map((_, idx) => (
                     <motion.div
                       key={idx}
                       className={`w-1.5 h-1.5 rounded-full transition-colors ${
@@ -217,19 +224,8 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                   className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
                 >
                   {badges.map((badge, idx) => (
-                    <motion.div
-                      key={badge.text}
-                      initial={{ x: 30, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: 0.1 + idx * 0.05 }}
-                    >
-                      <Badge 
-                        className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap"
-                        style={{ 
-                          backgroundColor: badge.color,
-                          color: "white"
-                        }}
-                      >
+                    <motion.div key={badge.text} initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.1 + idx * 0.05 }}>
+                      <Badge className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap" style={{ backgroundColor: badge.color, color: "white" }}>
                         {badge.text}
                       </Badge>
                     </motion.div>
@@ -253,21 +249,12 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                 transition={{ type: "spring", stiffness: 300 }}
               >
                 {outOfStock ? (
-                  <span className="text-lg font-bold text-red-600">
-                    Sin stock
-                  </span>
+                  <span className="text-lg font-bold text-red-600">Sin stock</span>
                 ) : (
                   <>
-                    <span className="text-lg font-bold text-[#C2410C]">
-                      ${formatCLP(product.price)}
-                    </span>
+                    <span className="text-lg font-bold text-[#C2410C]">${formatCLP(product.price)}</span>
                     {hasDiscount && product.originalPrice && (
-                      <motion.span 
-                        className="text-sm text-muted-foreground line-through"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.1 }}
-                      >
+                      <motion.span className="text-sm text-muted-foreground line-through" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
                         ${formatCLP(product.originalPrice)}
                       </motion.span>
                     )}

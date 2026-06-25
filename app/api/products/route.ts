@@ -26,7 +26,11 @@ async function saveImage(file: File, filename: string): Promise<string> {
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
-    return '/diverse-products-still-life.png';
+    return '/uploads/products/diverse-products-still-life.png';
+  }
+  
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
   }
   
   if (imagePath.startsWith('/')) {
@@ -43,7 +47,7 @@ function correctImageUrl(imagePath: string | null): string {
     return `/uploads/products/${imagePath}`;
   }
   
-  return '/diverse-products-still-life.png';
+  return '/uploads/products/diverse-products-still-life.png';
 }
 
 export async function GET(request: Request) {
@@ -109,6 +113,7 @@ export async function GET(request: Request) {
 
     const productsWithAdditionalImages = await Promise.all(
       products.map(async (product) => {
+        // Obtener imágenes adicionales desde product_images
         const additionalImagesResult = await transaction.query(
           'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
           [product.id]
@@ -185,7 +190,17 @@ export async function GET(request: Request) {
     );
 
     await transaction.commit();
-    return NextResponse.json(productsWithAdditionalImages);
+    
+    // HEADERS ANTI-CACHÉ
+    return new NextResponse(JSON.stringify(productsWithAdditionalImages), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
 
   } catch (error) {
     console.error('Error en GET /api/products:', error);
@@ -248,14 +263,14 @@ export async function POST(request: Request) {
       .replace(/-+/g, '-');
 
     const mainImageFile = formData.get('mainImage') as File;
-    let mainImageUrl = '/diverse-products-still-life.png';
+    let mainImageUrl = '/uploads/products/diverse-products-still-life.png';
 
     if (mainImageFile && mainImageFile.size > 0) {
       try {
         mainImageUrl = await saveImage(mainImageFile, slug);
-        console.log('Main image saved:', mainImageUrl);
+        console.log('✅ Main image saved:', mainImageUrl);
       } catch (error) {
-        console.error('Error saving main image:', error);
+        console.error('❌ Error saving main image:', error);
       }
     }
 
@@ -299,7 +314,7 @@ export async function POST(request: Request) {
     );
 
     const productId = result.insertId;
-    console.log('Product created with ID:', productId);
+    console.log('✅ Product created with ID:', productId);
 
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcategoryId = subcategoryIds[i];
@@ -309,7 +324,7 @@ export async function POST(request: Request) {
         [productId, parseInt(subcategoryId), isPrimary, i + 1]
       );
     }
-    console.log(`${subcategoryIds.length} subcategories associated`);
+    console.log(`✅ ${subcategoryIds.length} subcategories associated`);
 
     const additionalImages = formData.getAll('additionalImages') as File[];
     for (let i = 0; i < additionalImages.length; i++) {
@@ -321,15 +336,15 @@ export async function POST(request: Request) {
             'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
             [productId, imageUrl, i]
           );
-          console.log(`Additional image ${i + 1} saved`);
+          console.log(`✅ Additional image ${i + 1} saved`);
         } catch (error) {
-          console.error(`Error saving additional image ${i + 1}:`, error);
+          console.error(`❌ Error saving additional image ${i + 1}:`, error);
         }
       }
     }
 
     await transaction.commit();
-    console.log('Transaction completed successfully');
+    console.log('✅ Transaction completed successfully');
 
     return NextResponse.json({ 
       id: productId, 
@@ -337,7 +352,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('Error en POST /api/products:', error);
+    console.error('❌ Error en POST /api/products:', error);
     await transaction.rollback();
     return NextResponse.json(
       { 
