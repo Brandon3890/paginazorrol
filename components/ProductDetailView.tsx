@@ -87,6 +87,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [showCheckmark, setShowCheckmark] = useState(false)
   const [isHoveringBack, setIsHoveringBack] = useState(false)
   const hasLoaded = useRef(false)
+  const [imageTimestamp, setImageTimestamp] = useState(Date.now())
   
   const [product, setProduct] = useState<ProductType | null>(null)
   const [loading, setLoading] = useState(true)
@@ -103,6 +104,17 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
+  // Escuchar evento de actualización de productos
+  useEffect(() => {
+    const handleProductUpdate = () => {
+      console.log('🔄 Producto actualizado, forzando recarga de imágenes...')
+      setImageTimestamp(Date.now())
+    }
+    
+    window.addEventListener('product-updated', handleProductUpdate)
+    return () => window.removeEventListener('product-updated', handleProductUpdate)
+  }, [])
+
   useEffect(() => {
     if (hasLoaded.current) return;
     const loadEverything = async () => {
@@ -116,6 +128,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return; 
         }
         setProduct(productData);
+        setImageTimestamp(Date.now())
         if (productData.recommendedProducts?.length) {
           if (products.length > 0) {
             setRecommendedProducts(products.filter(p => productData.recommendedProducts?.includes(p.id) && p.isActive));
@@ -142,11 +155,18 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   }, [product, products]);
 
   const correctImageUrl = (url: string) => {
-    if (!url) return '/diverse-products-still-life.png';
+    if (!url) return '/uploads/products/diverse-products-still-life.png';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     if (url.startsWith('/')) return url;
     if (url.startsWith('uploads/')) return `/${url}`;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return `/uploads/products/${url}`;
+  };
+
+  // Función para obtener URL de imagen con timestamp para forzar recarga
+  const getImageUrlWithTimestamp = (url: string) => {
+    const corrected = correctImageUrl(url);
+    if (corrected.includes('diverse-products-still-life.png')) return corrected;
+    return `${corrected}?v=${imageTimestamp}`;
   };
 
   const getProductCategoriesInfo = () => {
@@ -162,8 +182,8 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const categoriesInfo = getProductCategoriesInfo();
 
   const allMedia: MediaItem[] = [
-    ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
-    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
+    ...(product ? [{ type: 'image' as const, url: getImageUrlWithTimestamp(product.image) }] : []),
+    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: getImageUrlWithTimestamp(img) })) || []),
     ...(product?.youtubeVideoId ? [{ type: 'video' as const, url: `https://img.youtube.com/vi/${product.youtubeVideoId}/maxresdefault.jpg`, thumbnail: `https://img.youtube.com/vi/${product.youtubeVideoId}/mqdefault.jpg` }] : [])
   ];
 
@@ -205,7 +225,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             <span className="text-xs text-muted-foreground line-clamp-1">{product.name}</span>
           </div>
           <motion.div className="w-10 h-10 relative flex-shrink-0 overflow-hidden rounded-md border border-border/50" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1 }}>
-            <Image src={correctImageUrl(product.image)} alt={product.name} fill className="object-cover" sizes="40px" />
+            <Image src={getImageUrlWithTimestamp(product.image)} alt={product.name} fill className="object-cover" sizes="40px" unoptimized={true} />
           </motion.div>
         </motion.div>
       ), 
@@ -350,7 +370,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       </motion.div>
                     ) : (
                       <motion.div
-                        key="image"
+                        key={currentMedia.url}
                         initial={{ opacity: 0, scale: 1.1 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
@@ -358,11 +378,18 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                         className="relative w-full h-full"
                       >
                         <Image
+                          key={currentMedia.url}
                           src={currentMedia.url}
                           alt={product.name}
                           fill
                           className="object-cover transition-transform duration-500 group-hover:scale-110"
                           priority
+                          unoptimized={true}
+                          onError={(e) => {
+                            console.error('❌ Error cargando imagen:', currentMedia.url)
+                            const target = e.target as HTMLImageElement
+                            target.src = '/uploads/products/diverse-products-still-life.png'
+                          }}
                         />
                         {currentMedia.type === 'video' && !showVideo && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
@@ -439,6 +466,11 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                       width={80} 
                       height={80} 
                       className="object-cover w-full h-full"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/uploads/products/diverse-products-still-life.png'
+                      }}
                     />
                     {media.type === 'video' && (
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -584,7 +616,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                   </Button>
                 </motion.div>
 
-                {/* Corazón - Solo visible si el usuario está autenticado */}
                 {isAuthenticated && (
                   <motion.div 
                     whileHover={{ scale: 1.05 }}
@@ -599,12 +630,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </motion.div>
         </div>
 
-        {/*
-          ============================================================
-          TODAS LAS CARACTERÍSTICAS - COMPLETAMENTE DINÁMICO
-          SOLO MUESTRA LO QUE EL ADMIN AÑADE EN EL SPECS EDITOR
-          ============================================================
-        */}
         <motion.div 
           className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
           initial={{ opacity: 0, y: 30 }}
@@ -678,10 +703,15 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 >
                   <div className="relative aspect-square bg-gray-100">
                     <Image
-                      src={correctImageUrl(recProduct.image)}
+                      src={getImageUrlWithTimestamp(recProduct.image)}
                       alt={recProduct.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/uploads/products/diverse-products-still-life.png'
+                      }}
                     />
                     {recProduct.isOnSale && (
                       <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
