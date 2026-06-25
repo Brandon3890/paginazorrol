@@ -116,19 +116,26 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   }, [])
 
   useEffect(() => {
-    if (hasLoaded.current) return;
+  if (hasLoaded.current) return;
     const loadEverything = async () => {
       hasLoaded.current = true;
       setLoading(true);
       try {
-        const productData = await fetchProduct(productId);
+        // FORZAR RECARGA DEL PRODUCTO (force = true)
+        const productData = await fetchProduct(productId, true);
         if (!productData) { 
           if (onBack) onBack();
           else router.push("/"); 
           return; 
         }
+        
+        console.log('📋 Product data loaded:', productData);
+        console.log('📋 Specs raw:', productData.specs);
+        console.log('📋 Specs parsed:', productData.specs ? parseProductSpecs(productData.specs) : 'null');
+        
         setProduct(productData);
         setImageTimestamp(Date.now())
+        
         if (productData.recommendedProducts?.length) {
           if (products.length > 0) {
             setRecommendedProducts(products.filter(p => productData.recommendedProducts?.includes(p.id) && p.isActive));
@@ -146,7 +153,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       finally { setLoading(false); }
     };
     if (productId) loadEverything();
-  }, [productId]);
+  }, [productId, fetchProduct, fetchProducts, onBack, router]);
 
   useEffect(() => {
     if (product && product.recommendedProducts?.length && products.length) {
@@ -660,20 +667,44 @@ const correctImageUrl = (url: string) => {
         >
           <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
           
-          {productSpecs.length > 0 ? (
-            <div className="space-y-2 text-sm">
-              {productSpecs.map((spec, index) => (
-                <div key={index} className="flex bg-gray-100 p-2 rounded">
-                  <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
-                  <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">{spec.value}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No hay caracteristicas agregadas para este producto.
-            </p>
-          )}
+          {(() => {
+            // Intentar parsear specs de varias formas
+            let specsToShow = [];
+            try {
+              // Si specs es string, parsearlo
+              if (typeof product.specs === 'string') {
+                const parsed = JSON.parse(product.specs);
+                if (Array.isArray(parsed)) {
+                  specsToShow = parsed;
+                }
+              } else if (Array.isArray(product.specs)) {
+                // Si ya es array, usarlo directamente
+                specsToShow = product.specs;
+              }
+            } catch (e) {
+              console.warn('Error parsing specs:', e);
+            }
+            
+            // Si no hay specs, mostrar mensaje
+            if (!specsToShow || specsToShow.length === 0) {
+              return (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No hay características agregadas para este producto.
+                </p>
+              );
+            }
+            
+            return (
+              <div className="space-y-2 text-sm">
+                {specsToShow.map((spec, index) => (
+                  <div key={index} className="flex bg-gray-100 p-2 rounded">
+                    <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
+                    <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">{spec.value}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </motion.div>
 
         {recommendedProducts.length > 0 && (
@@ -690,7 +721,7 @@ const correctImageUrl = (url: string) => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.4, delay: 1.4 }}
               >
-                PODRÍA GUSTARTE
+                PODRÍAN GUSTARTE
               </motion.h2>
               <motion.div 
                 className="flex-1 h-px bg-gradient-to-r from-[#C2410C] to-transparent"
