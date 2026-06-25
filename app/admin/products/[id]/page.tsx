@@ -162,9 +162,13 @@ const RecommendedProductCard = React.memo(({
     >
       <div className="flex items-start gap-3">
         <img
-          src={product.image || "/placeholder.svg"}
+          src={product.image || "/uploads/products/diverse-products-still-life.png"}
           alt={product.name}
           className="w-16 h-16 object-cover rounded"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = '/uploads/products/diverse-products-still-life.png';
+          }}
         />
         <div className="flex-1">
           <p className="font-medium text-sm line-clamp-2">{product.name}</p>
@@ -304,8 +308,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       newErrors.image = true
     }
     
-    // NO obligar a tener specs (puede estar vacío)
-    
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -321,7 +323,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       
       setLoading(true)
       try {
-        // Forzar recarga desde la API
         const productData = await fetchProduct(productId, true)
         
         if (productData) {
@@ -350,7 +351,12 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           let parsedSpecs: ProductSpec[] = []
           if (productData.specs) {
             try {
-              parsedSpecs = parseProductSpecs(productData.specs)
+              // Si specs viene como array de objetos
+              if (Array.isArray(productData.specs)) {
+                parsedSpecs = productData.specs
+              } else if (typeof productData.specs === 'string') {
+                parsedSpecs = parseProductSpecs(productData.specs)
+              }
               console.log('📋 Specs parseados desde el producto:', parsedSpecs)
             } catch (e) {
               console.error('Error parseando specs:', e)
@@ -899,9 +905,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
-                          src={imagePreview || "/placeholder.svg"}
+                          src={imagePreview || "/uploads/products/diverse-products-still-life.png"}
                           alt="Preview"
                           className="w-48 h-48 object-cover rounded-lg border"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = '/uploads/products/diverse-products-still-life.png';
+                          }}
                         />
                         <Button
                           type="button"
@@ -940,9 +950,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           {allAdditionalImagePreviews.map(({ type, url, index }) => (
                             <div key={`${type}-${index}`} className="relative group">
                               <img
-                                src={url || "/placeholder.svg"}
+                                src={url || "/uploads/products/diverse-products-still-life.png"}
                                 alt={`Additional ${index + 1}`}
                                 className="w-full h-32 object-cover rounded-lg border"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = '/uploads/products/diverse-products-still-life.png';
+                                }}
                               />
                               <Button
                                 type="button"

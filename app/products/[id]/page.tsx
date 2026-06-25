@@ -7,8 +7,7 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   ArrowLeft, Check, ChevronLeft, ChevronRight, 
-  ShoppingCart, Youtube, Play, Heart, Package, 
-  Ruler, Weight, Tag, AlertCircle, Percent, Rocket, Sparkles
+  ShoppingCart, Youtube, Play, Heart
 } from "lucide-react"
 import { useProductStore } from "@/lib/product-store"
 import { useCartStore } from "@/lib/cart-store"
@@ -147,6 +146,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     return () => { isMounted = false }
   }, [productId, fetchProduct, router])
 
+  // Escuchar evento de actualización
   useEffect(() => {
     const handleUpdate = () => {
       console.log('🔄 Producto actualizado, recargando...')
@@ -355,6 +355,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     <div className="min-h-screen bg-white">
       <Header />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Botón volver */}
         <motion.div
           className="mb-6"
           initial={{ opacity: 0, x: -20 }}
@@ -459,6 +460,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                           priority
                           unoptimized={true}
                           onError={(e) => {
+                            console.error('❌ Error cargando imagen:', currentMedia?.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
                           }}
