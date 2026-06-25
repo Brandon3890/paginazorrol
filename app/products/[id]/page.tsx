@@ -1,761 +1,292 @@
 "use client"
 
-import React, { useEffect, useState, use, useCallback, useMemo } from "react"
+import { useEffect, useState, use } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
+import Link from "next/link"
+import { motion, AnimatePresence } from "framer-motion"
+import { 
+  ArrowLeft, Check, ChevronLeft, ChevronRight, 
+  ShoppingCart, Youtube, Play, Heart, Package, 
+  Ruler, Weight, Tag, AlertCircle, Percent, Rocket, Sparkles
+} from "lucide-react"
+import { useProductStore } from "@/lib/product-store"
+import { useCartStore } from "@/lib/cart-store"
+import { useAuthStore } from "@/lib/auth-store"
+import { useCategoryStore } from "@/lib/category-store"
+import { useToast } from "@/hooks/use-toast"
+import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { useAuthStore } from "@/lib/auth-store"
-import { useProductStore } from "@/lib/product-store"
-import { useCategories } from "@/hooks/useCategories"
-import { useProducts } from "@/hooks/useProducts"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { 
-  ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
-  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
-} from "lucide-react"
-import Link from "next/link"
-import { SpecsEditor } from "@/components/SpecsEditor"
-import { ProductSpec, parseProductSpecs } from "@/lib/product-specs"
+import { FavoriteButton } from "@/components/FavoriteButton"
+import { parseProductSpecs } from "@/lib/product-specs"
 
-const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = document.createElement('img');
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('No se pudo obtener el contexto del canvas'));
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const resizedFile = new File([blob], file.name, {
-              type: file.type,
-              lastModified: Date.now()
-            });
-            resolve(resizedFile);
-          } else {
-            reject(new Error('Error al crear el blob'));
-          }
-        }, file.type, 0.8);
-      };
-      img.onerror = () => reject(new Error('Error al cargar la imagen'));
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error('Error al leer el archivo'));
-    reader.readAsDataURL(file);
-  });
-};
-
-const extractYoutubeId = (url: string): string | null => {
-  if (!url) return null;
-  
-  if (/^[a-zA-Z0-9_-]{11}$/.test(url)) {
-    return url;
-  }
-  
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=)([^&]+)/,
-    /(?:youtu\.be\/)([^?]+)/,
-    /(?:youtube\.com\/embed\/)([^?]+)/,
-    /(?:youtube\.com\/v\/)([^?]+)/,
-    /(?:youtube\.com\/shorts\/)([^?]+)/,
-    /(?:youtube\.com\/watch\?.*&v=)([^&]+)/,
-    /(?:m\.youtube\.com\/watch\?v=)([^&]+)/
-  ]
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) return match[1]
-  }
-  
-  if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
-    return url;
-  }
-  
-  return null
+interface ProductType {
+  id: number
+  name: string
+  slug: string
+  description: string
+  price: number
+  originalPrice?: number
+  image: string
+  youtubeVideoId?: string
+  category: string
+  subcategory: string
+  categoryId: number
+  subcategoryId: number
+  subcategoryIds: string[]
+  subcategories: Array<{
+    id: number
+    name: string
+    slug: string
+    isPrimary: boolean
+    displayOrder: number
+  }>
+  recommendedProducts?: number[]
+  ageMin: number
+  age: string
+  playersMin: number
+  playersMax: number
+  players: string
+  durationMin: number
+  duration: string
+  stock: number
+  inStock: boolean
+  isOnSale: boolean
+  isActive: boolean
+  additionalImages: string[]
+  tags: string[]
+  brand: string
+  genre: string
+  specs: string | null
+  createdAt: string
+  updatedAt: string
+  weight: number
+  height: number
+  width: number
+  length: number
 }
 
-const formatCLP = (price: number): string => Math.round(price).toLocaleString('es-CL');
-const calculateDiscountPrice = (price: number, discountPercent: number): number => price * (1 - discountPercent / 100);
-const safeToString = (value: any): string => value === null || value === undefined ? "" : String(value);
-const safeToNumber = (value: any): number => {
-  if (value === null || value === undefined) return 0
-  const num = parseFloat(String(value))
-  return isNaN(num) ? 0 : num
+type MediaItem = {
+  type: 'image' | 'video'
+  url: string
+  thumbnail?: string
 }
 
-const SubcategoryCheckbox = React.memo(({ 
-  subcat, 
-  isSelected, 
-  onToggle 
-}: { 
-  subcat: any
-  isSelected: boolean
-  onToggle: (id: string) => void
-}) => {
-  const id = safeToString(subcat.id);
-  
-  return (
-    <div className="flex items-center space-x-2">
-      <input
-        type="checkbox"
-        id={`subcat-${id}`}
-        checked={isSelected}
-        onChange={() => onToggle(id)}
-        className="h-4 w-4 rounded border-gray-300 text-[#C2410C] focus:ring-[#C2410C]"
-      />
-      <label 
-        htmlFor={`subcat-${id}`}
-        className="text-sm cursor-pointer select-none"
-      >
-        {subcat.name}
-      </label>
-    </div>
-  );
-});
-
-SubcategoryCheckbox.displayName = 'SubcategoryCheckbox';
-
-const RecommendedProductCard = React.memo(({ 
-  product, 
-  isSelected, 
-  onToggle 
-}: { 
-  product: any
-  isSelected: boolean
-  onToggle: (id: number) => void
-}) => {
-  return (
-    <div
-      className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-        isSelected ? 'bg-green-50 border-green-500' : 'hover:bg-muted/50'
-      }`}
-      onClick={() => onToggle(product.id)}
-    >
-      <div className="flex items-start gap-3">
-        <img
-          src={product.image || "/placeholder.svg"}
-          alt={product.name}
-          className="w-16 h-16 object-cover rounded"
-        />
-        <div className="flex-1">
-          <p className="font-medium text-sm line-clamp-2">{product.name}</p>
-          <p className="text-sm text-muted-foreground">
-            ${formatCLP(product.price)} CLP
-          </p>
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggle(product.id)}
-            className="mt-1 h-4 w-4 rounded border-gray-300 text-[#C2410C] focus:ring-[#C2410C]"
-          />
-        </div>
-      </div>
-    </div>
-  );
-});
-
-RecommendedProductCard.displayName = 'RecommendedProductCard';
-
-export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
-  const { user, isAuthenticated } = useAuthStore()
-  const { fetchProduct, updateProduct } = useProductStore()
-  const { categories, loading: categoriesLoading } = useCategories()
-  const { products: allProducts, loading: productsLoading } = useProducts({ perPage: 100 })
-
   const resolvedParams = use(params)
   const productId = Number.parseInt(resolvedParams.id)
 
-  const [product, setProduct] = useState<any>(null)
+  const { products, fetchProduct, fetchProducts } = useProductStore()
+  const { categories: dbCategories, fetchCategories } = useCategoryStore()
+  const { isAuthenticated } = useAuthStore()
+  const addItem = useCartStore((state) => state.addItem)
+  const { toast } = useToast()
+
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState(false)
+  const [isAddingToCart, setIsAddingToCart] = useState(false)
+  const [showCheckmark, setShowCheckmark] = useState(false)
+  const [isHoveringBack, setIsHoveringBack] = useState(false)
+  const [imageReloadKey, setImageReloadKey] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [selectedTag, setSelectedTag] = useState<string>("")
-  const [productSpecs, setProductSpecs] = useState<ProductSpec[]>([])
-  const [errors, setErrors] = useState<Record<string, boolean>>({})
-  const [formData, setFormData] = useState({
-    name: "",
-    price: "",
-    originalPrice: "",
-    image: "",
-    youtubeVideoId: "",
-    categoryId: "",
-    subcategoryIds: [] as string[],
-    age: "",
-    ageMin: "",
-    players: "",
-    playersMin: "",
-    playersMax: "",
-    duration: "",
-    durationMin: "",
-    description: "",
-    stock: "",
-    inStock: true,
-    isOnSale: false,
-    discountPercent: "10",
-    recommendedProducts: [] as number[],
-    weight: "0.5",
-    height: "10",
-    width: "15",
-    length: "20",
-  })
 
-  const [selectedCategory, setSelectedCategory] = useState<string>("")
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string>("")
-  const [isUploading, setIsUploading] = useState(false)
-  const [youtubeUrl, setYoutubeUrl] = useState("")
-  const [youtubeError, setYoutubeError] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
-  
-  const [existingAdditionalImages, setExistingAdditionalImages] = useState<string[]>([])
-  const [newAdditionalImageFiles, setNewAdditionalImageFiles] = useState<File[]>([])
-  const [newAdditionalImagePreviews, setNewAdditionalImagePreviews] = useState<string[]>([])
-  const [deletedExistingImages, setDeletedExistingImages] = useState<string[]>([])
-
-  const availableSubcategories = useMemo(() => {
-    if (!selectedCategory || categories.length === 0) return []
-    const category = categories.find((c) => safeToString(c.id) === selectedCategory)
-    return category?.subcategories || []
-  }, [selectedCategory, categories])
-
-  const totalImages = (imageFile ? 1 : 0) + existingAdditionalImages.length + newAdditionalImageFiles.length
-  const MAX_TOTAL_IMAGES = 6
+  const [product, setProduct] = useState<ProductType | null>(null)
+  const [recommendedProducts, setRecommendedProducts] = useState<ProductType[]>([])
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
+  const [showVideo, setShowVideo] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated || user?.role !== 'admin') {
-      router.push("/")
-    }
-  }, [isAuthenticated, user, router])
+    const checkScreenSize = () => setIsMobileOrTablet(window.innerWidth < 1024)
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
 
-  const extractProductTag = (productData: any): string => {
-    if (productData.tags) {
-      if (typeof productData.tags === 'string') {
-        return productData.tags
-      }
-      if (Array.isArray(productData.tags) && productData.tags.length > 0) {
-        const firstTag = productData.tags[0]
-        if (typeof firstTag === 'string') return firstTag
-        if (firstTag && typeof firstTag === 'object') return firstTag.name || firstTag.slug || ""
-      }
-    }
-    return "" 
-  }
-
-  const validateField = (field: string, value: any): boolean => {
-    if (!value || (typeof value === 'string' && value.trim() === '')) {
-      return false
-    }
-    if (Array.isArray(value) && value.length === 0) {
-      return false
-    }
-    return true
-  }
-
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, boolean> = {}
-    
-    if (!validateField('name', formData.name)) newErrors.name = true
-    if (!validateField('price', formData.price)) newErrors.price = true
-    if (!validateField('categoryId', formData.categoryId)) newErrors.categoryId = true
-    if (!validateField('subcategoryIds', formData.subcategoryIds)) newErrors.subcategoryIds = true
-    if (!validateField('age', formData.age)) newErrors.age = true
-    if (!validateField('ageMin', formData.ageMin)) newErrors.ageMin = true
-    if (!validateField('players', formData.players)) newErrors.players = true
-    if (!validateField('playersMin', formData.playersMin)) newErrors.playersMin = true
-    if (!validateField('playersMax', formData.playersMax)) newErrors.playersMax = true
-    if (!validateField('duration', formData.duration)) newErrors.duration = true
-    if (!validateField('durationMin', formData.durationMin)) newErrors.durationMin = true
-    if (!validateField('stock', formData.stock)) newErrors.stock = true
-    if (!validateField('description', formData.description)) newErrors.description = true
-    if (!validateField('weight', formData.weight)) newErrors.weight = true
-    if (!validateField('height', formData.height)) newErrors.height = true
-    if (!validateField('width', formData.width)) newErrors.width = true
-    if (!validateField('length', formData.length)) newErrors.length = true
-    
-    if (!formData.image && !imageFile) {
-      newErrors.image = true
-    }
-    
-    if (productSpecs.length === 0) {
-      newErrors.specs = true
-    }
-    
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
-    const hasError = errors[fieldName]
-    return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
-  }
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
 
   useEffect(() => {
     const loadProduct = async () => {
-      if (!productId) return
-      
       setLoading(true)
       try {
-        const productData = await fetchProduct(productId)
-        
-        if (productData) {
-          setProduct(productData)
-          
-          let allSubcategoryIds: string[] = []
-          if (productData.subcategoryIds && Array.isArray(productData.subcategoryIds)) {
-            allSubcategoryIds = productData.subcategoryIds.map(id => safeToString(id))
-          } else if (productData.subcategories && Array.isArray(productData.subcategories)) {
-            allSubcategoryIds = productData.subcategories.map((sub: any) => safeToString(sub.id))
-          }
+        // Forzar recarga con parámetro force=true
+        const productData = await fetchProduct(productId, true)
+        if (!productData) {
+          router.push('/')
+          return
+        }
+        setProduct(productData)
+        setImageReloadKey(prev => prev + 1)
 
-          const categoryId = safeToString(productData.categoryId) || "";
-          const validSubcategoryIds = allSubcategoryIds.filter(id => {
-            const category = categories.find(c => safeToString(c.id) === categoryId);
-            return category?.subcategories?.some((s: any) => safeToString(s.id) === id);
-          });
-
-          const productTag = extractProductTag(productData)
-          setSelectedTag(productTag)
-
-          // =====================================================
-          // CORRECCIÓN: Parsear specs correctamente
-          // =====================================================
-          let parsedSpecs: ProductSpec[] = []
-          if (productData.specs) {
-            parsedSpecs = parseProductSpecs(productData.specs)
-            console.log('📋 Specs cargados:', parsedSpecs)
-          }
-          setProductSpecs(parsedSpecs)
-
-          let price = safeToString(productData.price)
-          let originalPrice = ""
-          let discountPercent = "10"
-          let isOnSale = false
-          let stock = safeToString(productData.stock)
-          let inStock = Boolean(productData.inStock)
-
-          if (productTag === "descuento") {
-            if (productData.originalPrice && safeToNumber(productData.originalPrice) > safeToNumber(productData.price)) {
-              const original = safeToNumber(productData.originalPrice)
-              const current = safeToNumber(productData.price)
-              originalPrice = original.toString()
-              price = current.toString()
-              discountPercent = Math.round(((original - current) / original) * 100).toString()
-              isOnSale = true
-            } else {
-              originalPrice = ""
-              discountPercent = "10"
-              isOnSale = true
-            }
-          } else if (productTag === "agotado") {
-            stock = "0"
-            inStock = false
-          } else if (productTag === "preventa" || productTag === "novedad") {
-            originalPrice = ""
-            discountPercent = "0"
-            isOnSale = false
-          } else {
-            originalPrice = ""
-            discountPercent = "0"
-            isOnSale = false
-          }
-
-          setFormData({
-            name: safeToString(productData.name),
-            price: price,
-            originalPrice: originalPrice,
-            image: safeToString(productData.image),
-            youtubeVideoId: productData.youtubeVideoId || '',
-            categoryId: categoryId,
-            subcategoryIds: validSubcategoryIds,
-            age: safeToString(productData.age),
-            ageMin: safeToString(productData.ageMin),
-            players: safeToString(productData.players),
-            playersMin: safeToString(productData.playersMin),
-            playersMax: safeToString(productData.playersMax),
-            duration: safeToString(productData.duration),
-            durationMin: safeToString(productData.durationMin),
-            description: safeToString(productData.description),
-            stock: stock,
-            inStock: inStock,
-            isOnSale: isOnSale,
-            discountPercent: discountPercent,
-            recommendedProducts: productData.recommendedProducts || [],
-            weight: safeToString(productData.weight) || "0.5",
-            height: safeToString(productData.height) || "10",
-            width: safeToString(productData.width) || "15",
-            length: safeToString(productData.length) || "20",
-          })
-          
-          setSelectedCategory(categoryId)
-          setImagePreview(safeToString(productData.image))
-          setYoutubeUrl(productData.youtubeVideoId || '')
-          
-          if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
-            setExistingAdditionalImages(productData.additionalImages)
-          }
+        if (productData.recommendedProducts?.length) {
+          const allProducts = useProductStore.getState().products
+          const recs = allProducts.filter(p =>
+            productData.recommendedProducts?.includes(p.id) && p.isActive
+          )
+          setRecommendedProducts(recs)
         }
       } catch (error) {
-        console.error('Error loading product:', error)
+        console.error('Error cargando producto:', error)
+        router.push('/')
       } finally {
         setLoading(false)
       }
     }
+    loadProduct()
+  }, [productId, fetchProduct, router])
 
-    if (categories.length > 0) {
-      loadProduct()
-    }
-  }, [productId, fetchProduct, categories])
-
-  const handleTagSelect = (tagValue: string) => {
-    if (selectedTag === tagValue) {
-      setSelectedTag("")
-      setFormData(prev => ({ 
-        ...prev, 
-        originalPrice: "",
-        discountPercent: "0",
-        isOnSale: false,
-        stock: prev.stock === "0" ? "1" : prev.stock,
-        inStock: prev.stock !== "0"
-      }))
-    } else {
-      setSelectedTag(tagValue)
-      
-      if (tagValue === "") {
-        setFormData(prev => ({ 
-          ...prev, 
-          originalPrice: "",
-          discountPercent: "0",
-          isOnSale: false,
-          stock: prev.stock === "0" ? "1" : prev.stock,
-          inStock: true
-        }))
-      } else if (tagValue === "agotado") {
-        setFormData(prev => ({ 
-          ...prev, 
-          stock: "0",
-          inStock: false,
-          originalPrice: "",
-          discountPercent: "0",
-          isOnSale: false
-        }))
-      } else if (tagValue === "descuento") {
-        setFormData(prev => ({ 
-          ...prev, 
-          discountPercent: prev.discountPercent !== "0" ? prev.discountPercent : "10",
-          isOnSale: true,
-          stock: prev.stock === "0" ? "1" : prev.stock,
-          inStock: true
-        }))
-      } else if (tagValue === "preventa" || tagValue === "novedad") {
-        setFormData(prev => ({ 
-          ...prev, 
-          originalPrice: "",
-          discountPercent: "0",
-          isOnSale: false,
-          stock: prev.stock === "0" ? "1" : prev.stock,
-          inStock: true
-        }))
-      }
-    }
+  const correctImageUrl = (url: string): string => {
+    if (!url) return '/uploads/products/diverse-products-still-life.png'
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    if (url.startsWith('/')) return url
+    if (url.startsWith('uploads/')) return `/${url}`
+    return `/uploads/products/${url}`
   }
 
-  const handleSubcategoryToggle = useCallback((subcategoryId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subcategoryIds: prev.subcategoryIds.includes(subcategoryId)
-        ? prev.subcategoryIds.filter(id => id !== subcategoryId)
-        : [...prev.subcategoryIds, subcategoryId]
-    }));
-    if (errors.subcategoryIds) {
-      setErrors(prev => ({ ...prev, subcategoryIds: false }))
-    }
-  }, [errors.subcategoryIds]);
-
-  const handleDiscountChange = (type: 'originalPrice' | 'discountPercent' | 'price', value: string) => {
-    if (selectedTag !== "descuento") return
-
-    setFormData(prev => {
-      const newData = { ...prev }
-      
-      if (type === 'originalPrice') {
-        newData.originalPrice = value
-        const original = safeToNumber(value)
-        const discount = safeToNumber(prev.discountPercent)
-        if (original > 0 && discount > 0) {
-          newData.price = calculateDiscountPrice(original, discount).toFixed(0)
-          newData.isOnSale = true
-        }
-      } else if (type === 'discountPercent') {
-        newData.discountPercent = value
-        const original = safeToNumber(prev.originalPrice)
-        const discount = safeToNumber(value)
-        if (original > 0 && discount > 0) {
-          newData.price = calculateDiscountPrice(original, discount).toFixed(0)
-          newData.isOnSale = true
-        }
-      } else if (type === 'price') {
-        newData.price = value
-        const original = safeToNumber(prev.originalPrice)
-        const current = safeToNumber(value)
-        if (original > 0 && current > 0 && original > current) {
-          const discount = Math.round(((original - current) / original) * 100)
-          newData.discountPercent = discount.toString()
-          newData.isOnSale = true
-        }
-      }
-      
-      return newData
-    })
-  }
-
-  const handleYoutubeUrlChange = useCallback((url: string) => {
-    setYoutubeUrl(url)
-    setYoutubeError(false)
-    const videoId = extractYoutubeId(url)
-    if (videoId) {
-      setFormData(prev => ({ ...prev, youtubeVideoId: videoId }))
-    } else {
-      setFormData(prev => ({ ...prev, youtubeVideoId: url }))
-    }
-  }, [])
-
-  const handleRecommendedProductToggle = useCallback((productId: number) => {
-    setFormData(prev => ({
-      ...prev,
-      recommendedProducts: prev.recommendedProducts.includes(productId)
-        ? prev.recommendedProducts.filter(id => id !== productId)
-        : [...prev.recommendedProducts, productId]
-    }))
-  }, [])
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
-      return
-    }
-    if (file) {
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
-      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
-        setIsUploading(true)
-        try {
-          const resizedFile = await resizeImage(file, 1024, 1024)
-          const previewUrl = URL.createObjectURL(resizedFile)
-          setImageFile(resizedFile)
-          setImagePreview(previewUrl)
-          if (errors.image) setErrors(prev => ({ ...prev, image: false }))
-        } catch (error) {
-          console.error("Error procesando imagen:", error)
-          alert("Error al procesar la imagen")
-        } finally {
-          setIsUploading(false)
-        }
-      } else {
-        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
-      }
-    }
-  }
-
-  const removeMainImage = useCallback(() => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
-    setImageFile(null)
-    setImagePreview("")
-    setFormData(prev => ({ ...prev, image: "" }))
-  }, [imagePreview])
-
-  const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (totalImages >= MAX_TOTAL_IMAGES) {
-      alert(`Maximo ${MAX_TOTAL_IMAGES} imagenes en total`)
-      return
-    }
-    if (file) {
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp'];
-      if (validTypes.includes(file.type) || file.type.startsWith('image/')) {
-        setIsUploading(true)
-        try {
-          const resizedFile = await resizeImage(file, 1024, 1024)
-          const previewUrl = URL.createObjectURL(resizedFile)
-          setNewAdditionalImageFiles(prev => [...prev, resizedFile])
-          setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
-        } catch (error) {
-          console.error("Error procesando imagen adicional:", error)
-          alert("Error al procesar la imagen")
-        } finally {
-          setIsUploading(false)
-        }
-      } else {
-        alert("Por favor selecciona una imagen valida (PNG, JPG, JPEG, WEBP, GIF, etc.)")
-      }
-    }
-  }
-
-  const removeExistingAdditionalImage = useCallback((index: number) => {
-    setDeletedExistingImages(prev => [...prev, existingAdditionalImages[index]])
-    setExistingAdditionalImages(prev => prev.filter((_, i) => i !== index))
-  }, [existingAdditionalImages])
-
-  const removeNewAdditionalImage = useCallback((index: number) => {
-    URL.revokeObjectURL(newAdditionalImagePreviews[index])
-    setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
-    setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
-  }, [newAdditionalImagePreviews])
-
-  const filteredProducts = useMemo(() => {
-    return allProducts.filter((product: any) => 
-      product.id !== productId && 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  }, [allProducts, productId, searchTerm])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validateForm()) {
-      const firstError = document.querySelector('.border-red-500')
-      if (firstError) {
-        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-      alert("Por favor completa todos los campos requeridos (marcados en rojo)")
-      return
-    }
-
-    setIsUploading(true)
-    try {
-      const formDataToSend = new FormData()
-      
-      formDataToSend.append('name', safeToString(formData.name))
-      formDataToSend.append('description', safeToString(formData.description))
-      formDataToSend.append('price', safeToString(formData.price))
-      formDataToSend.append('categoryId', safeToString(formData.categoryId))
-      formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
-      formDataToSend.append('tags', selectedTag)
-      
-      // =====================================================
-      // CORRECCIÓN: Enviar specs correctamente
-      // =====================================================
-      const specsString = JSON.stringify(productSpecs)
-      console.log('📋 Enviando specs:', specsString)
-      formDataToSend.append('specs', specsString)
-      
-      formDataToSend.append('weight', safeToString(formData.weight))
-      formDataToSend.append('height', safeToString(formData.height))
-      formDataToSend.append('width', safeToString(formData.width))
-      formDataToSend.append('length', safeToString(formData.length))
-      
-      if (selectedTag === "descuento" && formData.originalPrice) {
-        formDataToSend.append('originalPrice', safeToString(formData.originalPrice))
-        formDataToSend.append('isOnSale', 'true')
-      } else {
-        formDataToSend.append('isOnSale', 'false')
-      }
-      
-      formData.subcategoryIds.forEach(id => formDataToSend.append('subcategoryIds', safeToString(id)))
-      formData.recommendedProducts.forEach(id => formDataToSend.append('recommendedProducts', id.toString()))
-      
-      formDataToSend.append('ageDisplay', safeToString(formData.age))
-      formDataToSend.append('ageMin', safeToString(formData.ageMin))
-      formDataToSend.append('playersDisplay', safeToString(formData.players))
-      formDataToSend.append('playersMin', safeToString(formData.playersMin))
-      formDataToSend.append('playersMax', safeToString(formData.playersMax))
-      formDataToSend.append('durationDisplay', safeToString(formData.duration))
-      formDataToSend.append('durationMin', safeToString(formData.durationMin))
-      formDataToSend.append('stock', safeToString(formData.stock))
-      formDataToSend.append('inStock', String(formData.inStock))
-
-      deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
-
-      // =====================================================
-      // CORRECCIÓN: Enviar la imagen correctamente
-      // =====================================================
-      if (imageFile) {
-        formDataToSend.append('mainImage', imageFile)
-        console.log('📸 Enviando nueva imagen principal:', imageFile.name)
-      } else if (formData.image) {
-        formDataToSend.append('image', safeToString(formData.image))
-        console.log('📸 Manteniendo imagen existente:', formData.image)
-      }
-
-      newAdditionalImageFiles.forEach(file => {
-        formDataToSend.append('additionalImages', file)
-        console.log('📸 Enviando imagen adicional:', file.name)
+  const getProductCategoriesInfo = () => {
+    if (!product) return { category: null, subcategories: [] }
+    const categoryInfo = dbCategories.find(cat => cat.id === product.categoryId || cat.name === product.category)
+    const allSubcategories = product.subcategories || []
+    if (!allSubcategories.length && product.subcategory) {
+      allSubcategories.push({
+        id: product.subcategoryId || 0,
+        name: product.subcategory,
+        slug: product.subcategory.toLowerCase().replace(/\s+/g, '-'),
+        isPrimary: true,
+        displayOrder: 1,
       })
-
-      console.log('📦 Enviando formData con:', {
-        name: formData.name,
-        price: formData.price,
-        image: formData.image || imageFile?.name || 'ninguna',
-        specs: productSpecs,
-        tags: selectedTag
-      })
-
-      await updateProduct(productId, formDataToSend)
-      
-      if (imageFile) URL.revokeObjectURL(imagePreview)
-      newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
-      
-      router.push("/admin/products")
-    } catch (error) {
-      console.error("Error updating product:", error)
-      alert("Error al actualizar el producto")
-    } finally {
-      setIsUploading(false)
+    }
+    return {
+      category: categoryInfo || {
+        id: product.categoryId,
+        name: product.category,
+        slug: product.category.toLowerCase().replace(/\s+/g, '-'),
+      },
+      subcategories: allSubcategories,
     }
   }
 
-  const allAdditionalImagePreviews = [
-    ...existingAdditionalImages.map((img, index) => ({ type: 'existing' as const, url: img, index })),
-    ...newAdditionalImagePreviews.map((img, index) => ({ type: 'new' as const, url: img, index }))
+  const categoriesInfo = getProductCategoriesInfo()
+
+  const allMedia: MediaItem[] = [
+    ...(product ? [{ type: 'image' as const, url: correctImageUrl(product.image) }] : []),
+    ...(product?.additionalImages?.map(img => ({ type: 'image' as const, url: correctImageUrl(img) })) || []),
+    ...(product?.youtubeVideoId
+      ? [
+          {
+            type: 'video' as const,
+            url: `https://img.youtube.com/vi/${product.youtubeVideoId}/maxresdefault.jpg`,
+            thumbnail: `https://img.youtube.com/vi/${product.youtubeVideoId}/mqdefault.jpg`,
+          },
+        ]
+      : []),
   ]
 
-  if (!isAuthenticated || user?.role !== 'admin') {
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="container mx-auto px-4 py-8">
-          <div className="text-center">No autorizado</div>
-        </main>
-        <Footer />
-      </div>
-    )
+  const hasStock = () => product && product.inStock && product.stock > 0
+  const formatCLP = (price: number) => Math.round(price).toLocaleString('es-CL')
+
+  const nextMedia = () => {
+    if (allMedia.length > 1) {
+      setSelectedMediaIndex((prev) => (prev + 1) % allMedia.length)
+      setShowVideo(false)
+    }
+  }
+  const prevMedia = () => {
+    if (allMedia.length > 1) {
+      setSelectedMediaIndex((prev) => (prev - 1 + allMedia.length) % allMedia.length)
+      setShowVideo(false)
+    }
+  }
+  const handleMediaClick = () => {
+    if (allMedia[selectedMediaIndex].type === 'video' && product?.youtubeVideoId) {
+      setShowVideo(true)
+    }
   }
 
-  if (loading || categoriesLoading) {
+  const handleAddToCart = () => {
+    if (!product || !hasStock()) return
+    setIsAddingToCart(true)
+
+    addItem({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+      category: product.category,
+      inStock: product.inStock,
+      stock: product.stock,
+      categoryId: product.categoryId,
+      subcategoryId: product.subcategoryId,
+      weight: product.weight || 0.5,
+      height: product.height || 10,
+      width: product.width || 15,
+      length: product.length || 20,
+    })
+
+    toast({
+      description: (
+        <motion.div
+          className="flex items-center gap-3 w-full"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 10 }}
+            className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0"
+          >
+            <Check className="w-4 h-4 text-white" />
+          </motion.div>
+          <div className="flex flex-col flex-1">
+            <span className="font-semibold text-sm">Producto agregado</span>
+            <span className="text-xs text-muted-foreground line-clamp-1">{product.name}</span>
+          </div>
+          <motion.div
+            className="w-10 h-10 relative flex-shrink-0 overflow-hidden rounded-md border border-border/50"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Image
+              src={correctImageUrl(product.image)}
+              alt={product.name}
+              fill
+              className="object-cover"
+              sizes="40px"
+              unoptimized={true}
+            />
+          </motion.div>
+        </motion.div>
+      ),
+      duration: 3000,
+      className: isMobileOrTablet
+        ? "fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md shadow-lg z-50"
+        : "fixed bottom-6 right-6 w-auto max-w-md shadow-lg z-50",
+    })
+
+    setShowCheckmark(true)
+    setTimeout(() => setIsAddingToCart(false), 800)
+    setTimeout(() => setShowCheckmark(false), 1500)
+  }
+
+  const handleBack = () => {
+    router.push('/')
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-white">
         <Header />
         <main className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Cargando...</span>
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="font-poppins text-gray-600">Cargando producto...</p>
+            </div>
           </div>
         </main>
         <Footer />
@@ -765,832 +296,521 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
   if (!product) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-white">
         <Header />
         <main className="container mx-auto px-4 py-8">
-          <p>Producto no encontrado</p>
+          <div className="text-center py-16">
+            <h1 className="text-2xl font-semibold font-poppins mb-4">Producto no encontrado</h1>
+            <Button onClick={handleBack} className="bg-orange-600 hover:bg-orange-700 font-poppins font-normal">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Volver a la tienda
+            </Button>
+          </div>
         </main>
         <Footer />
       </div>
     )
   }
 
+  const discountPercent =
+    product.originalPrice && product.originalPrice > product.price
+      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+      : 0
+  const currentMedia = allMedia[selectedMediaIndex]
+  const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
+
+  const imageKey = `${currentMedia.url}?t=${imageReloadKey}`
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       <Header />
-      <main className="container mx-auto px-4 py-8">
-        <Link href="/admin/products">
-          <Button variant="ghost" className="mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver a Productos
-          </Button>
-        </Link>
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Botón volver */}
+        <motion.div
+          className="mb-6"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <motion.button
+            onClick={handleBack}
+            onMouseEnter={() => setIsHoveringBack(true)}
+            onMouseLeave={() => setIsHoveringBack(false)}
+            className="group relative flex items-center gap-2 px-4 py-2 rounded-lg font-poppins font-normal text-gray-600 transition-all duration-300 overflow-hidden"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-orange-600 rounded-lg"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{
+                scale: isHoveringBack ? 1 : 0,
+                opacity: isHoveringBack ? 1 : 0,
+              }}
+              transition={{ duration: 0.3 }}
+            />
+            <motion.div
+              animate={{ x: isHoveringBack ? -5 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="relative z-10"
+            >
+              <ArrowLeft
+                className={`w-4 h-4 transition-colors duration-300 ${
+                  isHoveringBack ? 'text-white' : 'text-gray-600'
+                }`}
+              />
+            </motion.div>
+            <motion.span
+              className={`relative z-10 transition-colors duration-300 ${
+                isHoveringBack ? 'text-white' : 'text-gray-600'
+              }`}
+              animate={{ x: isHoveringBack ? 3 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              Volver a la tienda
+            </motion.span>
+          </motion.button>
+        </motion.div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Editar Producto</CardTitle>
-            <CardDescription>Modifica la informacion del producto</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="name" className={errors.name ? 'text-red-600' : ''}>
-                    Nombre del Producto *
-                  </Label>
-                  <Input
-                    id="name"
-                    required
-                    value={formData.name}
-                    onChange={(e) => {
-                      setFormData({ ...formData, name: e.target.value })
-                      if (errors.name) setErrors(prev => ({ ...prev, name: false }))
-                    }}
-                    className={getFieldClassName('name')}
-                    placeholder="Ej: Gloomhaven"
-                  />
-                  {errors.name && <p className="text-xs text-red-500">El nombre es requerido</p>}
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          {/* GALERÍA */}
+          <div className="space-y-4">
+            <motion.div
+              className="border-2 border-gray-200 rounded-2xl p-2 relative bg-white shadow-sm"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              {product.stock <= 10 && hasStock() && (
+                <motion.div
+                  className="absolute top-4 left-4 bg-orange-500 text-white text-xs px-3 py-1 rounded-full font-poppins font-bold italic z-10"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 400, delay: 0.3 }}
+                >
+                  POCAS UNIDADES
+                </motion.div>
+              )}
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Video de YouTube (opcional)</Label>
-                  <div className="flex items-center gap-2">
-                    <Youtube className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    <Input
-                      value={youtubeUrl}
-                      onChange={(e) => handleYoutubeUrlChange(e.target.value)}
-                      placeholder="https://youtube.com/watch?v=... o ID del video"
-                      className="flex-1"
-                    />
-                  </div>
-                  {formData.youtubeVideoId && (
-                    <div className="mt-4 p-4 border rounded-lg bg-gray-50">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm text-green-600 font-medium">
-                          Video ID: {formData.youtubeVideoId}
-                        </p>
-                        <Button 
-                          type="button"
-                          variant="outline" 
-                          size="sm"
-                          className="h-8 px-3 text-xs gap-1"
-                          onClick={() => window.open(`https://www.youtube.com/watch?v=${formData.youtubeVideoId}`, '_blank')}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Ver en YouTube
-                        </Button>
-                      </div>
-                      <div className="aspect-video max-w-2xl bg-black rounded-lg overflow-hidden shadow-lg mb-2">
+              <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
+                <div className="relative w-full h-full cursor-pointer" onClick={handleMediaClick}>
+                  <AnimatePresence mode="wait">
+                    {showVideo && product.youtubeVideoId ? (
+                      <motion.div
+                        key="video"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="w-full h-full"
+                      >
                         <iframe
-                          width="100%"
-                          height="100%"
-                          src={`https://www.youtube.com/embed/${formData.youtubeVideoId}`}
+                          src={`https://www.youtube.com/embed/${product.youtubeVideoId}?autoplay=1&rel=0`}
                           title="YouTube video player"
                           frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                          referrerPolicy="strict-origin-when-cross-origin"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                           className="w-full h-full"
-                          onError={() => setYoutubeError(true)}
                         />
-                      </div>
-                      {youtubeError && (
-                        <p className="text-sm text-red-500 mt-2">
-                          El video no se pudo cargar, pero puedes verlo usando el enlace.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label className={errors.image ? 'text-red-600' : ''}>
-                      Imagenes del Producto *
-                    </Label>
-                    <span className={`text-sm ${totalImages >= MAX_TOTAL_IMAGES ? 'text-red-500' : 'text-muted-foreground'}`}>
-                      {totalImages}/{MAX_TOTAL_IMAGES} imagenes
-                    </span>
-                  </div>
-
-                  <div className={`border rounded-lg p-4 ${errors.image ? 'border-red-500' : ''}`}>
-                    <Label className="text-sm font-medium">Imagen Principal *</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="file"
-                            accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
-                            onChange={handleImageUpload}
-                            className={`cursor-pointer ${errors.image ? 'border-red-500' : ''}`}
-                            disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
-                          />
-                          <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Input
-                          value={formData.image}
-                          onChange={(e) => {
-                            setFormData({ ...formData, image: e.target.value })
-                            setImagePreview(e.target.value)
-                            setImageFile(null)
-                            if (errors.image) setErrors(prev => ({ ...prev, image: false }))
-                          }}
-                          placeholder="URL de imagen web"
-                          className={errors.image ? 'border-red-500' : ''}
-                        />
-                      </div>
-                    </div>
-                    {errors.image && <p className="text-xs text-red-500 mt-2">Debes agregar al menos una imagen principal</p>}
-                    {imagePreview && (
-                      <div className="mt-4 relative inline-block">
-                        <img
-                          src={imagePreview || "/placeholder.svg"}
-                          alt="Preview"
-                          className="w-48 h-48 object-cover rounded-lg border"
-                        />
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon"
-                          className="absolute top-2 right-2 h-6 w-6"
-                          onClick={removeMainImage}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border rounded-lg p-4">
-                    <Label className="text-sm font-medium">Imagenes Adicionales</Label>
-                    <div className="mt-2">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="file"
-                          accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp"
-                          onChange={handleAdditionalImageUpload}
-                          className="cursor-pointer"
-                          disabled={isUploading || totalImages >= MAX_TOTAL_IMAGES}
-                        />
-                        <Upload className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Espacios disponibles: {MAX_TOTAL_IMAGES - totalImages}
-                      </p>
-                    </div>
-                    
-                    {allAdditionalImagePreviews.length > 0 && (
-                      <div className="mt-4">
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {allAdditionalImagePreviews.map(({ type, url, index }) => (
-                            <div key={`${type}-${index}`} className="relative group">
-                              <img
-                                src={url || "/placeholder.svg"}
-                                alt={`Additional ${index + 1}`}
-                                className="w-full h-32 object-cover rounded-lg border"
-                              />
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="icon"
-                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100"
-                                onClick={() => {
-                                  if (type === 'existing') {
-                                    removeExistingAdditionalImage(index)
-                                  } else {
-                                    removeNewAdditionalImage(index)
-                                  }
-                                }}
-                              >
-                                <X className="w-3 h-3" />
-                              </Button>
-                              <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                                {type === 'existing' ? 'Existente' : 'Nueva'}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="category-select" className={errors.categoryId ? 'text-red-600' : ''}>
-                    Categoria *
-                  </Label>
-                  <select
-                    id="category-select"
-                    value={formData.categoryId || ""}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      setFormData(prev => ({ 
-                        ...prev, 
-                        categoryId: newValue, 
-                        subcategoryIds: [] 
-                      }));
-                      setSelectedCategory(newValue);
-                      if (errors.categoryId) setErrors(prev => ({ ...prev, categoryId: false }))
-                    }}
-                    className={`flex h-10 w-full rounded-md border ${errors.categoryId ? 'border-red-500' : 'border-input'} bg-background px-3 py-2 text-sm ring-offset-background`}
-                    required
-                  >
-                    <option value="">Selecciona una categoria</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={safeToString(cat.id)}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.categoryId && <p className="text-xs text-red-500">Debes seleccionar una categoria</p>}
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label className={errors.subcategoryIds ? 'text-red-600' : ''}>
-                    Subcategorias *
-                  </Label>
-                  <div className={`border rounded-lg p-4 bg-muted/20 ${errors.subcategoryIds ? 'border-red-500' : ''}`}>
-                    {!selectedCategory ? (
-                      <p className="text-sm text-muted-foreground">Primero selecciona una categoria</p>
-                    ) : availableSubcategories.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay subcategorias disponibles</p>
+                      </motion.div>
                     ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {availableSubcategories.map((subcat) => (
-                          <SubcategoryCheckbox
-                            key={subcat.id}
-                            subcat={subcat}
-                            isSelected={formData.subcategoryIds.includes(safeToString(subcat.id))}
-                            onToggle={handleSubcategoryToggle}
-                          />
-                        ))}
-                      </div>
+                      <motion.div
+                        key={imageKey}
+                        initial={{ opacity: 0, scale: 1.1 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.3 }}
+                        className="relative w-full h-full"
+                      >
+                        <Image
+                          key={imageKey}
+                          src={currentMedia.url}
+                          alt={product.name}
+                          fill
+                          className="object-cover transition-transform duration-500 group-hover:scale-110"
+                          priority
+                          unoptimized={true}
+                          onError={(e) => {
+                            console.error('❌ Error cargando imagen:', currentMedia.url)
+                            const target = e.target as HTMLImageElement
+                            target.src = '/uploads/products/diverse-products-still-life.png'
+                          }}
+                          onLoad={() => console.log('✅ Imagen cargada:', currentMedia.url)}
+                        />
+                        {currentMedia.type === 'video' && !showVideo && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
+                            <motion.div
+                              className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg"
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              <Play className="w-8 h-8 text-white ml-1" />
+                            </motion.div>
+                          </div>
+                        )}
+                      </motion.div>
                     )}
-                  </div>
-                  {errors.subcategoryIds && <p className="text-xs text-red-500">Debes seleccionar al menos una subcategoria</p>}
-                  {formData.subcategoryIds.length > 0 && (
-                    <p className="text-sm text-green-600 mt-2">
-                      {formData.subcategoryIds.length} subcategoria(s) seleccionada(s)
-                    </p>
-                  )}
+                  </AnimatePresence>
                 </div>
 
-                <div className="md:col-span-2 space-y-3">
-                  <Label className="text-lg font-semibold flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Dimensiones para Envio
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Estas dimensiones se usaran para calcular el costo de envio con Chilexpress.
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
-                    <div className="space-y-2">
-                      <Label htmlFor="weight" className={`text-sm flex items-center gap-1 ${errors.weight ? 'text-red-600' : ''}`}>
-                        <Weight className="w-3 h-3" /> Peso (kg) *
-                      </Label>
-                      <Input
-                        id="weight"
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        required
-                        value={formData.weight}
-                        onChange={(e) => {
-                          setFormData({ ...formData, weight: e.target.value })
-                          if (errors.weight) setErrors(prev => ({ ...prev, weight: false }))
-                        }}
-                        className={getFieldClassName('weight')}
-                        placeholder="0.5"
-                      />
-                      {errors.weight && <p className="text-xs text-red-500">Campo requerido</p>}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="height" className={`text-sm flex items-center gap-1 ${errors.height ? 'text-red-600' : ''}`}>
-                        <Ruler className="w-3 h-3" /> Alto (cm) *
-                      </Label>
-                      <Input
-                        id="height"
-                        type="number"
-                        step="1"
-                        min="1"
-                        required
-                        value={formData.height}
-                        onChange={(e) => {
-                          setFormData({ ...formData, height: e.target.value })
-                          if (errors.height) setErrors(prev => ({ ...prev, height: false }))
-                        }}
-                        className={getFieldClassName('height')}
-                        placeholder="10"
-                      />
-                      {errors.height && <p className="text-xs text-red-500">Campo requerido</p>}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="width" className={`text-sm flex items-center gap-1 ${errors.width ? 'text-red-600' : ''}`}>
-                        <Ruler className="w-3 h-3" /> Ancho (cm) *
-                      </Label>
-                      <Input
-                        id="width"
-                        type="number"
-                        step="1"
-                        min="1"
-                        required
-                        value={formData.width}
-                        onChange={(e) => {
-                          setFormData({ ...formData, width: e.target.value })
-                          if (errors.width) setErrors(prev => ({ ...prev, width: false }))
-                        }}
-                        className={getFieldClassName('width')}
-                        placeholder="15"
-                      />
-                      {errors.width && <p className="text-xs text-red-500">Campo requerido</p>}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="length" className={`text-sm flex items-center gap-1 ${errors.length ? 'text-red-600' : ''}`}>
-                        <Ruler className="w-3 h-3" /> Largo (cm) *
-                      </Label>
-                      <Input
-                        id="length"
-                        type="number"
-                        step="1"
-                        min="1"
-                        required
-                        value={formData.length}
-                        onChange={(e) => {
-                          setFormData({ ...formData, length: e.target.value })
-                          if (errors.length) setErrors(prev => ({ ...prev, length: false }))
-                        }}
-                        className={getFieldClassName('length')}
-                        placeholder="20"
-                      />
-                      {errors.length && <p className="text-xs text-red-500">Campo requerido</p>}
-                    </div>
-                  </div>
-                </div>
+                {allMedia.length > 1 && (
+                  <>
+                    <motion.button
+                      onClick={prevMedia}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all z-10"
+                      whileHover={{ scale: 1.1, x: -2 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </motion.button>
+                    <motion.button
+                      onClick={nextMedia}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all z-10"
+                      whileHover={{ scale: 1.1, x: 2 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </motion.button>
+                    <motion.div
+                      className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-1 rounded-full font-poppins"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      {selectedMediaIndex + 1} / {allMedia.length}
+                    </motion.div>
+                  </>
+                )}
+              </div>
+            </motion.div>
 
-                <div className="md:col-span-2 border rounded-lg p-4">
-                  <SpecsEditor 
-                    specs={productSpecs} 
-                    onChange={setProductSpecs} 
-                  />
-                  {errors.specs && (
-                    <p className="text-xs text-red-500 mt-2">Debes agregar al menos una caracteristica</p>
-                  )}
-                </div>
-
-                <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
-                  <Label className="text-lg font-semibold flex items-center gap-2">
-                    <Tag className="w-4 h-4" />
-                    Etiqueta del Producto
-                  </Label>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
-                  </p>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {[
-                      { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
-                      { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
-                      { value: "descuento", label: "DESCUENTO", icon: Percent, description: "Activar oferta especial", color: "bg-orange-500", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
-                      { value: "novedad", label: "NOVEDAD", icon: Sparkles, description: "Producto recien llegado", color: "bg-gray-800", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
-                      { value: "agotado", label: "AGOTADO", icon: AlertCircle, description: "Sin stock (stock = 0)", color: "bg-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
-                    ].map((tag) => {
-                      const IconComponent = tag.icon;
-                      const isSelected = selectedTag === tag.value;
-                      
-                      return (
-                        <div
-                          key={tag.value || "normal"}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            isSelected
-                              ? `${tag.bgColor} ${tag.borderColor} border-2`
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                          onClick={() => handleTagSelect(tag.value)}
-                        >
-                          <div className={`p-2 rounded-full ${isSelected ? tag.color : 'bg-gray-100'}`}>
-                            <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
-                          </div>
-                          <div>
-                            <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                              {tag.label}
-                            </span>
-                            <p className="text-xs text-muted-foreground">{tag.description}</p>
-                          </div>
-                          <input
-                            type="radio"
-                            name="productTag"
-                            checked={isSelected}
-                            onChange={() => {}}
-                            className="ml-auto h-4 w-4 text-[#C2410C] focus:ring-[#C2410C]"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-                  {selectedTag === "" && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
-                        <Package className="w-4 h-4" />
-                        Producto Normal
-                      </h4>
-                      <p className="text-sm text-green-700 mb-3">
-                        Este producto se mostrara sin etiqueta especial.
-                      </p>
-                      <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
-                        <Input
-                          type="number"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
-                          placeholder="Ej: 25000"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {selectedTag === "descuento" && (
-                    <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                      <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-                        <Percent className="w-4 h-4" />
-                        Configurar Descuento
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm">Precio Original (CLP) *</Label>
-                          <Input
-                            type="number"
-                            placeholder="Ej: 50000"
-                            value={formData.originalPrice}
-                            onChange={(e) => handleDiscountChange('originalPrice', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Porcentaje de Descuento (1-99%) *</Label>
-                          <div className="flex items-center gap-4">
-                            <input
-                              type="range"
-                              min="1"
-                              max="99"
-                              value={formData.discountPercent}
-                              onChange={(e) => handleDiscountChange('discountPercent', e.target.value)}
-                              className="flex-1"
-                            />
-                            <span className="text-sm font-bold text-orange-600 min-w-[45px]">
-                              {formData.discountPercent}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio Final (calculado automaticamente)</Label>
-                        <Input
-                          type="number"
-                          value={formData.price}
-                          onChange={(e) => handleDiscountChange('price', e.target.value)}
-                          className="mt-1 bg-gray-50"
-                        />
-                      </div>
-                      {formData.originalPrice && safeToNumber(formData.originalPrice) > 0 && (
-                        <div className="mt-3 p-3 bg-white rounded-lg">
-                          <p className="text-sm">
-                            <span className="font-semibold">Resumen:</span>{' '}
-                            <span className="line-through text-gray-500">
-                              ${formatCLP(safeToNumber(formData.originalPrice))} CLP
-                            </span>{' '}
-                            <span className="mx-1 text-gray-400">→</span>
-                            <span className="text-orange-600 font-bold">
-                              ${formatCLP(safeToNumber(formData.price))} CLP
-                            </span>
-                          </p>
+            <motion.div
+              className="border border-gray-200 rounded-xl p-3 bg-gray-50"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-300">
+                {allMedia.map((media, i) => {
+                  const thumbKey = `${media.url}?t=${imageReloadKey}`
+                  return (
+                    <motion.div
+                      key={i}
+                      onClick={() => {
+                        setSelectedMediaIndex(i)
+                        setShowVideo(false)
+                      }}
+                      className={`relative w-20 h-20 rounded-lg border-2 cursor-pointer overflow-hidden flex-shrink-0 transition-all ${
+                        selectedMediaIndex === i
+                          ? 'border-orange-500 ring-2 ring-orange-200'
+                          : 'border-gray-300 hover:border-orange-400'
+                      }`}
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                    >
+                      <Image
+                        key={thumbKey}
+                        src={media.type === 'video' ? media.thumbnail || media.url : media.url}
+                        alt={`Media ${i + 1}`}
+                        width={80}
+                        height={80}
+                        className="object-cover w-full h-full"
+                        unoptimized={true}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = '/uploads/products/diverse-products-still-life.png'
+                        }}
+                      />
+                      {media.type === 'video' && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <Youtube className="text-white w-5 h-5" />
                         </div>
                       )}
-                    </div>
-                  )}
-                  
-                  {selectedTag === "preventa" && (
-                    <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                        <Rocket className="w-4 h-4" />
-                        Producto en Preventa
-                      </h4>
-                      <p className="text-sm text-amber-700 mb-3">
-                        Este producto se mostrara con la etiqueta "PREVENTA".
-                      </p>
-                      <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio de Preventa (CLP)</Label>
-                        <Input
-                          type="number"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
-                          placeholder="Ej: 45000"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {selectedTag === "novedad" && (
-                    <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
-                        Producto Nuevo
-                      </h4>
-                      <p className="text-sm text-gray-700 mb-3">
-                        Este producto se mostrara con la etiqueta "NOVEDAD".
-                      </p>
-                      <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
-                        <Input
-                          type="number"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {selectedTag === "agotado" && (
-                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                      <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4" />
-                        Producto Agotado
-                      </h4>
-                      <p className="text-sm text-red-700">
-                        Este producto se mostrara con la etiqueta "AGOTADO". El stock se ha establecido automaticamente a 0.
-                      </p>
-                      <div className="mt-3 p-3 bg-white rounded-lg">
-                        <p className="text-sm">
-                          <span className="font-semibold">Stock actual:</span> 0 unidades
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {selectedTag && selectedTag !== "" && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedTag === "preventa" && (
-                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgb(251,176,59)" }}>
-                            PREVENTA
-                          </span>
-                        )}
-                        {selectedTag === "descuento" && formData.discountPercent !== "0" && (
-                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(241,90,36)" }}>
-                            {formData.discountPercent}% OFF
-                          </span>
-                        )}
-                        {selectedTag === "novedad" && (
-                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(26,26,26)" }}>
-                            NOVEDAD
-                          </span>
-                        )}
-                        {selectedTag === "agotado" && (
-                          <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgba(237,28,36)" }}>
-                            AGOTADO
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            </motion.div>
+          </div>
 
-                <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
-                  <Label className="text-lg font-semibold flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Productos Recomendados
-                  </Label>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Selecciona los productos que se mostraran como "Tambien te podria gustar"
-                  </p>
-                  
-                  <div className="flex items-center gap-2 mb-4">
-                    <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <Input
-                      placeholder="Buscar productos..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="max-w-sm"
-                    />
+          {/* INFO */}
+          <motion.div
+            className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            <motion.p
+              className="text-sm font-bold font-poppins tracking-wide text-gray-700"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              {product.brand || 'DEVIR'}
+            </motion.p>
+
+            <motion.h1
+              className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              {product.name}
+            </motion.h1>
+
+            <motion.div
+              className="flex gap-2 flex-wrap mt-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              {categoriesInfo.subcategories.map((sub, idx) => (
+                <motion.span
+                  key={idx}
+                  className="text-xs font-light italic font-poppins bg-gray-100 px-2 py-1 rounded text-gray-700"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.35 + idx * 0.05 }}
+                >
+                  {sub.name}
+                </motion.span>
+              ))}
+            </motion.div>
+
+            <motion.p
+              className="text-sm font-normal font-poppins text-gray-700 mt-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              <span className="font-semibold">Stock disponible:</span> {product.stock}
+            </motion.p>
+
+            <motion.p
+              className="text-sm font-normal font-poppins leading-relaxed text-gray-600 mt-6"
+              style={{ fontWeight: 500 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.45 }}
+            >
+              {product.description}
+            </motion.p>
+
+            <div className="mt-8 border-t border-gray-100"></div>
+
+            <div className="mt-auto pt-4">
+              <motion.div
+                className="mb-6"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.55 }}
+              >
+                {product.originalPrice && product.originalPrice > product.price ? (
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins"
+                      style={{ backgroundColor: 'rgba(228, 78, 43)' }}
+                    >
+                      {discountPercent}%
+                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-3xl font-semibold font-poppins text-black">
+                        ${formatCLP(product.price)}
+                      </span>
+                      <span className="text-xl font-extralight italic font-poppins line-through text-gray-400 mt-1">
+                        ${formatCLP(product.originalPrice)}
+                      </span>
+                    </div>
                   </div>
+                ) : (
+                  <span className="text-3xl font-semibold font-poppins text-black">
+                    ${formatCLP(product.price)}
+                  </span>
+                )}
+              </motion.div>
 
-                  {productsLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      <span>Cargando productos...</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
-                      {filteredProducts.map((product: any) => (
-                        <RecommendedProductCard
-                          key={product.id}
-                          product={product}
-                          isSelected={formData.recommendedProducts.includes(product.id)}
-                          onToggle={handleRecommendedProductToggle}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {formData.recommendedProducts.length > 0 && (
-                    <p className="text-sm text-green-600 mt-2">
-                      {formData.recommendedProducts.length} producto(s) recomendado(s) seleccionado(s)
-                    </p>
-                  )}
-                </div>
+              <div className="flex gap-3">
+                <motion.div
+                  whileHover={{ scale: hasStock() ? 1.02 : 1 }}
+                  whileTap={{ scale: hasStock() ? 0.98 : 1 }}
+                  className="flex-1"
+                >
+                  <Button
+                    onClick={handleAddToCart}
+                    disabled={!hasStock()}
+                    className="text-white w-full font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                    style={{ backgroundColor: 'rgba(228, 78, 43)' }}
+                  >
+                    <AnimatePresence mode="wait">
+                      {isAddingToCart ? (
+                        <motion.div key="adding" className="flex items-center justify-center">
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
+                          />
+                          <span>Agregando...</span>
+                        </motion.div>
+                      ) : showCheckmark ? (
+                        <motion.div key="success" className="flex items-center justify-center">
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 400 }}
+                          >
+                            <Check className="w-4 h-4 mr-2" />
+                          </motion.div>
+                          <span>Agregado!</span>
+                        </motion.div>
+                      ) : (
+                        <motion.div key="normal" className="flex items-center justify-center">
+                          <motion.div
+                            animate={hasStock() ? { rotate: [0, -10, 10, -5, 5, 0] } : {}}
+                            transition={{ duration: 0.5 }}
+                          >
+                            <ShoppingCart className="w-4 h-4 mr-2" />
+                          </motion.div>
+                          {!hasStock() ? 'Sin Stock' : 'Agregar al Carro'}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                <div className="space-y-2">
-                  <Label htmlFor="stock" className={errors.stock ? 'text-red-600' : ''}>
-                    Stock *
-                  </Label>
-                  <Input
-                    id="stock"
-                    type="number"
-                    required
-                    value={formData.stock}
-                    onChange={(e) => {
-                      setFormData({ ...formData, stock: e.target.value })
-                      if (errors.stock) setErrors(prev => ({ ...prev, stock: false }))
-                    }}
-                    disabled={selectedTag === "agotado"}
-                    className={getFieldClassName('stock', selectedTag === "agotado" ? "bg-gray-100" : "")}
-                  />
-                  {errors.stock && <p className="text-xs text-red-500">El stock es requerido</p>}
-                  {selectedTag === "agotado" && (
-                    <p className="text-xs text-red-500">El stock esta fijado en 0 porque el producto esta agotado</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="age" className={errors.age ? 'text-red-600' : ''}>
-                    Edad (ej: 8+) *
-                  </Label>
-                  <Input
-                    id="age"
-                    required
-                    value={formData.age}
-                    onChange={(e) => {
-                      setFormData({ ...formData, age: e.target.value })
-                      if (errors.age) setErrors(prev => ({ ...prev, age: false }))
-                    }}
-                    className={getFieldClassName('age')}
-                    placeholder="Ej: 8+"
-                  />
-                  {errors.age && <p className="text-xs text-red-500">La edad es requerida</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ageMin" className={errors.ageMin ? 'text-red-600' : ''}>
-                    Edad Minima *
-                  </Label>
-                  <Input
-                    id="ageMin"
-                    type="number"
-                    required
-                    value={formData.ageMin}
-                    onChange={(e) => {
-                      setFormData({ ...formData, ageMin: e.target.value })
-                      if (errors.ageMin) setErrors(prev => ({ ...prev, ageMin: false }))
-                    }}
-                    className={getFieldClassName('ageMin')}
-                    placeholder="8"
-                  />
-                  {errors.ageMin && <p className="text-xs text-red-500">La edad minima es requerida</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="players" className={errors.players ? 'text-red-600' : ''}>
-                    Jugadores (ej: 2-5) *
-                  </Label>
-                  <Input
-                    id="players"
-                    required
-                    value={formData.players}
-                    onChange={(e) => {
-                      setFormData({ ...formData, players: e.target.value })
-                      if (errors.players) setErrors(prev => ({ ...prev, players: false }))
-                    }}
-                    className={getFieldClassName('players')}
-                    placeholder="Ej: 2-5"
-                  />
-                  {errors.players && <p className="text-xs text-red-500">Los jugadores son requeridos</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="playersMin" className={errors.playersMin ? 'text-red-600' : ''}>
-                    Jugadores Minimo *
-                  </Label>
-                  <Input
-                    id="playersMin"
-                    type="number"
-                    required
-                    value={formData.playersMin}
-                    onChange={(e) => {
-                      setFormData({ ...formData, playersMin: e.target.value })
-                      if (errors.playersMin) setErrors(prev => ({ ...prev, playersMin: false }))
-                    }}
-                    className={getFieldClassName('playersMin')}
-                    placeholder="2"
-                  />
-                  {errors.playersMin && <p className="text-xs text-red-500">El minimo de jugadores es requerido</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="playersMax" className={errors.playersMax ? 'text-red-600' : ''}>
-                    Jugadores Maximo *
-                  </Label>
-                  <Input
-                    id="playersMax"
-                    type="number"
-                    required
-                    value={formData.playersMax}
-                    onChange={(e) => {
-                      setFormData({ ...formData, playersMax: e.target.value })
-                      if (errors.playersMax) setErrors(prev => ({ ...prev, playersMax: false }))
-                    }}
-                    className={getFieldClassName('playersMax')}
-                    placeholder="5"
-                  />
-                  {errors.playersMax && <p className="text-xs text-red-500">El maximo de jugadores es requerido</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="duration" className={errors.duration ? 'text-red-600' : ''}>
-                    Duracion (ej: 15 min) *
-                  </Label>
-                  <Input
-                    id="duration"
-                    required
-                    value={formData.duration}
-                    onChange={(e) => {
-                      setFormData({ ...formData, duration: e.target.value })
-                      if (errors.duration) setErrors(prev => ({ ...prev, duration: false }))
-                    }}
-                    className={getFieldClassName('duration')}
-                    placeholder="Ej: 30 min"
-                  />
-                  {errors.duration && <p className="text-xs text-red-500">La duracion es requerida</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="durationMin" className={errors.durationMin ? 'text-red-600' : ''}>
-                    Duracion Minima (min) *
-                  </Label>
-                  <Input
-                    id="durationMin"
-                    type="number"
-                    required
-                    value={formData.durationMin}
-                    onChange={(e) => {
-                      setFormData({ ...formData, durationMin: e.target.value })
-                      if (errors.durationMin) setErrors(prev => ({ ...prev, durationMin: false }))
-                    }}
-                    className={getFieldClassName('durationMin')}
-                    placeholder="30"
-                  />
-                  {errors.durationMin && <p className="text-xs text-red-500">La duracion minima es requerida</p>}
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description" className={errors.description ? 'text-red-600' : ''}>
-                    Descripcion *
-                  </Label>
-                  <Textarea
-                    id="description"
-                    required
-                    value={formData.description}
-                    onChange={(e) => {
-                      setFormData({ ...formData, description: e.target.value })
-                      if (errors.description) setErrors(prev => ({ ...prev, description: false }))
-                    }}
-                    className={getFieldClassName('description')}
-                    rows={4}
-                    placeholder="Describe el producto..."
-                  />
-                  {errors.description && <p className="text-xs text-red-500">La descripcion es requerida</p>}
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <Button type="submit" disabled={isUploading} className="bg-[#C2410C] hover:bg-[#9A3412]">
-                  {isUploading ? "Guardando..." : "Guardar Cambios"}
-                </Button>
-                <Link href="/admin/products">
-                  <Button type="button" variant="outline">
-                    Cancelar
+                    <AnimatePresence>
+                      {isAddingToCart && (
+                        <motion.div
+                          className="absolute inset-0 pointer-events-none"
+                          initial={{ scale: 0, opacity: 0.5 }}
+                          animate={{ scale: 2, opacity: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.5 }}
+                        >
+                          <div className="w-full h-full bg-white/20 rounded-full" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </Button>
-                </Link>
+                </motion.div>
+
+                {isAuthenticated && (
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex-shrink-0"
+                  >
+                    <FavoriteButton productId={product.id} size="lg" />
+                  </motion.div>
+                )}
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* TODAS LAS CARACTERÍSTICAS - dinámico desde specs */}
+        <motion.div
+          className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.7 }}
+        >
+          <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
+
+          {productSpecs.length > 0 ? (
+            <div className="space-y-2 text-sm">
+              {productSpecs.map((spec, index) => (
+                <div key={index} className="flex bg-gray-100 p-2 rounded">
+                  <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
+                  <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">
+                    {spec.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No hay características agregadas para este producto.
+            </p>
+          )}
+        </motion.div>
+
+        {/* Productos Recomendados */}
+        {recommendedProducts.length > 0 && (
+          <motion.div
+            className="mt-10"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.8 }}
+          >
+            <div className="flex items-center gap-4 mb-8">
+              <motion.h2
+                className="text-2xl md:text-3xl font-semibold font-poppins mb-4 text-gray-900"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 1.4 }}
+              >
+                PODRÍA GUSTARTE
+              </motion.h2>
+              <motion.div
+                className="flex-1 h-px bg-gradient-to-r from-[#C2410C] to-transparent"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.6, delay: 1.5 }}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {recommendedProducts.map((recProduct, idx) => (
+                <motion.div
+                  key={recProduct.id}
+                  className="group cursor-pointer border border-gray-200 rounded-xl overflow-hidden hover:border-orange-500 hover:shadow-lg transition-all duration-300"
+                  onClick={() => {
+                    router.push(`/products/${recProduct.id}`)
+                    window.scrollTo(0, 0)
+                  }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 + idx * 0.1 }}
+                  whileHover={{ y: -5 }}
+                >
+                  <div className="relative aspect-square bg-gray-100">
+                    <Image
+                      key={`${recProduct.image}?t=${imageReloadKey}`}
+                      src={correctImageUrl(recProduct.image)}
+                      alt={recProduct.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/uploads/products/diverse-products-still-life.png'
+                      }}
+                    />
+                    {recProduct.isOnSale && (
+                      <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
+                        OFERTA
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold font-poppins text-gray-900 mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
+                      {recProduct.name}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-semibold font-poppins text-orange-600">
+                        ${formatCLP(recProduct.price)}
+                      </span>
+                      {recProduct.originalPrice && recProduct.originalPrice > recProduct.price && (
+                        <span className="text-xs font-extralight italic font-poppins line-through text-gray-400">
+                          ${formatCLP(recProduct.originalPrice)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </main>
       <Footer />
     </div>
