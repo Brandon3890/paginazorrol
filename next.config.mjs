@@ -9,23 +9,18 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
-  // Headers anti-caché para todas las rutas
+  // Configurar para servir archivos estáticos correctamente
+  distDir: '.next',
+  // Headers anti-caché
   async headers() {
     return [
-      {
-        source: '/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate, private' },
-          { key: 'Pragma', value: 'no-cache' },
-          { key: 'Expires', value: '0' },
-        ],
-      },
       {
         source: '/uploads/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate, private' },
           { key: 'Pragma', value: 'no-cache' },
           { key: 'Expires', value: '0' },
+          { key: 'Content-Type', value: 'image/jpeg' },
         ],
       },
       {
@@ -36,9 +31,17 @@ const nextConfig = {
           { key: 'Expires', value: '0' },
         ],
       },
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate, private' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+        ],
+      },
     ];
   },
-  // Forzar build con timestamp para evitar caché
+  // Forzar build con timestamp
   generateBuildId: async () => {
     return `build-${Date.now()}`;
   },

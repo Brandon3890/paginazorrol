@@ -154,28 +154,21 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     }
   }, [product, products]);
 
-  const correctImageUrl = (url: string) => {
-  console.log('🔍 Corrigiendo URL de imagen:', url);
-  if (!url) {
-    console.log('⚠️ URL vacía, usando imagen por defecto');
-    return '/uploads/products/diverse-products-still-life.png';
-  }
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    console.log('✅ URL externa:', url);
-    return url;
-  }
-  if (url.startsWith('/')) {
-    console.log('✅ URL absoluta:', url);
-    return url;
+const correctImageUrl = (url: string) => {
+  if (!url) return '/uploads/products/diverse-products-still-life.png';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/api/images/')) return url;
+  if (url.startsWith('/uploads/')) {
+    // Usar el endpoint de API para servir imágenes
+    const filename = url.replace('/uploads/products/', '');
+    return `/api/images/${filename}`;
   }
   if (url.startsWith('uploads/')) {
-    const corrected = `/${url}`;
-    console.log('✅ URL corregida (uploads/):', corrected);
-    return corrected;
+    const filename = url.replace('uploads/products/', '');
+    return `/api/images/${filename}`;
   }
-  const corrected = `/uploads/products/${url}`;
-  console.log('✅ URL corregida (productos):', corrected);
-  return corrected;
+  // Si es solo el nombre del archivo
+  return `/api/images/${url}`;
 };
 
   // Función para obtener URL de imagen con timestamp para forzar recarga
