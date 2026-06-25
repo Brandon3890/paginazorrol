@@ -332,10 +332,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       if (productData) {
         console.log('📦 Producto recargado:', productData)
         setProduct(productData)
+        // ACTUALIZAR TIMESTAMP PARA FORZAR RECARGA DE IMÁGENES
         setImageTimestamp(Date.now())
         const newImage = productData.image || '/uploads/products/diverse-products-still-life.png'
         console.log('📸 Nueva imagen:', newImage)
-        // ACTUALIZAR imagePreview con la nueva imagen
         setImagePreview(newImage)
         setFormData(prev => ({ ...prev, image: newImage }))
         setImageFile(null)
@@ -350,6 +350,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     const handleProductUpdate = () => {
       console.log('🔄 Evento product-updated recibido, recargando...')
+      // ACTUALIZAR TIMESTAMP AL RECIBIR EVENTO
+      setImageTimestamp(Date.now())
       reloadProduct()
     }
     
@@ -368,6 +370,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         if (productData) {
           console.log('📦 Producto cargado inicialmente:', productData)
           setProduct(productData)
+          // ACTUALIZAR TIMESTAMP AL CARGAR
+          setImageTimestamp(Date.now())
           
           let allSubcategoryIds: string[] = []
           if (productData.subcategoryIds && Array.isArray(productData.subcategoryIds)) {
@@ -620,6 +624,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
+          // ACTUALIZAR TIMESTAMP AL SUBIR NUEVA IMAGEN
           setImageTimestamp(Date.now())
           setFormData(prev => ({ ...prev, image: "" }))
           if (errors.image) setErrors(prev => ({ ...prev, image: false }))
@@ -638,6 +643,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const removeMainImage = useCallback(() => {
     setImageFile(null)
     setImagePreview('/uploads/products/diverse-products-still-life.png')
+    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
   }, [])
@@ -657,6 +663,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           const previewUrl = URL.createObjectURL(resizedFile)
           setNewAdditionalImageFiles(prev => [...prev, resizedFile])
           setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
+          // ACTUALIZAR TIMESTAMP AL SUBIR IMAGEN ADICIONAL
           setImageTimestamp(Date.now())
         } catch (error) {
           console.error("Error procesando imagen adicional:", error)
@@ -673,6 +680,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const removeExistingAdditionalImage = useCallback((index: number) => {
     setDeletedExistingImages(prev => [...prev, existingAdditionalImages[index]])
     setExistingAdditionalImages(prev => prev.filter((_, i) => i !== index))
+    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN ADICIONAL
     setImageTimestamp(Date.now())
   }, [existingAdditionalImages])
 
@@ -680,6 +688,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     URL.revokeObjectURL(newAdditionalImagePreviews[index])
     setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
+    // ACTUALIZAR TIMESTAMP AL ELIMINAR IMAGEN ADICIONAL
     setImageTimestamp(Date.now())
   }, [newAdditionalImagePreviews])
 
@@ -769,16 +778,19 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         }
       })
       
-      // Primero emitir evento para que otros componentes se actualicen
+      // PRIMERO: Emitir evento para que otros componentes se actualicen
       if (typeof window !== 'undefined') {
         console.log('📡 Emitiendo evento product-updated...')
         window.dispatchEvent(new CustomEvent('product-updated'))
       }
       
-      // Luego recargar el producto inmediatamente
+      // SEGUNDO: Recargar el producto inmediatamente
       await reloadProduct()
       
-      // Finalmente redirigir
+      // TERCERO: Actualizar timestamp para forzar recarga de imágenes
+      setImageTimestamp(Date.now())
+      
+      // FINALMENTE: Redirigir
       router.push("/admin/products")
     } catch (error) {
       console.error("Error updating product:", error)
