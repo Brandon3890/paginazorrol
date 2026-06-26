@@ -437,6 +437,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
           const processedAdditional = productData.additionalImages.map((img: string) => convertToApiUrl(img))
           setExistingAdditionalImages(processedAdditional)
+        } else {
+          setExistingAdditionalImages([])
         }
         
         setImageTimestamp(Date.now())
@@ -601,6 +603,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
             const processedAdditional = productData.additionalImages.map((img: string) => convertToApiUrl(img))
             setExistingAdditionalImages(processedAdditional)
+          } else {
+            setExistingAdditionalImages([])
           }
           
           isInitialLoadRef.current = false
@@ -775,6 +779,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
     }
     setImageFile(null)
+    // Usar la imagen por defecto en lugar de eliminar
     setImagePreview('/api/images/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
@@ -810,9 +815,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }
 
   const removeExistingAdditionalImage = useCallback((index: number) => {
-    setDeletedExistingImages(prev => [...prev, existingAdditionalImages[index]])
+    const imageToDelete = existingAdditionalImages[index]
+    setDeletedExistingImages(prev => [...prev, imageToDelete])
     setExistingAdditionalImages(prev => prev.filter((_, i) => i !== index))
     setImageTimestamp(Date.now())
+    console.log('🗑️ Imagen adicional eliminada:', imageToDelete)
   }, [existingAdditionalImages])
 
   const removeNewAdditionalImage = useCallback((index: number) => {
@@ -848,7 +855,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       } catch (error) {
         console.log(`⏳ Intento ${attempt + 1}/${maxAttempts} falló`);
       }
-      // Esperar exponencialmente: 500ms, 1000ms, 1500ms, etc.
       const waitTime = (attempt + 1) * 500;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
@@ -913,16 +919,25 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('stock', safeToString(formData.stock))
       formDataToSend.append('inStock', String(formData.inStock))
 
-      deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
+      // Enviar imágenes eliminadas
+      deletedExistingImages.forEach(imageUrl => {
+        // Convertir URL de API a URL de archivo para el servidor
+        let filePath = imageUrl
+        if (filePath.includes('/api/images/')) {
+          filePath = filePath.replace('/api/images/', '')
+          filePath = decodeURIComponent(filePath)
+          filePath = `/uploads/products/${filePath}`
+        }
+        formDataToSend.append('deletedImages', filePath)
+        console.log('🗑️ Eliminando imagen:', filePath)
+      })
 
-      // Guardar el nombre de la imagen que se va a subir para esperarla después
       let uploadedFilename: string | null = null;
 
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
         console.log('📸 Enviando NUEVA imagen principal:', imageFile.name)
         
-        // Estimar el nombre del archivo que se guardará
         const baseName = formData.name.toLowerCase()
           .replace(/[^a-z0-9]/g, '-')
           .replace(/-+/g, '-')
@@ -944,7 +959,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         console.log('📸 Enviando imagen adicional:', file.name)
       })
 
-      // Hacer la solicitud PUT
       const response = await fetch(`/api/products/${productId}`, {
         method: 'PUT',
         body: formDataToSend,
@@ -982,15 +996,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       })
       
       // =============================================
-      // 2. SI SE SUBIÓ UNA IMAGEN NUEVA, ESPERAR A QUE ESTÉ LISTA
+      // 2. SI SE SUBIÓ UNA IMAGEN NUEVA, ESPERAR
       // =============================================
       if (uploadedFilename) {
         console.log('📸 Esperando a que la imagen esté disponible en el servidor...');
-        const imageAvailable = await waitForImage(uploadedFilename, 8);
-        
-        if (!imageAvailable) {
-          console.warn('⚠️ La imagen no se pudo verificar, pero se guardó correctamente');
-        }
+        await waitForImage(uploadedFilename, 8);
       }
       
       // =============================================
@@ -1005,25 +1015,25 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         
         setProduct(updatedProduct);
         
-        // Limpiar cualquier URL blob antigua
         if (imagePreview && imagePreview.startsWith('blob:')) {
           URL.revokeObjectURL(imagePreview);
           blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview);
         }
         
-        // Actualizar con la URL real usando API
+        // Actualizar imagen principal
         const realImageUrl = updatedProduct.image || '/uploads/products/diverse-products-still-life.png';
         const apiImageUrl = convertToApiUrl(realImageUrl);
         console.log('📸 URL API de imagen:', apiImageUrl);
         
-        const finalImageUrl = `${apiImageUrl}?v=${Date.now()}`;
-        setImagePreview(finalImageUrl);
+        setImagePreview(apiImageUrl);
         setFormData(prev => ({ ...prev, image: realImageUrl }));
         
         // Actualizar imágenes adicionales
         if (updatedProduct.additionalImages && Array.isArray(updatedProduct.additionalImages)) {
           const processedAdditional = updatedProduct.additionalImages.map((img: string) => convertToApiUrl(img));
           setExistingAdditionalImages(processedAdditional);
+        } else {
+          setExistingAdditionalImages([]);
         }
         
         setImageFile(null);
@@ -1302,7 +1312,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       </p>
                     </div>
                     
-                    {allAdditionalImagePreviews.length > 0 && (
+                    {allAdditionalImagePreviews.length > 0 ? (
                       <div className="mt-4">
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {allAdditionalImagePreviews.map(({ type, url, index }) => (
@@ -1320,7 +1330,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                                 type="button"
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                 onClick={() => {
                                   if (type === 'existing') {
                                     removeExistingAdditionalImage(index)
@@ -1338,6 +1348,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           ))}
                         </div>
                       </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-2 text-center py-4">
+                        No hay imágenes adicionales
+                      </p>
                     )}
                   </div>
                 </div>
