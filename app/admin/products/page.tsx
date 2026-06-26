@@ -8,7 +8,7 @@ import { useProductStore } from "@/lib/product-store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent, AlertTriangle } from "lucide-react"
+import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent, AlertTriangle, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
 
 interface Product {
   id: number;
@@ -72,7 +73,7 @@ const ProductImage = ({ src, alt, className }: { src: string; alt: string; class
   const [imageLoading, setImageLoading] = useState(true);
 
   const getCorrectedImageUrl = (url: string) => {
-    if (!url) return '/diverse-products-still-life.png';
+    if (!url) return '/uploads/products/diverse-products-still-life.png';
     if (url.startsWith('/') || url.startsWith('http')) {
       return url;
     }
@@ -120,9 +121,10 @@ const ProductImage = ({ src, alt, className }: { src: string; alt: string; class
 
 export default function AdminProductsPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const { 
-    products, 
-    loading, 
+    products: storeProducts, 
+    loading: storeLoading, 
     error, 
     fetchProducts, 
     deactivateProduct, 
@@ -130,6 +132,10 @@ export default function AdminProductsPage() {
     permanentlyDeleteProduct,
     clearError 
   } = useProductStore()
+  
+  // Estado local para productos
+  const [localProducts, setLocalProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
   
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false)
@@ -140,22 +146,39 @@ export default function AdminProductsPage() {
   const [productNameForDelete, setProductNameForDelete] = useState<string>("")
   const [actionLoading, setActionLoading] = useState(false)
 
-  // REF PARA CONTROLAR REFRESCOS
+  // REFS PARA CONTROLAR REFRESCOS
   const isFetchingRef = useRef(false)
   const lastRefreshRef = useRef<number>(0)
   const MIN_REFRESH_INTERVAL = 3000 // 3 segundos mínimo entre refrescos
 
+  // Actualizar estado local cuando cambian los productos del store
+  useEffect(() => {
+    if (storeProducts.length > 0) {
+      setLocalProducts(storeProducts)
+    }
+    setLoading(storeLoading)
+  }, [storeProducts, storeLoading])
+
   // Cargar productos al montar el componente
   useEffect(() => {
     console.log('🔄 AdminProductsPage mounted, fetching products...');
-    fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-  }, []); // Solo se ejecuta una vez
+    const loadProducts = async () => {
+      if (!isFetchingRef.current) {
+        isFetchingRef.current = true
+        try {
+          await fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+        } finally {
+          isFetchingRef.current = false
+        }
+      }
+    }
+    loadProducts()
+  }, [fetchProducts])
 
   // Escuchar evento de actualización de productos
   useEffect(() => {
     const handleProductUpdate = () => {
       console.log('🔄 Evento product-updated recibido en lista de productos')
-      // Recargar con debounce
       const now = Date.now()
       if (now - lastRefreshRef.current < MIN_REFRESH_INTERVAL) {
         console.log('⏳ Demasiado pronto para refrescar, ignorando...')
@@ -186,17 +209,70 @@ export default function AdminProductsPage() {
     if (productToDelete) {
       setActionLoading(true);
       try {
-        console.log(`🗑️ Confirming deactivation for product ${productToDelete}`);
-        await deactivateProduct(productToDelete)
-        setDeleteDialogOpen(false)
-        setProductToDelete(null)
-        setProductNameForDelete("")
-        // Recargar después de desactivar
+        console.log(`🗑️ Desactivando producto ${productToDelete}...`);
+        
+        // Hacer la solicitud directamente con fetch
+        const response = await fetch(`/api/products/${productToDelete}`, {
+          method: 'DELETE',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+        });
+
+        if (!response.ok) {
+          let errorMessage = 'Error al desactivar el producto';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // Si no se puede parsear JSON, usar el texto
+            const text = await response.text();
+            if (text) errorMessage = text;
+          }
+          throw new Error(errorMessage);
+        }
+
+        console.log('✅ Producto desactivado correctamente');
+        
+        // Actualizar el estado local directamente
+        setLocalProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === productToDelete ? { ...p, isActive: false } : p
+          )
+        );
+        
+        setDeleteDialogOpen(false);
+        setProductToDelete(null);
+        setProductNameForDelete("");
+        
+        toast({
+          description: (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span>Producto desactivado correctamente</span>
+            </div>
+          ),
+          duration: 3000,
+        });
+        
+        // Recargar en segundo plano
         setTimeout(() => {
-          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
-        }, 500)
+          if (!isFetchingRef.current) {
+            isFetchingRef.current = true
+            fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+              .finally(() => {
+                isFetchingRef.current = false
+              })
+          }
+        }, 1000);
+        
       } catch (error) {
-        console.error('Error deactivating product:', error)
+        console.error('Error desactivando producto:', error);
+        toast({
+          description: "Error al desactivar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
+          duration: 4000,
+          variant: "destructive",
+        });
       } finally {
         setActionLoading(false);
       }
@@ -213,17 +289,66 @@ export default function AdminProductsPage() {
     if (productToPermanentlyDelete) {
       setActionLoading(true);
       try {
-        console.log(`💀 Confirming permanent deletion for product ${productToPermanentlyDelete}`);
-        await permanentlyDeleteProduct(productToPermanentlyDelete)
-        setPermanentDeleteDialogOpen(false)
-        setProductToPermanentlyDelete(null)
-        setProductNameForDelete("")
-        // Recargar después de eliminar
+        console.log(`💀 Eliminando permanentemente producto ${productToPermanentlyDelete}...`);
+        
+        const response = await fetch(`/api/products/${productToPermanentlyDelete}/permanent`, {
+          method: 'DELETE',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+        });
+
+        if (!response.ok) {
+          let errorMessage = 'Error al eliminar el producto';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            const text = await response.text();
+            if (text) errorMessage = text;
+          }
+          throw new Error(errorMessage);
+        }
+
+        console.log('✅ Producto eliminado permanentemente');
+        
+        // Actualizar el estado local directamente
+        setLocalProducts(prevProducts => 
+          prevProducts.filter(p => p.id !== productToPermanentlyDelete)
+        );
+        
+        setPermanentDeleteDialogOpen(false);
+        setProductToPermanentlyDelete(null);
+        setProductNameForDelete("");
+        
+        toast({
+          description: (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span>Producto eliminado permanentemente</span>
+            </div>
+          ),
+          duration: 3000,
+        });
+        
+        // Recargar en segundo plano
         setTimeout(() => {
-          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
-        }, 500)
+          if (!isFetchingRef.current) {
+            isFetchingRef.current = true
+            fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+              .finally(() => {
+                isFetchingRef.current = false
+              })
+          }
+        }, 1000);
+        
       } catch (error) {
-        console.error('Error permanently deleting product:', error)
+        console.error('Error eliminando producto:', error);
+        toast({
+          description: "Error al eliminar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
+          duration: 4000,
+          variant: "destructive",
+        });
       } finally {
         setActionLoading(false);
       }
@@ -240,17 +365,68 @@ export default function AdminProductsPage() {
     if (productToReactivate) {
       setActionLoading(true);
       try {
-        console.log(`🔄 Confirming reactivation for product ${productToReactivate}`);
-        await reactivateProduct(productToReactivate)
-        setReactivateDialogOpen(false)
-        setProductToReactivate(null)
-        setProductNameForDelete("")
-        // Recargar después de reactivar
+        console.log(`🔄 Reactivando producto ${productToReactivate}...`);
+        
+        const response = await fetch(`/api/products/${productToReactivate}/reactivate`, {
+          method: 'PUT',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+        });
+
+        if (!response.ok) {
+          let errorMessage = 'Error al reactivar el producto';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            const text = await response.text();
+            if (text) errorMessage = text;
+          }
+          throw new Error(errorMessage);
+        }
+
+        console.log('✅ Producto reactivado correctamente');
+        
+        // Actualizar el estado local directamente
+        setLocalProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === productToReactivate ? { ...p, isActive: true } : p
+          )
+        );
+        
+        setReactivateDialogOpen(false);
+        setProductToReactivate(null);
+        setProductNameForDelete("");
+        
+        toast({
+          description: (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span>Producto reactivado correctamente</span>
+            </div>
+          ),
+          duration: 3000,
+        });
+        
+        // Recargar en segundo plano
         setTimeout(() => {
-          fetchProducts({ includeInactive: true, isAdmin: true, force: true })
-        }, 500)
+          if (!isFetchingRef.current) {
+            isFetchingRef.current = true
+            fetchProducts({ includeInactive: true, isAdmin: true, force: true })
+              .finally(() => {
+                isFetchingRef.current = false
+              })
+          }
+        }, 1000);
+        
       } catch (error) {
-        console.error('Error reactivating product:', error)
+        console.error('Error reactivando producto:', error);
+        toast({
+          description: "Error al reactivar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
+          duration: 4000,
+          variant: "destructive",
+        });
       } finally {
         setActionLoading(false);
       }
@@ -271,7 +447,10 @@ export default function AdminProductsPage() {
   const handleRefresh = useCallback(() => {
     const now = Date.now()
     if (now - lastRefreshRef.current < MIN_REFRESH_INTERVAL) {
-      console.log('⏳ Demasiado pronto para refrescar, ignorando...')
+      toast({
+        description: "Espera unos segundos antes de actualizar",
+        duration: 2000,
+      })
       return
     }
     lastRefreshRef.current = now
@@ -284,7 +463,7 @@ export default function AdminProductsPage() {
           isFetchingRef.current = false
         })
     }
-  }, [fetchProducts])
+  }, [fetchProducts, toast])
 
   const ProductCard = ({ product, isInactive = false }: { product: Product; isInactive?: boolean }) => {
     const price = ensureNumber(product.price);
@@ -329,7 +508,7 @@ export default function AdminProductsPage() {
                 </div>
               </div>
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-end flex-wrap">
               <Link href={`/admin/products/${product.id}`}>
                 <Button variant="outline" size="icon" disabled={actionLoading} title="Editar">
                   <Pencil className="w-4 h-4" />
@@ -404,10 +583,10 @@ export default function AdminProductsPage() {
     );
   };
 
-  const activeProducts = products.filter((p) => p.isActive)
-  const inactiveProducts = products.filter((p) => !p.isActive)
+  const activeProducts = localProducts.filter((p) => p.isActive)
+  const inactiveProducts = localProducts.filter((p) => !p.isActive)
 
-  if (loading && products.length === 0) {
+  if (loading && localProducts.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -437,10 +616,10 @@ export default function AdminProductsPage() {
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Gestión de Productos</h1>
               <p className="text-sm md:text-base text-muted-foreground">
-                {products.length} productos en total ({activeProducts.length} activos, {inactiveProducts.length} inactivos)
+                {localProducts.length} productos en total ({activeProducts.length} activos, {inactiveProducts.length} inactivos)
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -463,7 +642,7 @@ export default function AdminProductsPage() {
 
         {error && (
           <div className="bg-destructive/15 text-destructive p-4 rounded-md mb-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <span>Error: {error}</span>
               <Button variant="outline" size="sm" onClick={handleRetry} disabled={actionLoading}>
                 Reintentar
