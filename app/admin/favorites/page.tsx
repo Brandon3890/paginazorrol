@@ -304,12 +304,6 @@ export default function AdminFavoritesPage() {
                                 <Mail className="w-4 h-4" />
                                 <span>{user.email}</span>
                               </div>
-                              {user.phone && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <span>📱</span>
-                                  <span>{user.phone}</span>
-                                </div>
-                              )}
                             </div>
                             <div className="text-xs text-muted-foreground mt-2 sm:mt-0">
                               Favorito desde: {format(new Date(user.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
