@@ -22,12 +22,13 @@ export default function NewCategoryPage() {
     name: "",
     slug: "",
     description: "",
-    isActive: true
+    is_active: true // CAMBIADO: isActive -> is_active
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const newErrors: Record<string, string> = {}
@@ -47,8 +48,25 @@ export default function NewCategoryPage() {
       return
     }
 
-    addCategory(formData)
-    router.push("/admin/categories")
+    setIsSubmitting(true)
+    try {
+      // Asegurar que los datos tienen el formato correcto
+      const categoryData = {
+        name: formData.name.trim(),
+        slug: formData.slug.trim(),
+        description: formData.description.trim() || "",
+        is_active: formData.is_active
+      }
+      
+      console.log('📤 Enviando categoría:', categoryData)
+      await addCategory(categoryData)
+      router.push("/admin/categories")
+    } catch (error) {
+      console.error('❌ Error al crear categoría:', error)
+      setErrors({ submit: "Error al crear la categoría. Intenta nuevamente." })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleChange = (field: string, value: string | boolean) => {
@@ -95,6 +113,12 @@ export default function NewCategoryPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {errors.submit && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {errors.submit}
+                </div>
+              )}
+              
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nombre de la categoría *</Label>
@@ -148,21 +172,21 @@ export default function NewCategoryPage() {
                   </div>
                   <Switch
                     id="isActive"
-                    checked={formData.isActive}
-                    onCheckedChange={(checked) => handleChange("isActive", checked)}
+                    checked={formData.is_active}
+                    onCheckedChange={(checked) => handleChange("is_active", checked)}
                   />
                 </div>
               </div>
 
               <div className="flex gap-4 pt-4">
                 <Link href="/admin/categories" className="flex-1">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full" disabled={isSubmitting}>
                     Cancelar
                   </Button>
                 </Link>
-                <Button type="submit" className="flex-1 bg-[#C2410C] hover:bg-[#9A3412]">
+                <Button type="submit" className="flex-1 bg-[#C2410C] hover:bg-[#9A3412]" disabled={isSubmitting}>
                   <Save className="w-4 h-4 mr-2" />
-                  Crear Categoría
+                  {isSubmitting ? "Creando..." : "Crear Categoría"}
                 </Button>
               </div>
             </form>

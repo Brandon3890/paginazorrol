@@ -32,9 +32,11 @@ export async function POST(request: Request) {
   const transaction = new Transaction();
   
   try {
-    const { name, slug, category_id, is_active = true } = await request.json();
+    const body = await request.json();
+    const { name, slug, category_id, is_active = true } = body;
 
-    // Validar campos requeridos
+    console.log('📥 Recibida solicitud POST para subcategoría:', { name, slug, category_id, is_active });
+
     if (!name || !slug || !category_id) {
       return NextResponse.json(
         { error: 'Name, slug and category_id are required' },
@@ -43,6 +45,34 @@ export async function POST(request: Request) {
     }
 
     await transaction.begin();
+
+    // Verificar si la categoría existe
+    const categoryExists = await transaction.query(
+      'SELECT id FROM categories WHERE id = ?',
+      [category_id]
+    ) as any[];
+
+    if (categoryExists.length === 0) {
+      await transaction.rollback();
+      return NextResponse.json(
+        { error: 'La categoría especificada no existe' },
+        { status: 404 }
+      );
+    }
+
+    // Verificar si ya existe una subcategoría con el mismo slug en esta categoría
+    const existing = await transaction.query(
+      'SELECT id FROM subcategories WHERE slug = ? AND category_id = ?',
+      [slug, category_id]
+    ) as any[];
+
+    if (existing.length > 0) {
+      await transaction.rollback();
+      return NextResponse.json(
+        { error: 'Ya existe una subcategoría con este slug en esta categoría' },
+        { status: 409 }
+      );
+    }
 
     // Obtener el máximo orden actual para esta categoría
     const maxOrderResult: any = await transaction.query(
@@ -53,13 +83,14 @@ export async function POST(request: Request) {
     const maxOrder = maxOrderResult[0]?.max_order ?? -1;
     const display_order = maxOrder + 1;
 
-    // Insertar la nueva subcategoría con el orden calculado
     const result: any = await transaction.query(
       'INSERT INTO subcategories (name, slug, category_id, is_active, display_order) VALUES (?, ?, ?, ?, ?)',
       [name, slug, category_id, is_active, display_order]
     );
 
     await transaction.commit();
+
+    console.log(`✅ Subcategoría creada con ID: ${result.insertId}`);
 
     return NextResponse.json({ 
       id: result.insertId,

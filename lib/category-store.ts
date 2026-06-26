@@ -12,10 +12,8 @@ interface Subcategory {
   updated_at: string
 }
 
-// Tipo para crear una subcategoría (display_order se genera en backend)
 type CreateSubcategoryInput = Omit<Subcategory, 'id' | 'created_at' | 'updated_at' | 'display_order'>
 
-// Tipo para actualizar una subcategoría (todos los campos opcionales excepto id)
 type UpdateSubcategoryInput = Partial<Omit<Subcategory, 'id' | 'created_at' | 'updated_at'>>
 
 interface Category {
@@ -62,16 +60,22 @@ export const useCategoryStore = create<CategoryStore>()(
       categoriesLoaded: false,
 
       fetchCategories: async (force = false) => {
-        // Si ya están cargadas y no se fuerza, no hacer nada
         if (get().categoriesLoaded && !force) {
-          console.log('Categorías ya cargadas, omitiendo fetch')
+          console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
         }
 
         set({ loading: true, error: null })
         try {
-          console.log('Fetching categories...')
-          const response = await fetch('/api/categories')
+          console.log('🔄 Fetching categories...')
+          const response = await fetch('/api/categories', {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          })
           
           if (!response.ok) {
             throw new Error(`Error fetching categories: ${response.status}`)
@@ -108,7 +112,6 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) throw new Error('Error updating subcategory order')
           
-          // Actualizar estado local sin recargar todas las categorías
           set(state => ({
             categories: state.categories.map(cat => ({
               ...cat,
@@ -135,14 +138,13 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) throw new Error('Error reordering subcategories')
           
-          // Actualizar estado local
           set(state => ({
             categories: state.categories.map(cat => {
               if (cat.id === categoryId) {
                 const reorderedSubs = orderedIds
                   .map(id => cat.subcategories.find(sub => sub.id === id))
                   .filter((sub): sub is Subcategory => sub !== undefined)
-                  .map((sub, index) => ({ ...sub, display_order: index + 1 }))
+                  .map((sub, index) => ({ ...sub, display_order: index }))
                 
                 return {
                   ...cat,
@@ -162,10 +164,18 @@ export const useCategoryStore = create<CategoryStore>()(
 
       addCategory: async (category) => {
         try {
+          // Asegurar que el campo se llama is_active, no isActive
+          const categoryData = {
+            name: category.name,
+            slug: category.slug,
+            description: category.description || '',
+            is_active: category.is_active !== undefined ? category.is_active : true
+          }
+
           const response = await fetch('/api/categories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(category)
+            body: JSON.stringify(categoryData)
           })
           
           if (!response.ok) {
@@ -173,11 +183,10 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error creating category')
           }
           
-          // Recargar categorías después de crear
           await get().fetchCategories(true)
-          console.log('Categoría creada exitosamente')
+          console.log('✅ Categoría creada exitosamente')
         } catch (error) {
-          console.error('Error creating category:', error)
+          console.error('❌ Error creating category:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -216,7 +225,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error deactivating category')
           }
           
-          // Actualizar estado local inmediatamente
           set(state => ({
             categories: state.categories.map(cat => 
               cat.id === id ? { ...cat, is_active: false } : cat
@@ -242,7 +250,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error activating category')
           }
           
-          // Actualizar estado local inmediatamente
           set(state => ({
             categories: state.categories.map(cat => 
               cat.id === id ? { ...cat, is_active: true } : cat
@@ -268,7 +275,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error deleting category')
           }
           
-          // Eliminar del estado local
           set(state => ({
             categories: state.categories.filter(cat => cat.id !== id)
           }))
@@ -294,10 +300,11 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error creating subcategory')
           }
           
+          // Forzar recarga completa de categorías
           await get().fetchCategories(true)
-          console.log('Subcategoría creada exitosamente')
+          console.log('✅ Subcategoría creada exitosamente')
         } catch (error) {
-          console.error('Error creating subcategory:', error)
+          console.error('❌ Error creating subcategory:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -336,7 +343,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error deactivating subcategory')
           }
           
-          // Actualizar estado local
           set(state => ({
             categories: state.categories.map(cat => ({
               ...cat,
@@ -365,7 +371,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error activating subcategory')
           }
           
-          // Actualizar estado local
           set(state => ({
             categories: state.categories.map(cat => ({
               ...cat,
@@ -394,7 +399,6 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error deleting subcategory')
           }
           
-          // Eliminar del estado local
           set(state => ({
             categories: state.categories.map(cat => ({
               ...cat,

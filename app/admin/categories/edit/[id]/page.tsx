@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, Save, Pencil, Trash2, AlertTriangle, GripVertical } from "lucide-react" // Cambiado: Plus por Pencil
+import { ArrowLeft, Save, Pencil, Trash2, AlertTriangle, GripVertical, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
@@ -83,21 +83,21 @@ function SortableSubcategoryItem({
         isSortableDragging ? 'shadow-lg bg-background border-primary' : 'bg-background'
       }`}
     >
-      <div className="flex items-center gap-3 flex-1">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded transition-colors"
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded transition-colors flex-shrink-0"
           title="Arrastrar para reordenar"
         >
           <GripVertical className="w-5 h-5 text-muted-foreground" />
         </button>
-        <div>
-          <p className="font-medium">{subcategory.name}</p>
-          <p className="text-sm text-muted-foreground font-mono">/{subcategory.slug}</p>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium truncate">{subcategory.name}</p>
+          <p className="text-sm text-muted-foreground font-mono truncate">/{subcategory.slug}</p>
         </div>
-        <div className="flex gap-2 ml-4">
-          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+        <div className="flex gap-2 ml-2 flex-shrink-0">
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs whitespace-nowrap ${
             subcategory.is_active 
               ? 'bg-green-100 text-green-800' 
               : 'bg-gray-100 text-gray-800'
@@ -105,26 +105,27 @@ function SortableSubcategoryItem({
             {subcategory.is_active ? 'Activa' : 'Inactiva'}
           </span>
           {subcategory.display_order !== undefined && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 whitespace-nowrap">
               Orden: {subcategory.display_order + 1}
             </span>
           )}
         </div>
       </div>
-      <div className="flex gap-1">
+      <div className="flex gap-1 flex-shrink-0 ml-2">
         <Button 
           variant="outline" 
           size="icon"
           onClick={() => onEdit(subcategory.id)}
           title="Editar subcategoría"
+          className="w-8 h-8"
         >
-          <Pencil className="w-4 h-4" /> {/* Cambiado: Save por Pencil */}
+          <Pencil className="w-4 h-4" />
         </Button>
         <Button 
           variant="outline" 
           size="icon"
           onClick={() => onDeactivate(subcategory.id, subcategory.name)}
-          className="text-yellow-600 hover:text-yellow-700"
+          className="text-yellow-600 hover:text-yellow-700 w-8 h-8"
           title="Desactivar subcategoría"
         >
           <AlertTriangle className="w-4 h-4" />
@@ -133,7 +134,7 @@ function SortableSubcategoryItem({
           variant="outline" 
           size="icon"
           onClick={() => onDelete(subcategory.id, subcategory.name)}
-          className="text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive w-8 h-8"
           title="Eliminar permanentemente"
         >
           <Trash2 className="w-4 h-4" />
@@ -158,7 +159,9 @@ export default function EditCategoryPage() {
     deactivateSubcategory,
     deleteSubcategoryPermanently,
     deleteCategoryPermanently,
-    reorderSubcategories
+    reorderSubcategories,
+    fetchCategories,
+    loading
   } = useCategoryStore()
 
   const category = getCategoryById(categoryId)
@@ -167,6 +170,8 @@ export default function EditCategoryPage() {
   // Estado para las subcategorías ordenadas
   const [orderedSubcategories, setOrderedSubcategories] = useState<any[]>([])
   const [isDragging, setIsDragging] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -213,6 +218,26 @@ export default function EditCategoryPage() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  // Cargar categorías si no están cargadas
+  useEffect(() => {
+    const loadCategories = async () => {
+      setIsLoading(true)
+      try {
+        await fetchCategories(true)
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    if (categories.length === 0) {
+      loadCategories()
+    } else {
+      setIsLoading(false)
+    }
+  }, [categories.length, fetchCategories])
 
   // Actualizar subcategorías ordenadas cuando cambia la categoría
   useEffect(() => {
@@ -269,7 +294,7 @@ export default function EditCategoryPage() {
     }
   }
 
-  const handleCategorySubmit = (e: React.FormEvent) => {
+  const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const newErrors: Record<string, string> = {}
@@ -283,16 +308,31 @@ export default function EditCategoryPage() {
       return
     }
 
-    const categoryData = {
-      ...categoryForm,
-      slug: generateSlug(categoryForm.name)
-    }
+    setIsSubmitting(true)
+    try {
+      const slug = generateSlug(categoryForm.name)
+      const categoryData = {
+        name: categoryForm.name.trim(),
+        slug: slug,
+        description: categoryForm.description || "",
+        is_active: categoryForm.is_active
+      }
 
-    updateCategory(categoryId, categoryData)
-    router.push("/admin/categories")
+      console.log('📤 Actualizando categoría:', categoryData)
+      await updateCategory(categoryId, categoryData)
+      
+      // Recargar la página para ver los cambios
+      router.refresh()
+      router.push("/admin/categories")
+    } catch (error) {
+      console.error('❌ Error actualizando categoría:', error)
+      setErrors({ submit: "Error al actualizar la categoría" })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleSubcategorySubmit = (e: React.FormEvent) => {
+  const handleSubcategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const newErrors: Record<string, string> = {}
@@ -306,23 +346,39 @@ export default function EditCategoryPage() {
       return
     }
 
-    const subcategoryData = {
-      name: subcategoryForm.name.trim(),
-      slug: generateSlug(subcategoryForm.name),
-      is_active: subcategoryForm.is_active
-    }
+    setIsSubmitting(true)
+    try {
+      const subcategoryData = {
+        name: subcategoryForm.name.trim(),
+        slug: generateSlug(subcategoryForm.name),
+        is_active: subcategoryForm.is_active
+      }
 
-    if (subcategoryToEdit) {
-      updateSubcategory(parseInt(subcategoryToEdit), subcategoryData)
-    } else {
-      addSubcategory({
-        ...subcategoryData,
-        category_id: categoryId
-      })
-    }
+      console.log('📤 Enviando subcategoría:', subcategoryData)
 
-    setSubcategoryForm({ name: "", is_active: true })
-    setErrors({})
+      if (subcategoryToEdit) {
+        await updateSubcategory(parseInt(subcategoryToEdit), subcategoryData)
+        console.log('✅ Subcategoría actualizada')
+      } else {
+        await addSubcategory({
+          ...subcategoryData,
+          category_id: categoryId
+        })
+        console.log('✅ Subcategoría creada')
+      }
+
+      setSubcategoryForm({ name: "", is_active: true })
+      setErrors({})
+      
+      // Recargar la página para ver los cambios
+      await fetchCategories(true)
+      router.refresh()
+    } catch (error) {
+      console.error('❌ Error al guardar subcategoría:', error)
+      setErrors({ submit: "Error al guardar la subcategoría" })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Diálogo para desactivar subcategoría
@@ -334,14 +390,19 @@ export default function EditCategoryPage() {
     })
   }
 
-  const confirmDeactivateSubcategory = () => {
+  const confirmDeactivateSubcategory = async () => {
     if (deactivateSubcategoryDialog.subcategoryId) {
-      deactivateSubcategory(deactivateSubcategoryDialog.subcategoryId)
-      setDeactivateSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })
+      try {
+        await deactivateSubcategory(deactivateSubcategoryDialog.subcategoryId)
+        await fetchCategories(true)
+        setDeactivateSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })
+      } catch (error) {
+        console.error('Error desactivando subcategoría:', error)
+      }
     }
   }
 
-  // Diálogo para eliminar permanentemente subcategoría - CORREGIDO
+  // Diálogo para eliminar permanentemente subcategoría
   const openDeleteSubcategoryDialog = (subcategoryId: number, subcategoryName: string) => {
     setDeleteSubcategoryDialog({
       open: true,
@@ -350,10 +411,15 @@ export default function EditCategoryPage() {
     })
   }
 
-  const confirmDeleteSubcategory = () => {
+  const confirmDeleteSubcategory = async () => {
     if (deleteSubcategoryDialog.subcategoryId) {
-      deleteSubcategoryPermanently(deleteSubcategoryDialog.subcategoryId)
-      setDeleteSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })
+      try {
+        await deleteSubcategoryPermanently(deleteSubcategoryDialog.subcategoryId)
+        await fetchCategories(true)
+        setDeleteSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })
+      } catch (error) {
+        console.error('Error eliminando subcategoría:', error)
+      }
     }
   }
 
@@ -368,11 +434,15 @@ export default function EditCategoryPage() {
     }
   }
 
-  const confirmDeleteCategory = () => {
+  const confirmDeleteCategory = async () => {
     if (deleteCategoryDialog.categoryId) {
-      deleteCategoryPermanently(deleteCategoryDialog.categoryId)
-      setDeleteCategoryDialog({ open: false, categoryId: null, categoryName: "" })
-      router.push("/admin/categories")
+      try {
+        await deleteCategoryPermanently(deleteCategoryDialog.categoryId)
+        setDeleteCategoryDialog({ open: false, categoryId: null, categoryName: "" })
+        router.push("/admin/categories")
+      } catch (error) {
+        console.error('Error eliminando categoría:', error)
+      }
     }
   }
 
@@ -383,6 +453,21 @@ export default function EditCategoryPage() {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "")
+  }
+
+  if (isLoading || loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin mr-3 text-[#C2410C]" />
+            <p className="text-muted-foreground">Cargando categoría...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    )
   }
 
   if (!category) {
@@ -424,6 +509,7 @@ export default function EditCategoryPage() {
               variant="destructive" 
               onClick={openDeleteCategoryDialog}
               className="flex items-center gap-2"
+              disabled={isSubmitting}
             >
               <Trash2 className="w-4 h-4" />
               Eliminar Categoría
@@ -431,9 +517,15 @@ export default function EditCategoryPage() {
           </div>
         </div>
 
+        {errors.submit && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {errors.submit}
+          </div>
+        )}
+
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Navegación */}
-          <Card className="lg:col-span-1">
+          <Card className="lg:col-span-1 h-fit">
             <CardHeader>
               <CardTitle>Navegación</CardTitle>
             </CardHeader>
@@ -443,6 +535,7 @@ export default function EditCategoryPage() {
                   variant={activeTab === 'category' ? "default" : "ghost"}
                   className="w-full justify-start"
                   onClick={() => setActiveTab('category')}
+                  disabled={isSubmitting}
                 >
                   Información de la Categoría
                 </Button>
@@ -450,6 +543,7 @@ export default function EditCategoryPage() {
                   variant={activeTab === 'subcategories' ? "default" : "ghost"}
                   className="w-full justify-start"
                   onClick={() => setActiveTab('subcategories')}
+                  disabled={isSubmitting}
                 >
                   Subcategorías ({category.subcategories.length})
                 </Button>
@@ -480,6 +574,7 @@ export default function EditCategoryPage() {
                             if (errors.name) setErrors(prev => ({ ...prev, name: "" }))
                           }}
                           className={errors.name ? "border-destructive" : ""}
+                          disabled={isSubmitting}
                         />
                         {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                         <p className="text-xs text-muted-foreground">
@@ -494,6 +589,7 @@ export default function EditCategoryPage() {
                           value={categoryForm.description}
                           onChange={(e) => setCategoryForm(prev => ({ ...prev, description: e.target.value }))}
                           rows={3}
+                          disabled={isSubmitting}
                         />
                       </div>
 
@@ -508,13 +604,27 @@ export default function EditCategoryPage() {
                           id="isActive"
                           checked={categoryForm.is_active}
                           onCheckedChange={(checked) => setCategoryForm(prev => ({ ...prev, is_active: checked }))}
+                          disabled={isSubmitting}
                         />
                       </div>
                     </div>
 
-                    <Button type="submit" className="w-full bg-[#C2410C] hover:bg-[#9A3412]">
-                      <Save className="w-4 h-4 mr-2" />
-                      Guardar Cambios
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-[#C2410C] hover:bg-[#9A3412]"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Guardar Cambios
+                        </>
+                      )}
                     </Button>
                   </form>
                 </CardContent>
@@ -548,6 +658,7 @@ export default function EditCategoryPage() {
                             if (errors.subcategoryName) setErrors(prev => ({ ...prev, subcategoryName: "" }))
                           }}
                           className={errors.subcategoryName ? "border-destructive" : ""}
+                          disabled={isSubmitting}
                         />
                         {errors.subcategoryName && <p className="text-sm text-destructive">{errors.subcategoryName}</p>}
                         <p className="text-xs text-muted-foreground">
@@ -566,6 +677,7 @@ export default function EditCategoryPage() {
                           id="subcategoryActive"
                           checked={subcategoryForm.is_active}
                           onCheckedChange={(checked) => setSubcategoryForm(prev => ({ ...prev, is_active: checked }))}
+                          disabled={isSubmitting}
                         />
                       </div>
 
@@ -575,7 +687,7 @@ export default function EditCategoryPage() {
                             href={`/admin/categories/edit/${categoryId}`}
                             className="flex-1"
                           >
-                            <Button variant="outline" className="w-full">
+                            <Button variant="outline" className="w-full" disabled={isSubmitting}>
                               Cancelar Edición
                             </Button>
                           </Link>
@@ -583,9 +695,19 @@ export default function EditCategoryPage() {
                         <Button 
                           type="submit" 
                           className={subcategoryToEdit ? "flex-1 bg-[#C2410C] hover:bg-[#9A3412]" : "w-full bg-[#C2410C] hover:bg-[#9A3412]"}
+                          disabled={isSubmitting}
                         >
-                          <Save className="w-4 h-4 mr-2" />
-                          {subcategoryToEdit ? 'Guardar Cambios' : 'Crear Subcategoría'}
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Guardando...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4 mr-2" />
+                              {subcategoryToEdit ? 'Guardar Cambios' : 'Crear Subcategoría'}
+                            </>
+                          )}
                         </Button>
                       </div>
                     </form>
@@ -673,6 +795,7 @@ export default function EditCategoryPage() {
                 variant="outline" 
                 onClick={() => setDeactivateSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })} 
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
@@ -680,6 +803,7 @@ export default function EditCategoryPage() {
                 variant="default"
                 onClick={confirmDeactivateSubcategory}
                 className="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700"
+                disabled={isSubmitting}
               >
                 Desactivar
               </Button>
@@ -687,7 +811,7 @@ export default function EditCategoryPage() {
           </DialogContent>
         </Dialog>
 
-         {/* Diálogo para eliminar permanentemente subcategoría */}
+        {/* Diálogo para eliminar permanentemente subcategoría */}
         <Dialog open={deleteSubcategoryDialog.open} onOpenChange={(open) => setDeleteSubcategoryDialog(prev => ({ ...prev, open }))}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -710,6 +834,7 @@ export default function EditCategoryPage() {
                 variant="outline" 
                 onClick={() => setDeleteSubcategoryDialog({ open: false, subcategoryId: null, subcategoryName: "" })} 
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
@@ -717,6 +842,7 @@ export default function EditCategoryPage() {
                 variant="destructive"
                 onClick={confirmDeleteSubcategory}
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Eliminar Permanentemente
               </Button>
@@ -747,6 +873,7 @@ export default function EditCategoryPage() {
                 variant="outline" 
                 onClick={() => setDeleteCategoryDialog({ open: false, categoryId: null, categoryName: "" })} 
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
@@ -754,6 +881,7 @@ export default function EditCategoryPage() {
                 variant="destructive"
                 onClick={confirmDeleteCategory}
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Eliminar Permanentemente
               </Button>

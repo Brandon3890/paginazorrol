@@ -40,16 +40,15 @@ export async function GET() {
 
     await transaction.commit();
 
-    // Procesar los datos JSON
     const processedCategories = categories.map(category => {
       let subcategories = [];
       
       if (category.subcategories_json && category.subcategories_json !== '[]') {
         try {
           subcategories = JSON.parse(category.subcategories_json);
-          // Asegurar orden por display_order
           subcategories.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
         } catch (error) {
+          console.error('Error parsing subcategories JSON:', error);
           subcategories = [];
         }
       }
@@ -62,7 +61,16 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json(processedCategories);
+    // HEADERS ANTI-CACHÉ
+    return new NextResponse(JSON.stringify(processedCategories), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
     
   } catch (error) {
     await transaction.rollback();
@@ -78,9 +86,11 @@ export async function POST(request: Request) {
   const transaction = new Transaction();
   
   try {
-    const { name, slug, description, is_active = true } = await request.json();
+    const body = await request.json();
+    const { name, slug, description, is_active = true } = body;
 
-    // Validar campos requeridos
+    console.log('📥 Recibida solicitud POST para categoría:', { name, slug, description, is_active });
+
     if (!name || !slug) {
       return NextResponse.json(
         { error: 'Name and slug are required' },
@@ -90,12 +100,28 @@ export async function POST(request: Request) {
 
     await transaction.begin();
 
+    // Verificar si ya existe una categoría con el mismo slug
+    const existing = await transaction.query(
+      'SELECT id FROM categories WHERE slug = ?',
+      [slug]
+    ) as any[];
+
+    if (existing.length > 0) {
+      await transaction.rollback();
+      return NextResponse.json(
+        { error: 'Ya existe una categoría con este slug' },
+        { status: 409 }
+      );
+    }
+
     const result: any = await transaction.query(
       'INSERT INTO categories (name, slug, description, is_active) VALUES (?, ?, ?, ?)',
-      [name, slug, description, is_active]
+      [name, slug, description || '', is_active]
     );
 
     await transaction.commit();
+
+    console.log(`✅ Categoría creada con ID: ${result.insertId}`);
 
     return NextResponse.json({ 
       id: result.insertId,
@@ -110,4 +136,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-} 
+}
