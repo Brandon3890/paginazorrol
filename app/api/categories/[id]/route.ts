@@ -35,7 +35,7 @@ export async function GET(
       );
     }
 
-    // Obtener las subcategorías por separado
+    // Obtener TODAS las subcategorías (activas e inactivas)
     const subcategories = await transaction.query(
       `SELECT 
         s.id,
@@ -48,9 +48,11 @@ export async function GET(
         s.updated_at
       FROM subcategories s
       WHERE s.category_id = ?
-      ORDER BY s.display_order ASC, s.name ASC`,
+      ORDER BY s.display_order ASC, s.id ASC`,
       [categoryId]
     ) as any[];
+
+    console.log(`📊 Categoría ${categories[0].name} (ID: ${categoryId}): ${subcategories.length} subcategorías encontradas`);
 
     await transaction.commit();
 

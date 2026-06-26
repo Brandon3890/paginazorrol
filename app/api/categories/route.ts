@@ -18,6 +18,7 @@ export async function GET() {
     // Para cada categoría, obtener sus subcategorías por separado
     const categoriesWithSubcategories = await Promise.all(
       categories.map(async (category) => {
+        // Obtener TODAS las subcategorías, incluso las inactivas
         const subcategories = await transaction.query(`
           SELECT 
             s.id,
@@ -30,12 +31,14 @@ export async function GET() {
             s.updated_at
           FROM subcategories s
           WHERE s.category_id = ?
-          ORDER BY s.display_order ASC, s.name ASC
+          ORDER BY s.display_order ASC, s.id ASC
         `, [category.id]) as any[];
+
+        console.log(`📊 Categoría ${category.name} (ID: ${category.id}): ${subcategories.length} subcategorías encontradas`);
 
         return {
           ...category,
-          subcategories: subcategories
+          subcategories: subcategories || []
         };
       })
     );

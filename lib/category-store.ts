@@ -49,6 +49,7 @@ interface CategoryStore {
   updateSubcategoryOrder: (id: number, display_order: number) => Promise<void> 
   reorderSubcategories: (categoryId: number, orderedIds: number[]) => Promise<void>
   clearError: () => void
+  resetStore: () => void // Nueva función para resetear el store
 }
 
 export const useCategoryStore = create<CategoryStore>()(
@@ -59,7 +60,26 @@ export const useCategoryStore = create<CategoryStore>()(
       error: null,
       categoriesLoaded: false,
 
+      resetStore: () => {
+        console.log('🔄 Reseteando store de categorías...')
+        set({ 
+          categories: [], 
+          categoriesLoaded: false,
+          loading: false,
+          error: null
+        })
+        // Limpiar localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('category-storage')
+        }
+      },
+
       fetchCategories: async (force = false) => {
+        // Si se fuerza, resetear el store primero
+        if (force) {
+          get().resetStore()
+        }
+
         if (get().categoriesLoaded && !force) {
           console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
@@ -68,7 +88,8 @@ export const useCategoryStore = create<CategoryStore>()(
         set({ loading: true, error: null })
         try {
           console.log('🔄 Fetching categories...')
-          const response = await fetch('/api/categories', {
+          const timestamp = Date.now()
+          const response = await fetch(`/api/categories?_=${timestamp}`, {
             cache: 'no-store',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -88,6 +109,11 @@ export const useCategoryStore = create<CategoryStore>()(
             ...cat,
             subcategories: Array.isArray(cat.subcategories) ? cat.subcategories : []
           }))
+          
+          // Log de cuántas subcategorías tiene cada categoría
+          processedCategories.forEach((cat: Category) => {
+            console.log(`📊 Categoría "${cat.name}" (${cat.id}): ${cat.subcategories.length} subcategorías`)
+          })
           
           console.log(`✅ ${processedCategories.length} categorías cargadas`)
           
