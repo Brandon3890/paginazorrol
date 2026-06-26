@@ -39,7 +39,7 @@ export async function DELETE(
 
     const hasOrderItems = orderItems[0].count > 0;
 
-    // Si tiene órdenes, solo desactivar
+    // Si tiene órdenes, solo desactivar (NO eliminar)
     if (hasOrderItems) {
       await queryExecute(
         'UPDATE products SET is_active = 0 WHERE id = ?',
@@ -54,7 +54,9 @@ export async function DELETE(
       });
     }
 
+    // ============================================
     // Obtener las imágenes para eliminarlas del sistema de archivos
+    // ============================================
     const productImages: any = await query(
       'SELECT image_url FROM product_images WHERE product_id = ?',
       [productId]
@@ -89,17 +91,38 @@ export async function DELETE(
       }
     }
 
-    // Eliminar registros relacionados
+    // ============================================
+    // Eliminar registros relacionados (EN ORDEN CORRECTO)
+    // ============================================
+    console.log('🗑️ Eliminando registros relacionados...');
+    
+    // 1. Eliminar relaciones con cupones
     await queryExecute('DELETE FROM coupon_products WHERE product_id = ?', [productId]);
+    
+    // 2. Eliminar subcategorías
     await queryExecute('DELETE FROM product_subcategories WHERE product_id = ?', [productId]);
+    
+    // 3. Eliminar imágenes adicionales
     await queryExecute('DELETE FROM product_images WHERE product_id = ?', [productId]);
+    
+    // 4. Eliminar recomendaciones (como producto principal y como recomendado)
     await queryExecute('DELETE FROM product_recommendations WHERE product_id = ? OR recommended_product_id = ?', [productId, productId]);
+    
+    // 5. Eliminar favoritos de usuarios
     await queryExecute('DELETE FROM user_favorites WHERE product_id = ?', [productId]);
+    
+    // 6. Eliminar reservas de stock
     await queryExecute('DELETE FROM stock_reservations WHERE product_id = ?', [productId]);
+    
+    // 7. Eliminar notificaciones de precio
     await queryExecute('DELETE FROM price_drop_notifications WHERE product_id = ?', [productId]);
 
+    // ============================================
     // Finalmente eliminar el producto
+    // ============================================
     await queryExecute('DELETE FROM products WHERE id = ?', [productId]);
+    
+    console.log(`✅ Producto ${productId} eliminado permanentemente`);
 
     return NextResponse.json({ 
       message: 'Producto eliminado permanentemente',

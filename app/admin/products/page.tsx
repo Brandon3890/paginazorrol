@@ -149,7 +149,7 @@ export default function AdminProductsPage() {
   // REFS PARA CONTROLAR REFRESCOS
   const isFetchingRef = useRef(false)
   const lastRefreshRef = useRef<number>(0)
-  const MIN_REFRESH_INTERVAL = 3000 // 3 segundos mínimo entre refrescos
+  const MIN_REFRESH_INTERVAL = 3000
 
   // Actualizar estado local cuando cambian los productos del store
   useEffect(() => {
@@ -199,6 +199,9 @@ export default function AdminProductsPage() {
     return () => window.removeEventListener('product-updated', handleProductUpdate)
   }, [fetchProducts])
 
+  // ============================================
+  // ELIMINAR PRODUCTO (DESACTIVAR) - Solo cambia is_active a 0
+  // ============================================
   const handleDeactivate = (id: number, productName: string) => {
     setProductToDelete(id)
     setProductNameForDelete(productName)
@@ -211,7 +214,7 @@ export default function AdminProductsPage() {
       try {
         console.log(`🗑️ Desactivando producto ${productToDelete}...`);
         
-        // Hacer la solicitud directamente con fetch
+        // Usar la ruta de desactivación (DELETE normal)
         const response = await fetch(`/api/products/${productToDelete}`, {
           method: 'DELETE',
           headers: {
@@ -225,7 +228,6 @@ export default function AdminProductsPage() {
             const errorData = await response.json();
             errorMessage = errorData.error || errorMessage;
           } catch {
-            // Si no se puede parsear JSON, usar el texto
             const text = await response.text();
             if (text) errorMessage = text;
           }
@@ -279,6 +281,9 @@ export default function AdminProductsPage() {
     }
   }
 
+  // ============================================
+  // ELIMINAR PRODUCTO PERMANENTEMENTE - Elimina físicamente de la BD
+  // ============================================
   const handlePermanentDelete = (id: number, productName: string) => {
     setProductToPermanentlyDelete(id)
     setProductNameForDelete(productName)
@@ -291,6 +296,7 @@ export default function AdminProductsPage() {
       try {
         console.log(`💀 Eliminando permanentemente producto ${productToPermanentlyDelete}...`);
         
+        // Usar la ruta de eliminación permanente
         const response = await fetch(`/api/products/${productToPermanentlyDelete}/permanent`, {
           method: 'DELETE',
           headers: {
@@ -310,9 +316,10 @@ export default function AdminProductsPage() {
           throw new Error(errorMessage);
         }
 
-        console.log('✅ Producto eliminado permanentemente');
+        const result = await response.json();
+        console.log('✅ Producto eliminado permanentemente:', result);
         
-        // Actualizar el estado local directamente
+        // Actualizar el estado local directamente (eliminar el producto de la lista)
         setLocalProducts(prevProducts => 
           prevProducts.filter(p => p.id !== productToPermanentlyDelete)
         );
@@ -331,7 +338,7 @@ export default function AdminProductsPage() {
           duration: 3000,
         });
         
-        // Recargar en segundo plano
+        // Recargar en segundo plano para sincronizar
         setTimeout(() => {
           if (!isFetchingRef.current) {
             isFetchingRef.current = true
@@ -343,7 +350,7 @@ export default function AdminProductsPage() {
         }, 1000);
         
       } catch (error) {
-        console.error('Error eliminando producto:', error);
+        console.error('Error eliminando producto permanentemente:', error);
         toast({
           description: "Error al eliminar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
           duration: 4000,
@@ -388,7 +395,6 @@ export default function AdminProductsPage() {
 
         console.log('✅ Producto reactivado correctamente');
         
-        // Actualizar el estado local directamente
         setLocalProducts(prevProducts => 
           prevProducts.map(p => 
             p.id === productToReactivate ? { ...p, isActive: true } : p
@@ -409,7 +415,6 @@ export default function AdminProductsPage() {
           duration: 3000,
         });
         
-        // Recargar en segundo plano
         setTimeout(() => {
           if (!isFetchingRef.current) {
             isFetchingRef.current = true
@@ -516,15 +521,26 @@ export default function AdminProductsPage() {
               </Link>
               
               {!isInactive ? (
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={() => handleDeactivate(product.id, product.name)}
-                  disabled={actionLoading}
-                  title="Desactivar producto"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => handleDeactivate(product.id, product.name)}
+                    disabled={actionLoading}
+                    title="Desactivar producto"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={() => handlePermanentDelete(product.id, product.name)}
+                    title="Eliminar permanentemente"
+                    disabled={actionLoading}
+                  >
+                    <Trash className="w-4 h-4" />
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button 
