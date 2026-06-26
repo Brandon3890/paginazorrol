@@ -154,6 +154,22 @@ const RecommendedProductCard = React.memo(({
   isSelected: boolean
   onToggle: (id: number) => void
 }) => {
+  const getImageUrl = (url: string) => {
+    if (!url) return '/api/images/diverse-products-still-life.png';
+    if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    
+    let filename = url;
+    if (url.includes('/uploads/products/')) {
+      filename = url.split('/uploads/products/')[1];
+    } else if (url.includes('uploads/products/')) {
+      filename = url.split('uploads/products/')[1];
+    } else if (url.includes('/')) {
+      filename = url.split('/').pop() || url;
+    }
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  };
+
   return (
     <div
       className={`border rounded-lg p-3 cursor-pointer transition-colors ${
@@ -163,12 +179,12 @@ const RecommendedProductCard = React.memo(({
     >
       <div className="flex items-start gap-3">
         <img
-          src={product.image || "/uploads/products/diverse-products-still-life.png"}
+          src={getImageUrl(product.image)}
           alt={product.name}
           className="w-16 h-16 object-cover rounded"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
-            target.src = '/uploads/products/diverse-products-still-life.png';
+            target.src = '/api/images/diverse-products-still-life.png';
           }}
         />
         <div className="flex-1">
@@ -336,15 +352,28 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }
 
   const getImageWithTimestamp = (url: string): string => {
-    if (!url) return '/uploads/products/diverse-products-still-life.png'
-    if (url.includes('diverse-products-still-life.png')) return url
-    // NO agregar timestamp a URLs blob
-    if (url.startsWith('blob:')) return url
-    if (url.includes('?v=')) {
-      return url.replace(/v=\d+/, `v=${imageTimestamp}`)
+    if (!url) return '/api/images/diverse-products-still-life.png';
+    if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    
+    // Si ya es una URL de API, solo agregar timestamp
+    if (url.startsWith('/api/images/')) {
+      return `${url}?v=${imageTimestamp}`;
     }
-    return `${url}?v=${imageTimestamp}`
-  }
+    
+    // Extraer el nombre del archivo de la ruta
+    let filename = url;
+    if (url.includes('/uploads/products/')) {
+      filename = url.split('/uploads/products/')[1];
+    } else if (url.includes('uploads/products/')) {
+      filename = url.split('uploads/products/')[1];
+    } else if (url.includes('/')) {
+      filename = url.split('/').pop() || url;
+    }
+    
+    // Codificar caracteres especiales
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}?v=${imageTimestamp}`;
+  };
 
   // Función para forzar la recarga de la imagen
   const forceImageReload = useCallback(() => {
@@ -528,8 +557,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           }
 
           const imageUrl = safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png'
-          console.log('📸 Imagen inicial:', imageUrl)
-          setImagePreview(imageUrl)
+          const apiImageUrl = imageUrl.includes('/api/images/') ? imageUrl : getImageWithTimestamp(imageUrl);
+            setImagePreview(apiImageUrl);
           
           setFormData({
             name: safeToString(productData.name),
@@ -1183,7 +1212,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           onError={(e) => {
                             console.warn('⚠️ Error cargando preview, usando imagen por defecto')
                             const target = e.target as HTMLImageElement;
-                            target.src = '/uploads/products/diverse-products-still-life.png';
+                            target.src = '/api/images/diverse-products-still-life.png';
                           }}
                         />
                         <div className="absolute bottom-2 left-2 flex gap-2">
@@ -1240,7 +1269,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                                 className="w-full h-32 object-cover rounded-lg border"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
-                                  target.src = '/uploads/products/diverse-products-still-life.png';
+                                  target.src = '/api/images/diverse-products-still-life.png';
                                 }}
                               />
                               <Button
