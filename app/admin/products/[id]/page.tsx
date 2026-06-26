@@ -157,6 +157,8 @@ const RecommendedProductCard = React.memo(({
   const getImageUrl = (url: string) => {
     if (!url) return '/api/images/diverse-products-still-life.png';
     if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    if (url.startsWith('/api/images/')) return url;
+    if (url.startsWith('blob:')) return url;
     
     let filename = url;
     if (url.includes('/uploads/products/')) {
@@ -351,16 +353,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
   }
 
-  const getImageWithTimestamp = (url: string): string => {
+  // Función para convertir cualquier URL de imagen a URL de API
+  const convertToApiUrl = (url: string): string => {
     if (!url) return '/api/images/diverse-products-still-life.png';
     if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    if (url.startsWith('/api/images/')) return url;
+    if (url.startsWith('blob:')) return url;
     
-    // Si ya es una URL de API, solo agregar timestamp
-    if (url.startsWith('/api/images/')) {
-      return `${url}?v=${imageTimestamp}`;
-    }
-    
-    // Extraer el nombre del archivo de la ruta
     let filename = url;
     if (url.includes('/uploads/products/')) {
       filename = url.split('/uploads/products/')[1];
@@ -369,17 +368,26 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     } else if (url.includes('/')) {
       filename = url.split('/').pop() || url;
     }
-    
-    // Codificar caracteres especiales
     const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}?v=${imageTimestamp}`;
+    return `/api/images/${encoded}`;
+  };
+
+  const getImageWithTimestamp = (url: string): string => {
+    if (!url) return '/api/images/diverse-products-still-life.png';
+    if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    if (url.startsWith('blob:')) return url;
+    
+    const apiUrl = convertToApiUrl(url);
+    if (apiUrl.includes('?')) {
+      return `${apiUrl}&v=${imageTimestamp}`;
+    }
+    return `${apiUrl}?v=${imageTimestamp}`;
   };
 
   // Función para forzar la recarga de la imagen
   const forceImageReload = useCallback(() => {
     console.log('🔄 Forzando recarga de imagen...')
     setImageTimestamp(Date.now())
-    // Si hay una imagen preview, actualizarla con el nuevo timestamp
     if (imagePreview && !imagePreview.startsWith('blob:')) {
       const imgElement = document.querySelector('img[alt="Preview"]') as HTMLImageElement
       if (imgElement) {
@@ -407,7 +415,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       if (productData) {
         console.log('📦 Producto recargado:', productData.name)
         console.log('📸 Imagen principal:', productData.image)
-        console.log('📸 Imágenes adicionales:', productData.additionalImages)
         
         setProduct(productData)
         
@@ -417,22 +424,22 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
         }
         
-        // Actualizar con la URL real
+        // Actualizar con la URL real usando API
         const realImageUrl = productData.image || '/uploads/products/diverse-products-still-life.png'
-        console.log('📸 Nueva URL real de imagen:', realImageUrl)
+        const apiImageUrl = convertToApiUrl(realImageUrl)
+        console.log('📸 URL API de imagen:', apiImageUrl)
         
-        setImagePreview(realImageUrl)
+        setImagePreview(apiImageUrl)
         setFormData(prev => ({ ...prev, image: realImageUrl }))
         setImageFile(null)
         
-        // Actualizar imágenes adicionales con URLs reales
+        // Actualizar imágenes adicionales con URLs de API
         if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
-          setExistingAdditionalImages(productData.additionalImages)
+          const processedAdditional = productData.additionalImages.map((img: string) => convertToApiUrl(img))
+          setExistingAdditionalImages(processedAdditional)
         }
         
-        // Actualizar timestamp para forzar recarga de imágenes
         setImageTimestamp(Date.now())
-        
         console.log('✅ Producto recargado correctamente')
       }
     } catch (error) {
@@ -442,7 +449,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     }
   }, [productId, fetchProduct, imagePreview])
 
-  // ESCUCHAR EVENTO DE ACTUALIZACIÓN - SOLO UNA VEZ
+  // ESCUCHAR EVENTO DE ACTUALIZACIÓN
   useEffect(() => {
     const handleProductUpdate = () => {
       console.log('🔄 Evento product-updated recibido')
@@ -451,7 +458,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       }
       loadTimeoutRef.current = setTimeout(() => {
         reloadProduct(true)
-      }, 500) // Aumentar delay para asegurar que la imagen se guardó
+      }, 500)
     }
     
     window.addEventListener('product-updated', handleProductUpdate)
@@ -463,7 +470,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     }
   }, [reloadProduct])
 
-  // CARGA INICIAL DEL PRODUCTO - SOLO UNA VEZ
+  // CARGA INICIAL DEL PRODUCTO
   useEffect(() => {
     if (!productId || categories.length === 0) return
     if (!isInitialLoadRef.current) return
@@ -557,8 +564,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           }
 
           const imageUrl = safeToString(productData.image) || '/uploads/products/diverse-products-still-life.png'
-          const apiImageUrl = imageUrl.includes('/api/images/') ? imageUrl : getImageWithTimestamp(imageUrl);
-            setImagePreview(apiImageUrl);
+          const apiImageUrl = convertToApiUrl(imageUrl)
+          console.log('📸 Imagen inicial (API):', apiImageUrl)
+          setImagePreview(apiImageUrl)
           
           setFormData({
             name: safeToString(productData.name),
@@ -591,7 +599,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           setYoutubeUrl(productData.youtubeVideoId || '')
           
           if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
-            setExistingAdditionalImages(productData.additionalImages)
+            const processedAdditional = productData.additionalImages.map((img: string) => convertToApiUrl(img))
+            setExistingAdditionalImages(processedAdditional)
           }
           
           isInitialLoadRef.current = false
@@ -766,7 +775,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
     }
     setImageFile(null)
-    setImagePreview('/uploads/products/diverse-products-still-life.png')
+    setImagePreview('/api/images/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
   }, [imagePreview])
@@ -823,6 +832,29 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       product.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
   }, [allProducts, productId, searchTerm])
+
+  // Función para verificar si una imagen existe en el servidor
+  const waitForImage = useCallback(async (filename: string, maxAttempts: number = 10): Promise<boolean> => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch(`/api/images/${encodeURIComponent(filename)}`, {
+          method: 'HEAD',
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          console.log(`✅ Imagen disponible después de ${attempt + 1} intentos`);
+          return true;
+        }
+      } catch (error) {
+        console.log(`⏳ Intento ${attempt + 1}/${maxAttempts} falló`);
+      }
+      // Esperar exponencialmente: 500ms, 1000ms, 1500ms, etc.
+      const waitTime = (attempt + 1) * 500;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    console.warn(`⚠️ Imagen no disponible después de ${maxAttempts} intentos`);
+    return false;
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -883,10 +915,22 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
 
-      // IMPORTANTE: Si hay un archivo nuevo, enviarlo
+      // Guardar el nombre de la imagen que se va a subir para esperarla después
+      let uploadedFilename: string | null = null;
+
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
         console.log('📸 Enviando NUEVA imagen principal:', imageFile.name)
+        
+        // Estimar el nombre del archivo que se guardará
+        const baseName = formData.name.toLowerCase()
+          .replace(/[^a-z0-9]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        const ext = imageFile.name.split('.').pop() || 'png';
+        uploadedFilename = `${baseName}-${Date.now()}.${ext}`;
+        console.log('📸 Nombre estimado del archivo:', uploadedFilename);
+        
       } else if (formData.image && !formData.image.startsWith('blob:')) {
         formDataToSend.append('image', safeToString(formData.image))
         console.log('📸 Manteniendo imagen existente:', formData.image)
@@ -900,7 +944,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         console.log('📸 Enviando imagen adicional:', file.name)
       })
 
-      // Usar fetch directo en lugar de updateProduct para tener mejor control
+      // Hacer la solicitud PUT
       const response = await fetch(`/api/products/${productId}`, {
         method: 'PUT',
         body: formDataToSend,
@@ -924,7 +968,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       console.log('✅ Product updated successfully');
       
       // =============================================
-      // 1. LIMPIAR URLs BLOB PARA LIBERAR MEMORIA
+      // 1. LIMPIAR URLs BLOB
       // =============================================
       if (imagePreview && imagePreview.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreview)
@@ -938,64 +982,65 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       })
       
       // =============================================
-      // 2. RECARGAR EL PRODUCTO PARA OBTENER LA URL REAL
+      // 2. SI SE SUBIÓ UNA IMAGEN NUEVA, ESPERAR A QUE ESTÉ LISTA
       // =============================================
-      console.log('🔄 Recargando producto para obtener URLs reales...')
-      
-      // Esperar un momento para que la imagen se guarde en el servidor
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      const updatedProduct = await fetchProduct(productId, true)
-      
-      if (updatedProduct) {
-        console.log('📦 Producto actualizado con URLs reales:')
-        console.log('📸 Imagen principal:', updatedProduct.image)
-        console.log('📸 Imágenes adicionales:', updatedProduct.additionalImages)
+      if (uploadedFilename) {
+        console.log('📸 Esperando a que la imagen esté disponible en el servidor...');
+        const imageAvailable = await waitForImage(uploadedFilename, 8);
         
-        // Actualizar el estado con las URLs reales
-        setProduct(updatedProduct)
-        
-        // Limpiar cualquier URL blob antigua
-        if (imagePreview && imagePreview.startsWith('blob:')) {
-          URL.revokeObjectURL(imagePreview)
-          blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
+        if (!imageAvailable) {
+          console.warn('⚠️ La imagen no se pudo verificar, pero se guardó correctamente');
         }
-        
-        // Actualizar con la URL real
-        const realImageUrl = updatedProduct.image || '/uploads/products/diverse-products-still-life.png'
-        console.log('📸 URL real de imagen:', realImageUrl)
-        
-        setImagePreview(realImageUrl)
-        setFormData(prev => ({ 
-          ...prev, 
-          image: realImageUrl 
-        }))
-        
-        // Actualizar imágenes adicionales con URLs reales
-        if (updatedProduct.additionalImages && Array.isArray(updatedProduct.additionalImages)) {
-          setExistingAdditionalImages(updatedProduct.additionalImages)
-        }
-        
-        // Limpiar archivos nuevos (ya no son necesarios)
-        setImageFile(null)
-        setNewAdditionalImageFiles([])
-        setNewAdditionalImagePreviews([])
-        setDeletedExistingImages([])
-        
-        // Actualizar timestamp para forzar recarga de imágenes
-        setImageTimestamp(Date.now())
-        setSaveSuccess(true)
-        
-        // Forzar recarga de la imagen en el DOM
-        forceImageReload()
       }
       
       // =============================================
-      // 3. EMITIR EVENTO Y REDIRIGIR
+      // 3. RECARGAR EL PRODUCTO
+      // =============================================
+      console.log('🔄 Recargando producto...');
+      const updatedProduct = await fetchProduct(productId, true);
+      
+      if (updatedProduct) {
+        console.log('📦 Producto actualizado:');
+        console.log('📸 Imagen principal:', updatedProduct.image);
+        
+        setProduct(updatedProduct);
+        
+        // Limpiar cualquier URL blob antigua
+        if (imagePreview && imagePreview.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview);
+          blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview);
+        }
+        
+        // Actualizar con la URL real usando API
+        const realImageUrl = updatedProduct.image || '/uploads/products/diverse-products-still-life.png';
+        const apiImageUrl = convertToApiUrl(realImageUrl);
+        console.log('📸 URL API de imagen:', apiImageUrl);
+        
+        const finalImageUrl = `${apiImageUrl}?v=${Date.now()}`;
+        setImagePreview(finalImageUrl);
+        setFormData(prev => ({ ...prev, image: realImageUrl }));
+        
+        // Actualizar imágenes adicionales
+        if (updatedProduct.additionalImages && Array.isArray(updatedProduct.additionalImages)) {
+          const processedAdditional = updatedProduct.additionalImages.map((img: string) => convertToApiUrl(img));
+          setExistingAdditionalImages(processedAdditional);
+        }
+        
+        setImageFile(null);
+        setNewAdditionalImageFiles([]);
+        setNewAdditionalImagePreviews([]);
+        setDeletedExistingImages([]);
+        
+        setImageTimestamp(Date.now());
+        setSaveSuccess(true);
+      }
+      
+      // =============================================
+      // 4. EMITIR EVENTO
       // =============================================
       if (typeof window !== 'undefined') {
-        console.log('📡 Emitiendo evento product-updated...')
-        window.dispatchEvent(new CustomEvent('product-updated'))
+        console.log('📡 Emitiendo evento product-updated...');
+        window.dispatchEvent(new CustomEvent('product-updated'));
       }
       
       toast({
@@ -1006,23 +1051,22 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           </div>
         ),
         duration: 3000,
-      })
+      });
       
-      // Esperar un momento antes de redirigir
       setTimeout(() => {
-        router.push("/admin/products")
-      }, 1500)
+        router.push("/admin/products");
+      }, 1500);
       
     } catch (error) {
-      console.error("Error updating product:", error)
+      console.error("Error updating product:", error);
       toast({
         description: "Error al actualizar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
         duration: 4000,
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsUploading(false)
-      isLoadingRef.current = false
+      setIsUploading(false);
+      isLoadingRef.current = false;
     }
   }
 
@@ -1193,7 +1237,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           value={formData.image}
                           onChange={(e) => {
                             setFormData({ ...formData, image: e.target.value })
-                            setImagePreview(e.target.value)
+                            setImagePreview(convertToApiUrl(e.target.value))
                             setImageFile(null)
                             setImageTimestamp(Date.now())
                             if (errors.image) setErrors(prev => ({ ...prev, image: false }))
