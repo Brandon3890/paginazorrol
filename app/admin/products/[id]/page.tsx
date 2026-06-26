@@ -15,11 +15,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
-  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
+  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler, CheckCircle
 } from "lucide-react"
 import Link from "next/link"
 import { SpecsEditor } from "@/components/SpecsEditor"
 import { ProductSpec, parseProductSpecs } from "@/lib/product-specs"
+import { useToast } from "@/hooks/use-toast"
 
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
@@ -191,6 +192,7 @@ RecommendedProductCard.displayName = 'RecommendedProductCard';
 
 export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const { toast } = useToast()
   const { user, isAuthenticated } = useAuthStore()
   const { fetchProduct, updateProduct } = useProductStore()
   const { categories, loading: categoriesLoading } = useCategories()
@@ -203,6 +205,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const isLoadingRef = useRef(false)
   const isInitialLoadRef = useRef(true)
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const blobUrlsRef = useRef<string[]>([])
 
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -244,6 +247,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [youtubeError, setYoutubeError] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [saveSuccess, setSaveSuccess] = useState(false)
   
   const [existingAdditionalImages, setExistingAdditionalImages] = useState<string[]>([])
   const [newAdditionalImageFiles, setNewAdditionalImageFiles] = useState<File[]>([])
@@ -264,6 +268,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       router.push("/")
     }
   }, [isAuthenticated, user, router])
+
+  // Limpiar URLs blob al desmontar
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url)
+        }
+      })
+      blobUrlsRef.current = []
+    }
+  }, [])
 
   const extractProductTag = (productData: any): string => {
     if (productData.tags) {
@@ -322,6 +338,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const getImageWithTimestamp = (url: string): string => {
     if (!url) return '/uploads/products/diverse-products-still-life.png'
     if (url.includes('diverse-products-still-life.png')) return url
+    // NO agregar timestamp a URLs blob
+    if (url.startsWith('blob:')) return url
     if (url.includes('?v=')) {
       return url.replace(/v=\d+/, `v=${imageTimestamp}`)
     }
@@ -344,13 +362,28 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       const productData = await fetchProduct(productId, true)
       if (productData) {
         console.log('📦 Producto recargado:', productData.name)
+        console.log('📸 Imagen principal:', productData.image)
+        console.log('📸 Imágenes adicionales:', productData.additionalImages)
+        
         setProduct(productData)
         setImageTimestamp(Date.now())
         
-        const newImage = productData.image || '/uploads/products/diverse-products-still-life.png'
-        setImagePreview(newImage)
-        setFormData(prev => ({ ...prev, image: newImage }))
+        // Limpiar cualquier URL blob anterior
+        if (imagePreview && imagePreview.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview)
+        }
+        
+        // Actualizar con la URL real
+        const realImageUrl = productData.image || '/uploads/products/diverse-products-still-life.png'
+        setImagePreview(realImageUrl)
+        setFormData(prev => ({ ...prev, image: realImageUrl }))
         setImageFile(null)
+        
+        // Actualizar imágenes adicionales con URLs reales
+        if (productData.additionalImages && Array.isArray(productData.additionalImages)) {
+          setExistingAdditionalImages(productData.additionalImages)
+        }
+        
         console.log('✅ Producto recargado correctamente')
       }
     } catch (error) {
@@ -358,17 +391,15 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     } finally {
       isLoadingRef.current = false
     }
-  }, [productId, fetchProduct])
+  }, [productId, fetchProduct, imagePreview])
 
   // ESCUCHAR EVENTO DE ACTUALIZACIÓN - SOLO UNA VEZ
   useEffect(() => {
     const handleProductUpdate = () => {
       console.log('🔄 Evento product-updated recibido')
-      // Limpiar timeout anterior
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current)
       }
-      // Recargar con debounce
       loadTimeoutRef.current = setTimeout(() => {
         reloadProduct(true)
       }, 300)
@@ -399,8 +430,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         
         if (productData) {
           console.log('📦 Producto cargado:', productData.name)
+          console.log('📸 Imagen principal:', productData.image)
+          
           setProduct(productData)
           setImageTimestamp(Date.now())
+          
+          // Limpiar cualquier URL blob anterior
+          blobUrlsRef.current.forEach(url => {
+            if (url && url.startsWith('blob:')) {
+              URL.revokeObjectURL(url)
+            }
+          })
+          blobUrlsRef.current = []
           
           let allSubcategoryIds: string[] = []
           if (productData.subcategoryIds && Array.isArray(productData.subcategoryIds)) {
@@ -652,6 +693,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         try {
           const resizedFile = await resizeImage(file, 1024, 1024)
           const previewUrl = URL.createObjectURL(resizedFile)
+          blobUrlsRef.current.push(previewUrl) // Guardar para limpiar después
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
           setImageTimestamp(Date.now())
@@ -670,11 +712,15 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }
 
   const removeMainImage = useCallback(() => {
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview)
+      blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
+    }
     setImageFile(null)
     setImagePreview('/uploads/products/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
-  }, [])
+  }, [imagePreview])
 
   const handleAdditionalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -689,6 +735,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         try {
           const resizedFile = await resizeImage(file, 1024, 1024)
           const previewUrl = URL.createObjectURL(resizedFile)
+          blobUrlsRef.current.push(previewUrl) // Guardar para limpiar después
           setNewAdditionalImageFiles(prev => [...prev, resizedFile])
           setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
           setImageTimestamp(Date.now())
@@ -711,7 +758,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   }, [existingAdditionalImages])
 
   const removeNewAdditionalImage = useCallback((index: number) => {
-    URL.revokeObjectURL(newAdditionalImagePreviews[index])
+    const url = newAdditionalImagePreviews[index]
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+      blobUrlsRef.current = blobUrlsRef.current.filter(u => u !== url)
+    }
     setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
     setImageTimestamp(Date.now())
@@ -743,6 +794,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
     setIsUploading(true)
     isLoadingRef.current = true
+    setSaveSuccess(false)
     
     try {
       const formDataToSend = new FormData()
@@ -782,13 +834,16 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       deletedExistingImages.forEach(imageUrl => formDataToSend.append('deletedImages', imageUrl))
 
+      // IMPORTANTE: Si hay un archivo nuevo, enviarlo
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
         console.log('📸 Enviando NUEVA imagen principal:', imageFile.name)
-      } else if (formData.image) {
+      } else if (formData.image && !formData.image.startsWith('blob:')) {
+        // Solo mantener la URL si es real (no blob)
         formDataToSend.append('image', safeToString(formData.image))
         console.log('📸 Manteniendo imagen existente:', formData.image)
       } else {
+        // Si no hay imagen o es blob, usar la imagen por defecto
         formDataToSend.append('image', '/uploads/products/diverse-products-still-life.png')
         console.log('📸 Usando imagen por defecto')
       }
@@ -800,35 +855,96 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       await updateProduct(productId, formDataToSend)
       
-      // Limpiar URLs de blob
-      if (imageFile && imagePreview && imagePreview.startsWith('blob:')) {
+      // =============================================
+      // 1. LIMPIAR URLs BLOB PARA LIBERAR MEMORIA
+      // =============================================
+      if (imagePreview && imagePreview.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreview)
+        blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
       }
       newAdditionalImagePreviews.forEach(url => {
         if (url && url.startsWith('blob:')) {
           URL.revokeObjectURL(url)
+          blobUrlsRef.current = blobUrlsRef.current.filter(u => u !== url)
         }
       })
       
-      // Emitir evento para actualizar otros componentes
+      // =============================================
+      // 2. RECARGAR EL PRODUCTO PARA OBTENER LA URL REAL
+      // =============================================
+      console.log('🔄 Recargando producto para obtener URLs reales...')
+      const updatedProduct = await fetchProduct(productId, true)
+      
+      if (updatedProduct) {
+        console.log('📦 Producto actualizado con URLs reales:')
+        console.log('📸 Imagen principal:', updatedProduct.image)
+        console.log('📸 Imágenes adicionales:', updatedProduct.additionalImages)
+        
+        // Actualizar el estado con las URLs reales
+        setProduct(updatedProduct)
+        
+        // Limpiar cualquier URL blob antigua
+        if (imagePreview && imagePreview.startsWith('blob:')) {
+          URL.revokeObjectURL(imagePreview)
+          blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
+        }
+        
+        // Actualizar con la URL real
+        const realImageUrl = updatedProduct.image || '/uploads/products/diverse-products-still-life.png'
+        setImagePreview(realImageUrl)
+        
+        // Actualizar formData con la URL real
+        setFormData(prev => ({ 
+          ...prev, 
+          image: realImageUrl 
+        }))
+        
+        // Actualizar imágenes adicionales con URLs reales
+        if (updatedProduct.additionalImages && Array.isArray(updatedProduct.additionalImages)) {
+          setExistingAdditionalImages(updatedProduct.additionalImages)
+        }
+        
+        // Limpiar archivos nuevos (ya no son necesarios)
+        setImageFile(null)
+        setNewAdditionalImageFiles([])
+        setNewAdditionalImagePreviews([])
+        setDeletedExistingImages([])
+        
+        // Actualizar timestamp para forzar recarga de imágenes
+        setImageTimestamp(Date.now())
+        setSaveSuccess(true)
+      }
+      
+      // =============================================
+      // 3. EMITIR EVENTO Y REDIRIGIR
+      // =============================================
       if (typeof window !== 'undefined') {
         console.log('📡 Emitiendo evento product-updated...')
         window.dispatchEvent(new CustomEvent('product-updated'))
       }
       
-      // Recargar el producto después de guardar (con delay para evitar race conditions)
-      setTimeout(() => {
-        reloadProduct(true)
-      }, 500)
+      toast({
+        description: (
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <span>Producto actualizado correctamente</span>
+          </div>
+        ),
+        duration: 3000,
+      })
       
-      // Redirigir después de un tiempo
+      // Esperar un momento antes de redirigir para que la imagen se cargue
       setTimeout(() => {
         router.push("/admin/products")
       }, 1500)
       
     } catch (error) {
       console.error("Error updating product:", error)
-      alert("Error al actualizar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'))
+      toast({
+        description: "Error al actualizar el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
+        duration: 4000,
+        variant: "destructive",
+      })
       isLoadingRef.current = false
     } finally {
       setIsUploading(false)
@@ -889,6 +1005,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             Volver a Productos
           </Button>
         </Link>
+
+        {saveSuccess && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <span className="text-green-700">Producto guardado correctamente. Redirigiendo...</span>
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -1688,7 +1811,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
               <div className="flex gap-4">
                 <Button type="submit" disabled={isUploading || isLoadingRef.current} className="bg-[#C2410C] hover:bg-[#9A3412]">
-                  {isUploading ? "Guardando..." : "Guardar Cambios"}
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Guardar Cambios'
+                  )}
                 </Button>
                 <Link href="/admin/products">
                   <Button type="button" variant="outline">
