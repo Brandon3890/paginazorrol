@@ -82,10 +82,17 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           const categories = await response.json()
-          console.log(`✅ ${categories.length} categorías cargadas`)
+          
+          // Asegurar que cada categoría tenga subcategories como array
+          const processedCategories = categories.map((cat: any) => ({
+            ...cat,
+            subcategories: Array.isArray(cat.subcategories) ? cat.subcategories : []
+          }))
+          
+          console.log(`✅ ${processedCategories.length} categorías cargadas`)
           
           set({ 
-            categories, 
+            categories: processedCategories, 
             loading: false, 
             categoriesLoaded: true 
           })
@@ -136,8 +143,12 @@ export const useCategoryStore = create<CategoryStore>()(
             body: JSON.stringify({ ordered_ids: orderedIds })
           })
           
-          if (!response.ok) throw new Error('Error reordering subcategories')
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Error reordering subcategories')
+          }
           
+          // Actualizar estado local
           set(state => ({
             categories: state.categories.map(cat => {
               if (cat.id === categoryId) {
@@ -159,18 +170,20 @@ export const useCategoryStore = create<CategoryStore>()(
         } catch (error) {
           console.error('Error reordering subcategories:', error)
           set({ error: (error as Error).message })
+          throw error
         }
       },
 
       addCategory: async (category) => {
         try {
-          // Asegurar que el campo se llama is_active, no isActive
           const categoryData = {
             name: category.name,
             slug: category.slug,
             description: category.description || '',
             is_active: category.is_active !== undefined ? category.is_active : true
           }
+
+          console.log('📤 Enviando categoría:', categoryData)
 
           const response = await fetch('/api/categories', {
             method: 'POST',
@@ -225,6 +238,7 @@ export const useCategoryStore = create<CategoryStore>()(
             throw new Error(error.error || 'Error deactivating category')
           }
           
+          // Actualizar estado local inmediatamente
           set(state => ({
             categories: state.categories.map(cat => 
               cat.id === id ? { ...cat, is_active: false } : cat

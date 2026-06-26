@@ -17,38 +17,15 @@ export async function GET(
       );
     }
 
+    const categoryId = parseInt(id);
+
     await transaction.begin();
 
-    const categories: any = await transaction.query(`
-      SELECT 
-        c.*,
-        CASE 
-          WHEN COUNT(s.id) = 0 THEN '[]'
-          ELSE CONCAT(
-            '[',
-            GROUP_CONCAT(
-              DISTINCT CONCAT(
-                '{',
-                '"id":', s.id, ',',
-                '"name":"', REPLACE(REPLACE(s.name, '"', '\\\\"'), '\\\\', '\\\\\\\\'), '",',
-                '"slug":"', REPLACE(REPLACE(s.slug, '"', '\\\\"'), '\\\\', '\\\\\\\\'), '",',
-                '"category_id":', s.category_id, ',',
-                '"is_active":', IF(s.is_active, 'true', 'false'), ',',
-                '"display_order":', IFNULL(s.display_order, 0), ',',
-                '"created_at":"', s.created_at, '",',
-                '"updated_at":"', s.updated_at, '"',
-                '}'
-              )
-              ORDER BY IFNULL(s.display_order, 0) ASC
-            ),
-            ']'
-          )
-        END as subcategories_json
-      FROM categories c
-      LEFT JOIN subcategories s ON c.id = s.category_id
-      WHERE c.id = ?
-      GROUP BY c.id
-    `, [parseInt(id)]);
+    // Obtener la categoría
+    const categories = await transaction.query(
+      'SELECT * FROM categories WHERE id = ?',
+      [categoryId]
+    ) as any[];
 
     if (categories.length === 0) {
       await transaction.commit();
@@ -58,27 +35,30 @@ export async function GET(
       );
     }
 
+    // Obtener las subcategorías por separado
+    const subcategories = await transaction.query(
+      `SELECT 
+        s.id,
+        s.name,
+        s.slug,
+        s.category_id,
+        s.is_active,
+        s.display_order,
+        s.created_at,
+        s.updated_at
+      FROM subcategories s
+      WHERE s.category_id = ?
+      ORDER BY s.display_order ASC, s.name ASC`,
+      [categoryId]
+    ) as any[];
+
     await transaction.commit();
 
-    // Procesar los datos JSON
     const category = categories[0];
-    let subcategories = [];
-    
-    if (category.subcategories_json && category.subcategories_json !== '[]') {
-      try {
-        subcategories = JSON.parse(category.subcategories_json);
-        // Asegurar orden por display_order
-        subcategories.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
-      } catch (error) {
-        subcategories = [];
-      }
-    }
-
-    const { subcategories_json, ...categoryData } = category;
     
     const categoryWithSubcategories = {
-      ...categoryData,
-      subcategories: Array.isArray(subcategories) ? subcategories : []
+      ...category,
+      subcategories: subcategories || []
     };
 
     return NextResponse.json(categoryWithSubcategories);
@@ -150,14 +130,41 @@ export async function DELETE(
 
     await transaction.begin();
 
+    // Verificar si tiene productos
+    const productsCheck = await transaction.query(
+      'SELECT COUNT(*) as count FROM products WHERE category_id = ?',
+      [parseInt(id)]
+    ) as any[];
+
+    if (productsCheck[0].count > 0) {
+      await transaction.rollback();
+      return NextResponse.json(
+        { 
+          error: 'No se puede desactivar la categoría porque tiene productos asociados',
+          hasProducts: true,
+          productCount: productsCheck[0].count
+        },
+        { status: 409 }
+      );
+    }
+
     await transaction.query(
       'UPDATE categories SET is_active = FALSE WHERE id = ?',
       [parseInt(id)]
     );
 
+    // Desactivar también sus subcategorías
+    await transaction.query(
+      'UPDATE subcategories SET is_active = FALSE WHERE category_id = ?',
+      [parseInt(id)]
+    );
+
     await transaction.commit();
 
-    return NextResponse.json({ message: 'Category deactivated successfully' });
+    return NextResponse.json({ 
+      message: 'Category deactivated successfully',
+      categoryId: parseInt(id)
+    });
     
   } catch (error) {
     await transaction.rollback();

@@ -7,62 +7,43 @@ export async function GET() {
   try {
     await transaction.begin();
     
+    // Primero obtener todas las categorías
     const categories = await transaction.query(`
       SELECT 
-        c.*,
-        CASE 
-          WHEN COUNT(s.id) = 0 THEN '[]'
-          ELSE CONCAT(
-            '[',
-            GROUP_CONCAT(
-              DISTINCT CONCAT(
-                '{',
-                '"id":', s.id, ',',
-                '"name":"', REPLACE(REPLACE(s.name, '"', '\\\\"'), '\\\\', '\\\\\\\\'), '",',
-                '"slug":"', REPLACE(REPLACE(s.slug, '"', '\\\\"'), '\\\\', '\\\\\\\\'), '",',
-                '"category_id":', s.category_id, ',',
-                '"is_active":', IF(s.is_active, 'true', 'false'), ',',
-                '"display_order":', IFNULL(s.display_order, 0), ',',
-                '"created_at":"', s.created_at, '",',
-                '"updated_at":"', s.updated_at, '"',
-                '}'
-              )
-              ORDER BY IFNULL(s.display_order, 0) ASC
-            ),
-            ']'
-          )
-        END as subcategories_json
+        c.*
       FROM categories c
-      LEFT JOIN subcategories s ON c.id = s.category_id
-      GROUP BY c.id
       ORDER BY c.is_active DESC, c.name
     `) as any[];
 
+    // Para cada categoría, obtener sus subcategorías por separado
+    const categoriesWithSubcategories = await Promise.all(
+      categories.map(async (category) => {
+        const subcategories = await transaction.query(`
+          SELECT 
+            s.id,
+            s.name,
+            s.slug,
+            s.category_id,
+            s.is_active,
+            s.display_order,
+            s.created_at,
+            s.updated_at
+          FROM subcategories s
+          WHERE s.category_id = ?
+          ORDER BY s.display_order ASC, s.name ASC
+        `, [category.id]) as any[];
+
+        return {
+          ...category,
+          subcategories: subcategories
+        };
+      })
+    );
+
     await transaction.commit();
 
-    const processedCategories = categories.map(category => {
-      let subcategories = [];
-      
-      if (category.subcategories_json && category.subcategories_json !== '[]') {
-        try {
-          subcategories = JSON.parse(category.subcategories_json);
-          subcategories.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
-        } catch (error) {
-          console.error('Error parsing subcategories JSON:', error);
-          subcategories = [];
-        }
-      }
-
-      const { subcategories_json, ...categoryData } = category;
-      
-      return {
-        ...categoryData,
-        subcategories: Array.isArray(subcategories) ? subcategories : []
-      };
-    });
-
     // HEADERS ANTI-CACHÉ
-    return new NextResponse(JSON.stringify(processedCategories), {
+    return new NextResponse(JSON.stringify(categoriesWithSubcategories), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
