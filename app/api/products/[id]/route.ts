@@ -23,27 +23,23 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   
   const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
   
-  // Crear la carpeta si no existe
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
     console.log('📁 Creada carpeta:', uploadDir);
   }
 
-  // Obtener la extensión correcta
   let extension = file.type.split('/')[1] || 'png';
   if (extension === 'jpeg') extension = 'jpg';
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
-  // NORMALIZAR EL NOMBRE - eliminar ñ, acentos, etc.
   const baseName = normalizeProductName(productName);
   const prefix = isAdditional ? `${baseName}-additional` : baseName;
   const uniqueFilename = generateUniqueFilename(prefix, extension);
   const filepath = path.join(uploadDir, uniqueFilename);
 
-  // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
-  console.log(`✅ Imagen guardada: ${filepath} (nombre original: ${file.name})`);
+  console.log(`✅ Imagen guardada: ${filepath}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
@@ -63,12 +59,6 @@ function correctImageUrl(imagePath: string | null): string {
   
   if (imagePath.startsWith('uploads/')) {
     return `/${imagePath}`;
-  }
-  
-  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || 
-      imagePath.includes('.png') || imagePath.includes('.webp') || 
-      imagePath.includes('.gif') || imagePath.includes('.svg')) {
-    return `/uploads/products/${imagePath}`;
   }
   
   return '/uploads/products/diverse-products-still-life.png';
@@ -346,7 +336,6 @@ export async function GET(
 
     await transaction.commit()
     
-    // HEADERS ANTI-CACHÉ
     return new NextResponse(JSON.stringify(productData), {
       status: 200,
       headers: {
@@ -392,7 +381,10 @@ export async function PUT(
     const description = formData.get('description') as string
     const price = parseFloat(formData.get('price') as string)
     const originalPrice = formData.get('originalPrice') ? parseFloat(formData.get('originalPrice') as string) : null
-    const image = formData.get('image') as string
+    
+    // 🔥 CORREGIDO: Obtener la imagen actual o usar la que viene en el form
+    const imageFromForm = formData.get('image') as string
+    
     const youtubeVideoId = formData.get('youtubeVideoId') as string || ''
     const categoryId = parseInt(formData.get('categoryId') as string)
     const subcategoryIds = formData.getAll('subcategoryIds') as string[]
@@ -455,6 +447,30 @@ export async function PUT(
 
     const oldPrice = oldProductData.length > 0 ? parseFloat(oldProductData[0].price) : 0;
     const oldOriginalPrice = oldProductData.length > 0 && oldProductData[0].original_price ? parseFloat(oldProductData[0].original_price) : null;
+    
+    // 🔥 CORREGIDO: Determinar la imagen final
+    let finalImage: string;
+    
+    // Si se subió una imagen nueva, se procesará después
+    const mainImageFile = formData.get('mainImage') as File
+    
+    if (mainImageFile && mainImageFile.size > 0) {
+      // Si hay una imagen nueva, se guardará y se usará esa
+      finalImage = await saveImage(mainImageFile, name, false);
+      console.log('✅ Nueva imagen principal guardada:', finalImage);
+    } else if (imageFromForm && imageFromForm !== 'null' && imageFromForm !== '') {
+      // Si no hay imagen nueva pero hay una URL en el form, usarla
+      finalImage = imageFromForm;
+      console.log('📸 Usando imagen existente del form:', finalImage);
+    } else if (oldProductData.length > 0 && oldProductData[0].image) {
+      // Si no hay nada en el form, mantener la imagen existente
+      finalImage = oldProductData[0].image;
+      console.log('📸 Manteniendo imagen existente de la BD:', finalImage);
+    } else {
+      // Fallback: usar imagen por defecto
+      finalImage = '/uploads/products/diverse-products-still-life.png';
+      console.log('📸 Usando imagen por defecto');
+    }
 
     const updateProductQuery = `
       UPDATE products SET 
@@ -473,7 +489,7 @@ export async function PUT(
       description,
       price,
       originalPrice,
-      image,
+      finalImage, // 🔥 AHORA SIEMPRE TIENE UN VALOR
       youtubeVideoId,
       categoryId,
       ageMin,
@@ -517,15 +533,6 @@ export async function PUT(
       )
     }
 
-    // Procesar imagen principal NUEVA
-    const mainImageFile = formData.get('mainImage') as File
-    if (mainImageFile && mainImageFile.size > 0) {
-      // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
-      const mainImageUrl = await saveImage(mainImageFile, name, false)
-      await transaction.query('UPDATE products SET image = ? WHERE id = ?', [mainImageUrl, productId])
-      console.log('✅ Main image updated:', mainImageUrl)
-    }
-
     // Eliminar imágenes marcadas
     if (deletedImages.length > 0) {
       for (const imageUrl of deletedImages) {
@@ -550,7 +557,6 @@ export async function PUT(
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
       if (imageFile && imageFile.size > 0) {
-        // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
         const imageUrl = await saveImage(imageFile, name, true)
         await transaction.query(
           'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
@@ -565,7 +571,7 @@ export async function PUT(
     // Notificaciones de descuento (si aplica)
     try {
       const productName = oldProductData.length > 0 ? oldProductData[0].name : name;
-      const productImage = oldProductData.length > 0 ? oldProductData[0].image : image;
+      const productImage = oldProductData.length > 0 ? oldProductData[0].image : finalImage;
       const newPriceValue = price;
       const newOriginalPrice = originalPrice;
       
@@ -607,7 +613,7 @@ export async function PUT(
     console.error('Error updating product:', error)
     await transaction.rollback()
     return NextResponse.json(
-      { error: 'Error al actualizar el producto' },
+      { error: 'Error al actualizar el producto: ' + (error instanceof Error ? error.message : 'Error desconocido') },
       { status: 500 }
     )
   }
