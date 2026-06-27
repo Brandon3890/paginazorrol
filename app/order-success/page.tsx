@@ -432,43 +432,6 @@ function OrderSuccessContent() {
                     </div>
                   </div>
                 </div>
-
-                {/* Dirección de Envío */}
-                {order.shipping_address && (
-                  <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold mb-2 flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      Dirección de Envío
-                    </h3>
-                    <div className="space-y-1 text-sm">
-                      <p>{order.shipping_address.street}</p>
-                      <p className="text-muted-foreground">
-                        {order.shipping_address.commune_name}, {order.shipping_address.region_name}
-                      </p>
-                      {order.shipping_address.postal_code && (
-                        <p className="text-muted-foreground">Código Postal: {order.shipping_address.postal_code}</p>
-                      )}
-                      {order.shipping_address.delivery_instructions && (
-                        <p className="text-xs text-blue-600 mt-1">📝 {order.shipping_address.delivery_instructions}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Datos del Cliente */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Datos del Cliente
-                  </h3>
-                  <div className="space-y-1 text-sm">
-                    <p>{order.customer_first_name} {order.customer_last_name}</p>
-                    <p className="text-muted-foreground">{order.customer_email}</p>
-                    {order.customer_phone && (
-                      <p className="text-muted-foreground">Teléfono: {order.customer_phone}</p>
-                    )}
-                  </div>
-                </div>
               </>
             )}
 
