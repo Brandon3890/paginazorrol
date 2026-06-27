@@ -1,3 +1,4 @@
+// proxy.ts
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -57,11 +58,33 @@ export async function proxy(request: NextRequest) {
     response.headers.set(key, value)
   })
 
-  if (!pathname.startsWith('/api/') && !pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg)$/)) {
-    const cspHeaders = getCSPHeaders()
-    Object.entries(cspHeaders).forEach(([key, value]) => {
-      response.headers.set(key, value)
-    })
+  // 🔥 EXCLUIR order-success de la CSP estricta
+  const isOrderSuccess = pathname === '/order-success' || pathname.startsWith('/order-success?')
+  
+  // Solo aplicar CSP a páginas HTML, no a archivos estáticos
+  if (!pathname.startsWith('/api/') && 
+      !pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf)$/)) {
+    
+    // Para order-success, usar CSP más permisiva
+    if (isOrderSuccess) {
+      response.headers.set(
+        'Content-Security-Policy',
+        "default-src 'self' 'unsafe-inline'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://cdn.jsdelivr.net; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "img-src 'self' data: blob: https: http:; " +
+        "connect-src 'self' https: wss:; " +
+        "frame-src 'self' https://www.youtube.com https://youtube.com; " +
+        "frame-ancestors 'none';"
+      )
+    } else {
+      // CSP normal para otras páginas
+      const cspHeaders = getCSPHeaders()
+      Object.entries(cspHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value)
+      })
+    }
   }
 
   if (pathname === '/api/auth/login') {

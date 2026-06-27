@@ -1,3 +1,4 @@
+// lib/security-headers.ts
 export function getSecurityHeaders() {
   const isProduction = process.env.NODE_ENV === 'production'
 
@@ -24,11 +25,11 @@ export function getCSPHeaders() {
     return {
       'Content-Security-Policy':
         "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:3000; " +
-        "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com https://cdn.jsdelivr.net; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data: blob: http: https:; " +
-        "connect-src 'self' http://localhost:3000 ws: wss:; " +
+        "connect-src 'self' http://localhost:3000 ws: wss: https:; " +
         "frame-src 'self' https://www.youtube.com https://youtube.com; " +
         "frame-ancestors 'none';"
     }
@@ -37,7 +38,7 @@ export function getCSPHeaders() {
   return {
     'Content-Security-Policy':
       "default-src 'self'; " +
-      "script-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://www.google-analytics.com; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "font-src 'self' https://fonts.gstatic.com; " +
       "img-src 'self' data: blob: https: http:; " +
