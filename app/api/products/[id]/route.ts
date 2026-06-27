@@ -33,16 +33,22 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
+  // 🔥 CORREGIDO: Usar el mismo timestamp para todas las imágenes de la misma operación
   const baseName = normalizeProductName(productName);
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
   const prefix = isAdditional ? `${baseName}-additional` : baseName;
-  const uniqueFilename = generateUniqueFilename(prefix, extension);
+  const uniqueFilename = `${prefix}-${timestamp}-${random}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
+  // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
   console.log(`✅ Imagen guardada: ${filepath}`);
+  console.log(`📸 Nombre de archivo: ${uniqueFilename}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
+
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {

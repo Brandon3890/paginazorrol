@@ -1,4 +1,5 @@
 // app/api/images/[...path]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
@@ -12,28 +13,35 @@ export async function GET(
     const filename = pathSegments.join('/')
     const decodedFilename = decodeURIComponent(filename)
     
+    console.log('📸 Buscando imagen:', decodedFilename)
+    
     // Buscar en la carpeta de uploads/products
     const uploadPath = path.join(process.cwd(), 'public', 'uploads', 'products', decodedFilename)
     
     if (fs.existsSync(uploadPath)) {
       const fileBuffer = fs.readFileSync(uploadPath)
       const ext = path.extname(decodedFilename).toLowerCase()
-      const contentType = {
+      const contentType: Record<string, string> = {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
         '.webp': 'image/webp',
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
-      }[ext] || 'image/jpeg'
+        '.ico': 'image/x-icon',
+      }
+      
+      console.log('✅ Imagen encontrada:', uploadPath)
       
       return new NextResponse(fileBuffer, {
         headers: {
-          'Content-Type': contentType,
+          'Content-Type': contentType[ext] || 'image/jpeg',
           'Cache-Control': 'public, max-age=31536000, immutable',
         },
       })
     }
+    
+    console.warn('❌ Imagen no encontrada:', uploadPath)
     
     // Si no se encuentra, devolver la imagen por defecto
     const defaultPath = path.join(process.cwd(), 'public', 'uploads', 'products', 'diverse-products-still-life.png')
@@ -48,8 +56,9 @@ export async function GET(
     }
     
     return new NextResponse('Image not found', { status: 404 })
+    
   } catch (error) {
-    console.error('Error serving image:', error)
+    console.error('❌ Error sirviendo imagen:', error)
     return new NextResponse('Error serving image', { status: 500 })
   }
 }

@@ -44,33 +44,28 @@ interface ProductCardProps {
   index?: number
 }
 
-// 🔥 CORREGIDO: Usar el mismo método que ProductDetailView
 const getImageUrl = (url: string): string => {
-  if (!url) return '/uploads/products/diverse-products-still-life.png';
+  if (!url) return '/api/images/diverse-products-still-life.png';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/api/images/')) return url;
   
-  // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
-  if (url.includes('/uploads/products/')) {
-    const filename = url.split('/uploads/products/')[1];
-    const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}`;
+  let filename = url;
+  
+  // Si la URL ya es /uploads/products/algo.jpg, extraer solo el nombre
+  if (url.startsWith('/uploads/products/')) {
+    filename = url.replace('/uploads/products/', '');
+  } else if (url.startsWith('uploads/products/')) {
+    filename = url.replace('uploads/products/', '');
+  } else if (url.startsWith('/uploads/')) {
+    filename = url.replace('/uploads/products/', '');
+  } else if (url.startsWith('uploads/')) {
+    filename = url.replace('uploads/products/', '');
+  } else if (url.includes('/uploads/products/')) {
+    filename = url.split('/uploads/products/')[1];
   }
   
-  if (url.startsWith('/uploads/')) {
-    const filename = url.replace('/uploads/products/', '');
-    const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}`;
-  }
-  
-  if (url.startsWith('uploads/')) {
-    const filename = url.replace('uploads/products/', '');
-    const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}`;
-  }
-  
-  // Si es solo el nombre del archivo
-  const encoded = encodeURIComponent(url);
+  // Si el filename tiene espacios o caracteres especiales, codificarlos
+  const encoded = encodeURIComponent(filename);
   return `/api/images/${encoded}`;
 };
 
