@@ -27,6 +27,7 @@ async function emitirBoleta(orderId: number) {
         u.last_name as customer_last_name,
         u.phone as customer_phone,
         u.rut as customer_rut,
+        u.is_guest as is_guest,
         ua.street as shipping_street,
         ua.commune_name as shipping_commune,
         ua.region_name as shipping_region
@@ -58,9 +59,37 @@ async function emitirBoleta(orderId: number) {
       throw new Error('No hay productos en la orden');
     }
 
+    // ============================================================
+    // CORRECCIÓN: Manejar RUT para invitados
+    // ============================================================
+    let rutCliente = order.customer_rut || '55555555-5';
+    
+    // Si es invitado, usar RUT por defecto
+    if (order.is_guest === 1) {
+      rutCliente = '55555555-5';
+      console.log('👤 Cliente invitado, usando RUT por defecto:', rutCliente);
+    }
+
+    // Si el RUT es inválido, usar consumidor final
+    if (rutCliente === '55555555-5' || !rutCliente || rutCliente === '') {
+      rutCliente = '55555555-5';
+    }
+
+    const nombreCliente = order.customer_first_name && order.customer_last_name
+      ? `${order.customer_first_name} ${order.customer_last_name}`.trim()
+      : order.is_guest === 1 
+        ? 'Consumidor Final' 
+        : 'Cliente';
+
+    console.log('📋 Datos para boleta:', {
+      rut: rutCliente,
+      nombre: nombreCliente,
+      is_guest: order.is_guest
+    });
+
     const cliente = {
-      rut: order.customer_rut || '55555555-5',
-      nombre: `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() || 'Consumidor Final',
+      rut: rutCliente,
+      nombre: nombreCliente || 'Consumidor Final',
       direccion: order.shipping_street || 'Santiago',
       comuna: order.shipping_commune || 'Santiago',
       ciudad: order.shipping_region || 'Santiago'
@@ -74,6 +103,8 @@ async function emitirBoleta(orderId: number) {
 
     const total = parseFloat(order.total);
 
+    console.log('📦 Emitiendo boleta para:', cliente.nombre, 'con', productos.length, 'productos');
+
     const result = await emitirBoletaSimpleFactura(
       productos,
       cliente,
@@ -81,30 +112,58 @@ async function emitirBoleta(orderId: number) {
     );
 
     if (result.status === 200) {
-      console.log('Boleta emitida exitosamente.');
+      console.log('✅ Boleta emitida exitosamente. Folio:', result.data.folio);
+      
+      // Guardar boleta en base de datos
+      const neto = Math.round(total / 1.19);
+      const iva = total - neto;
+      const fechaEmision = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      
+      const insertResult = await query(
+        `INSERT INTO boletas (
+          order_id, folio, tipo_dte, rut_emisor, rut_receptor, 
+          razon_social_receptor, monto_total, iva, fecha_emision, ambiente, estado_sii
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          result.data.folio,
+          39,
+          process.env.SIMPLEFACTURA_RUT_EMISOR || '78181331-1',
+          cliente.rut,
+          cliente.nombre,
+          result.data.total,
+          iva,
+          fechaEmision,
+          'certificacion',
+          'emitida'
+        ]
+      ) as any;
+
+      await query(
+        `UPDATE orders SET boleta_id = ?, boleta_emitida = 1 WHERE id = ?`,
+        [insertResult.insertId, orderId]
+      );
+
       return {
         success: true,
-        folio: result.data.folio
+        folio: result.data.folio,
+        boletaId: insertResult.insertId
       };
     } else {
-      console.error('Error emitiendo boleta:', result.error);
+      console.error('❌ Error emitiendo boleta:', result.error);
       return { success: false, error: result.error };
     }
 
   } catch (error: any) {
-    console.error('Error en emitirBoleta:', error.message);
+    console.error('❌ Error en emitirBoleta:', error.message);
     return { success: false, error: error.message };
   }
 }
 
-// ============================================================
-// FUNCIÓN PARA DESCONTAR STOCK DE PRODUCTOS
-// ============================================================
 async function descontarStock(orderId: number) {
   try {
     console.log('🔄 Descontando stock para orden:', orderId);
     
-    // Obtener los items de la orden
     const orderItems = await query(
       `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
       [orderId]
@@ -118,7 +177,6 @@ async function descontarStock(orderId: number) {
     console.log(`📦 Descontando stock de ${orderItems.length} productos...`);
 
     for (const item of orderItems) {
-      // Verificar stock actual
       const [productCheck] = await query(
         `SELECT stock, name FROM products WHERE id = ?`,
         [item.product_id]
@@ -134,11 +192,9 @@ async function descontarStock(orderId: number) {
 
       if (nuevaCantidad < 0) {
         console.error(`❌ Stock insuficiente para producto ${item.product_id}. Stock: ${stockActual}, Solicitado: ${item.quantity}`);
-        // Podríamos lanzar un error o continuar
         continue;
       }
 
-      // Actualizar stock
       await query(
         `UPDATE products SET stock = ?, in_stock = CASE WHEN ? > 0 THEN 1 ELSE 0 END WHERE id = ?`,
         [nuevaCantidad, nuevaCantidad, item.product_id]
@@ -156,9 +212,6 @@ async function descontarStock(orderId: number) {
   }
 }
 
-// ============================================================
-// FUNCIÓN PARA LIBERAR RESERVAS DE STOCK (SOLO USUARIOS AUTENTICADOS)
-// ============================================================
 async function liberarStock(userId: number) {
   try {
     const reservations = await query(
@@ -225,7 +278,6 @@ export async function POST(request: NextRequest) {
       if (orders.length > 0) {
         const order = orders[0]
         
-        // Liberar reservas solo si hay userId (usuario autenticado)
         if (order.user_id) {
           await liberarStock(order.user_id)
         } else {
@@ -308,7 +360,7 @@ export async function POST(request: NextRequest) {
             }
 
             // ============================================================
-            // EMITIR BOLETA
+            // EMITIR BOLETA - AHORA FUNCIONA PARA INVITADOS
             // ============================================================
             console.log('Emitiendo boleta electronica...');
             const resultadoBoleta = await emitirBoleta(order.id);
@@ -318,7 +370,7 @@ export async function POST(request: NextRequest) {
             
             if (resultadoBoleta.success) {
               folio = resultadoBoleta.folio;
-              console.log('Boleta emitida, folio:', folio);
+              console.log('✅ Boleta emitida, folio:', folio);
               
               pdfBuffer = await obtenerPDFBoleta(folio);
               if (pdfBuffer) {
@@ -327,11 +379,11 @@ export async function POST(request: NextRequest) {
                 console.warn('No se pudo obtener el PDF de la boleta');
               }
             } else {
-              console.error('Error emitiendo boleta:', resultadoBoleta.error);
+              console.error('❌ Error emitiendo boleta:', resultadoBoleta.error);
             }
 
             // ============================================================
-            // ENVIAR EMAIL DE CONFIRMACIÓN
+            // ENVIAR EMAIL DE CONFIRMACIÓN CON BOLETA
             // ============================================================
             try {
               const orderDetails = await query(
@@ -345,6 +397,7 @@ export async function POST(request: NextRequest) {
                   u.first_name as customer_first_name,
                   u.last_name as customer_last_name,
                   u.phone as customer_phone,
+                  u.is_guest as is_guest,
                   ua.street as shipping_street,
                   ua.commune_name as shipping_commune,
                   ua.region_name as shipping_region,
@@ -357,7 +410,27 @@ export async function POST(request: NextRequest) {
                 [order.id]
               ) as any[];
 
-              if (orderDetails.length > 0 && orderDetails[0].customer_email) {
+              // Obtener email del cliente (incluso para invitados)
+              let customerEmail = null;
+              let customerName = 'Cliente';
+              
+              if (orderDetails.length > 0) {
+                customerEmail = orderDetails[0].customer_email;
+                customerName = (orderDetails[0].customer_first_name || '' + ' ' + orderDetails[0].customer_last_name || '').trim() || 'Cliente';
+              }
+
+              // Si no hay email en los detalles, buscar en la orden
+              if (!customerEmail) {
+                const userInfo = await query(
+                  `SELECT email FROM users WHERE id = ?`,
+                  [order.user_id]
+                ) as any[];
+                if (userInfo.length > 0) {
+                  customerEmail = userInfo[0].email;
+                }
+              }
+
+              if (customerEmail && orderDetails.length > 0) {
                 const firstItem = orderDetails[0];
                 
                 const subtotalConIVA = parseFloat(firstItem.subtotal);
@@ -366,8 +439,8 @@ export async function POST(request: NextRequest) {
                 
                 const emailData = {
                   orderNumber: firstItem.order_number,
-                  customerName: (firstItem.customer_first_name || '' + ' ' + firstItem.customer_last_name || '').trim() || 'Cliente',
-                  customerEmail: firstItem.customer_email,
+                  customerName: customerName,
+                  customerEmail: customerEmail,
                   customerPhone: firstItem.customer_phone || 'No especificado',
                   orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
                     year: 'numeric',
@@ -403,11 +476,13 @@ export async function POST(request: NextRequest) {
 
                 if (pdfBuffer && folio) {
                   await sendBoletaEmail(emailData, pdfBuffer, folio);
-                  console.log('Email con boleta PDF enviado a:', firstItem.customer_email);
+                  console.log('Email con boleta PDF enviado a:', customerEmail);
                 } else {
                   console.warn('No se pudo enviar boleta PDF, enviando solo confirmacion');
                   await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
                 }
+              } else {
+                console.warn('No se pudo enviar email: no se encontró email del cliente');
               }
             } catch (emailError) {
               console.error('Error enviando email:', emailError);
@@ -445,7 +520,7 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log('Pago APROBADO - Stock descontado correctamente')
+          console.log('Pago APROBADO - Stock descontado y boleta emitida correctamente')
 
           return NextResponse.redirect(
             new URL(
@@ -460,7 +535,6 @@ export async function POST(request: NextRequest) {
           // ============================================================
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
           
-          // Liberar reservas solo si hay userId (usuario autenticado)
           if (order.user_id) {
             await liberarStock(order.user_id)
           } else {
