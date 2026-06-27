@@ -1,15 +1,41 @@
+"use client"
+
 import Image from "next/image"
 import { FaInstagram, FaYoutube, FaFacebook } from "react-icons/fa"
-import Link from "next/link"  
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { useCategoryStore } from "@/lib/category-store"
 
 export function Footer() {
-  // Categorías estáticas desde la base de datos (solo estas 4)
-  const categories = [
+  const { categories, fetchCategories } = useCategoryStore()
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+    fetchCategories()
+  }, [fetchCategories])
+
+  // Obtener SOLO las primeras 4 categorías activas
+  const activeCategories = categories
+    .filter(category => category.is_active)
+    .slice(0, 4)
+    .map(category => ({
+      name: category.name,
+      slug: category.slug,
+    }))
+
+  // Categorías por defecto en caso de que no haya categorías en la BD
+  const defaultCategories = [
     { name: "Juegos de Mesa", slug: "juegos-mesa" },
     { name: "TCG", slug: "tcg" },
     { name: "Puzzles", slug: "puzzles" },
     { name: "Rol", slug: "rol" }
   ]
+
+  // Usar categorías de la BD si hay, si no usar las default
+  const displayCategories = isMounted && activeCategories.length > 0 
+    ? activeCategories 
+    : defaultCategories
 
   return (
     <footer className="bg-black text-white mt-20">
@@ -33,11 +59,11 @@ export function Footer() {
         {/* Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
 
-          {/* Productos - Categorías desde BD */}
+          {/* Productos - Categorías desde BD (solo 4) */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Productos</h3>
             <ul className="space-y-2 text-gray-300 text-sm">
-              {categories.map((category) => (
+              {displayCategories.map((category) => (
                 <li key={category.slug}>
                   <Link 
                     href={`/filtro/${category.slug}`}
