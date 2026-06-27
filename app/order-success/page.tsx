@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail, MapPin, User } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
@@ -23,7 +23,6 @@ interface Order {
   customer_last_name?: string
   customer_phone?: string
   customer_rut?: string
-  is_guest?: boolean
   boleta_emitida?: number
   boleta_info?: {
     folio: string
@@ -35,9 +34,6 @@ interface Order {
     street: string
     commune_name: string
     region_name: string
-    postal_code?: string
-    department?: string
-    delivery_instructions?: string
   }
   items?: Array<{
     id: number
@@ -63,6 +59,7 @@ function OrderSuccessContent() {
   const status = searchParams.get('status')
   const orderId = searchParams.get('orderId')
   const message = searchParams.get('message')
+  const reason = searchParams.get('reason')
   const router = useRouter()
   const { toast } = useToast()
 
@@ -86,6 +83,8 @@ function OrderSuccessContent() {
 
     if (orderId) {
       fetchOrderFromMySQL(orderId)
+    } else {
+      setLoading(false)
     }
   }, [orderId, status, router])
 
@@ -318,14 +317,26 @@ function OrderSuccessContent() {
           badge: <Badge className="bg-yellow-100 text-yellow-800">Cancelado</Badge>
         }
       case 'error':
+        let errorDescription = 'Ha ocurrido un error inesperado.'
+        
+        if (message === 'payment_failed') {
+          errorDescription = 'El pago no pudo ser procesado. Por favor intenta nuevamente.'
+        } else if (message === 'order_not_found') {
+          errorDescription = 'No se pudo encontrar la informacion de tu pedido.'
+        } else if (message === 'payment_rejected') {
+          errorDescription = reason 
+            ? `Pago rechazado: ${decodeURIComponent(reason)}` 
+            : 'El pago fue rechazado. Por favor intenta nuevamente.'
+        } else if (message === 'invalid_tokens') {
+          errorDescription = 'Error de validación con el medio de pago. Por favor intenta nuevamente.'
+        } else if (message === 'processing_error') {
+          errorDescription = 'Error al procesar el pago. Por favor intenta nuevamente.'
+        }
+        
         return {
           icon: XCircle,
           title: 'Error en el Pago',
-          description: message === 'payment_failed' 
-            ? 'El pago no pudo ser procesado. Por favor intenta nuevamente.'
-            : message === 'order_not_found'
-            ? 'No se pudo encontrar la informacion de tu pedido.'
-            : 'Ha ocurrido un error inesperado.',
+          description: errorDescription,
           color: 'text-red-600',
           bgColor: 'bg-red-100',
           badge: <Badge className="bg-red-100 text-red-800">Error</Badge>
@@ -346,6 +357,7 @@ function OrderSuccessContent() {
   const StatusIcon = statusConfig.icon
   const tieneBoleta = boletaInfo?.folio || order?.boleta_info?.folio
 
+  // Mostrar loading
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -357,6 +369,7 @@ function OrderSuccessContent() {
     )
   }
 
+  // Mostrar error de carga
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -378,12 +391,47 @@ function OrderSuccessContent() {
     )
   }
 
+  // Si no hay status
   if (!status) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto text-center">
           <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Si el status es error y no hay orderId (orden no encontrada)
+  if (status === 'error' && !orderId) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <XCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <CardTitle className="text-2xl font-bold">Error en el Pago</CardTitle>
+              <p className="text-muted-foreground mt-2">
+                {message === 'order_not_found' 
+                  ? 'No se pudo encontrar la informacion de tu pedido.'
+                  : 'Ha ocurrido un error inesperado.'}
+              </p>
+              <Badge className="bg-red-100 text-red-800">Error</Badge>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 justify-center pt-4">
+                <Link href="/">
+                  <Button>
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Volver a la Tienda
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     )
@@ -410,29 +458,23 @@ function OrderSuccessContent() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {order && (
-              <>
-                <div className="border rounded-lg p-4">
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Detalles del Pedido
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Numero de Pedido:</span>
-                      <span className="font-mono">{order.order_number}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total:</span>
-                      <span>${order.total.toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Cliente:</span>
-                      <span>{order.is_guest ? 'Invitado' : 'Registrado'}</span>
-                    </div>
+            {order && status !== 'error' && (
+              <div className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  Detalles del Pedido
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Numero de Pedido:</span>
+                    <span className="font-mono">{order.order_number}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span>${order.total.toLocaleString('es-CL')}</span>
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {status === 'success' && tieneBoleta && (
@@ -504,12 +546,6 @@ function OrderSuccessContent() {
               </div>
             )}
 
-            {error && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800 text-center">{error}</p>
-              </div>
-            )}
-
             <div className="flex gap-4 justify-center pt-4">
               <Link href="/">
                 <Button>
@@ -524,7 +560,7 @@ function OrderSuccessContent() {
                 </Link>
               )}
 
-              {status === 'error' && (
+              {(status === 'error' || message === 'payment_failed' || message === 'payment_rejected') && (
                 <Link href="/checkout">
                   <Button variant="outline">Intentar Nuevamente</Button>
                 </Link>
