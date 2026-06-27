@@ -1527,7 +1527,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
                   </p>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {/* ETIQUETAS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                     {[
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
                       { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
@@ -1541,50 +1542,51 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                       return (
                         <div
                           key={tag.value || "normal"}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border cursor-pointer transition-all ${
                             isSelected
                               ? `${tag.bgColor} ${tag.borderColor} border-2`
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                           onClick={() => handleTagSelect(tag.value)}
                         >
-                          <div className={`p-2 rounded-full ${isSelected ? tag.color : 'bg-gray-100'}`}>
+                          <div className={`p-1.5 sm:p-2 rounded-full flex-shrink-0 ${isSelected ? tag.color : 'bg-gray-100'}`}>
                             <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
                           </div>
-                          <div>
-                            <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                          <div className="flex-1 text-center sm:text-left min-w-0">
+                            <span className={`text-xs sm:text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
                               {tag.label}
                             </span>
-                            <p className="text-xs text-muted-foreground">{tag.description}</p>
+                            <p className="text-[10px] sm:text-xs text-muted-foreground truncate hidden sm:block">{tag.description}</p>
                           </div>
                           <input
                             type="radio"
                             name="productTag"
                             checked={isSelected}
                             onChange={() => {}}
-                            className="ml-auto h-4 w-4 text-[#C2410C] focus:ring-[#C2410C]"
+                            className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0 text-[#C2410C] focus:ring-[#C2410C]"
                           />
                         </div>
                       );
                     })}
                   </div>
                   
+                  {/* CONTENIDO DE CADA ETIQUETA - RESPONSIVE */}
                   {selectedTag === "" && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
-                        <Package className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="font-semibold text-green-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Normal
                       </h4>
-                      <p className="text-sm text-green-700 mb-3">
+                      <p className="text-xs sm:text-sm text-green-700 mb-3">
                         Este producto se mostrara sin etiqueta especial.
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                           placeholder="Ej: 25000"
                         />
                       </div>
@@ -1592,50 +1594,51 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                   
                   {selectedTag === "descuento" && (
-                    <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                      <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-                        <Percent className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                      <h4 className="font-semibold text-orange-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Percent className="w-4 h-4 sm:w-5 sm:h-5" />
                         Configurar Descuento
                       </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         <div className="space-y-2">
-                          <Label className="text-sm">Precio Original (CLP) *</Label>
+                          <Label className="text-xs sm:text-sm">Precio Original (CLP) *</Label>
                           <Input
                             type="number"
                             placeholder="Ej: 50000"
                             value={formData.originalPrice}
                             onChange={(e) => handleDiscountChange('originalPrice', e.target.value)}
+                            className="text-sm"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm">Porcentaje de Descuento (1-99%) *</Label>
-                          <div className="flex items-center gap-4">
+                          <Label className="text-xs sm:text-sm">Porcentaje de Descuento (1-99%) *</Label>
+                          <div className="flex items-center gap-2 sm:gap-4">
                             <input
                               type="range"
                               min="1"
                               max="99"
                               value={formData.discountPercent}
                               onChange={(e) => handleDiscountChange('discountPercent', e.target.value)}
-                              className="flex-1"
+                              className="flex-1 min-w-[60px]"
                             />
-                            <span className="text-sm font-bold text-orange-600 min-w-[45px]">
+                            <span className="text-xs sm:text-sm font-bold text-orange-600 min-w-[35px] sm:min-w-[45px]">
                               {formData.discountPercent}%
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio Final (calculado automaticamente)</Label>
+                        <Label className="text-xs sm:text-sm">Precio Final (calculado automaticamente)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => handleDiscountChange('price', e.target.value)}
-                          className="mt-1 bg-gray-50"
+                          className="mt-1 bg-gray-50 text-sm"
                         />
                       </div>
                       {formData.originalPrice && safeToNumber(formData.originalPrice) > 0 && (
                         <div className="mt-3 p-3 bg-white rounded-lg">
-                          <p className="text-sm">
+                          <p className="text-xs sm:text-sm break-words">
                             <span className="font-semibold">Resumen:</span>{' '}
                             <span className="line-through text-gray-500">
                               ${formatCLP(safeToNumber(formData.originalPrice))} CLP
@@ -1651,21 +1654,21 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                   
                   {selectedTag === "preventa" && (
-                    <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                        <Rocket className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h4 className="font-semibold text-amber-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Rocket className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto en Preventa
                       </h4>
-                      <p className="text-sm text-amber-700 mb-3">
+                      <p className="text-xs sm:text-sm text-amber-700 mb-3">
                         Este producto se mostrara con la etiqueta "PREVENTA".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio de Preventa (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio de Preventa (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                           placeholder="Ej: 45000"
                         />
                       </div>
@@ -1673,37 +1676,37 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   )}
                   
                   {selectedTag === "novedad" && (
-                    <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                      <h4 className="font-semibold text-gray-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Nuevo
                       </h4>
-                      <p className="text-sm text-gray-700 mb-3">
+                      <p className="text-xs sm:text-sm text-gray-700 mb-3">
                         Este producto se mostrara con la etiqueta "NOVEDAD".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                         />
                       </div>
                     </div>
                   )}
                   
                   {selectedTag === "agotado" && (
-                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                      <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <h4 className="font-semibold text-red-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Agotado
                       </h4>
-                      <p className="text-sm text-red-700">
+                      <p className="text-xs sm:text-sm text-red-700">
                         Este producto se mostrara con la etiqueta "AGOTADO". El stock se ha establecido automaticamente a 0.
                       </p>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <p className="text-sm">
+                        <p className="text-xs sm:text-sm">
                           <span className="font-semibold">Stock actual:</span> 0 unidades
                         </p>
                       </div>
@@ -1712,7 +1715,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   
                   {selectedTag && selectedTag !== "" && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mb-2">Vista previa del badge:</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedTag === "preventa" && (
                           <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgb(251,176,59)" }}>
