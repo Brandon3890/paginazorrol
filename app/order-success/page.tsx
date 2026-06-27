@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ArrowLeft, Package, Loader2, ShoppingCart, FileText, Download, Mail, MapPin, User, Phone } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/cart-store'
@@ -23,6 +23,7 @@ interface Order {
   customer_last_name?: string
   customer_phone?: string
   customer_rut?: string
+  is_guest?: boolean
   boleta_emitida?: number
   boleta_info?: {
     folio: string
@@ -34,6 +35,10 @@ interface Order {
     street: string
     commune_name: string
     region_name: string
+    postal_code: string
+    department?: string
+    delivery_instructions?: string
+    title?: string
   }
   items?: Array<{
     id: number
@@ -41,6 +46,7 @@ interface Order {
     product_price: number
     quantity: number
     subtotal: number
+    image_url?: string
   }>
 }
 
@@ -87,7 +93,6 @@ export default function OrderSuccessPage() {
   // Limpiar carrito después de pago exitoso
   useEffect(() => {
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
-      console.log('Limpiando carrito local - pago exitoso confirmado')
       clearCart()
       setCartClearedLocal(true)
       
@@ -102,7 +107,6 @@ export default function OrderSuccessPage() {
 
     // Si la orden ya tiene boleta, cargarla
     if (order.boleta_emitida === 1 && order.boleta_info?.folio) {
-      console.log('✅ Boleta ya existe en la orden:', order.boleta_info.folio)
       setBoletaInfo({
         success: true,
         folio: order.boleta_info.folio,
@@ -114,7 +118,6 @@ export default function OrderSuccessPage() {
     // Verificar en sessionStorage si ya se emitió
     const emittedKey = `boleta_${order.id}`
     if (sessionStorage.getItem(emittedKey)) {
-      console.log('🔄 Boleta ya emitida en esta sesión, recargando...')
       fetchOrderFromMySQL(order.id.toString())
       return
     }
@@ -130,39 +133,27 @@ export default function OrderSuccessPage() {
       setLoading(true)
       setError(null)
       
-      console.log('🔍 Cargando orden:', id)
       const response = await fetch(`/api/orders/${id}`)
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('📦 Datos de orden recibidos:', {
-          id: orderData.id,
-          boleta_emitida: orderData.boleta_emitida,
-          boleta_info: orderData.boleta_info,
-          status: orderData.status,
-          payment_status: orderData.payment_status
-        })
         
         // Si la orden ya tiene boleta, cargarla
         if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
-          console.log('✅ Boleta encontrada en orden:', orderData.boleta_info.folio)
           setBoletaInfo({
             success: true,
             folio: orderData.boleta_info.folio,
             data: orderData.boleta_info
           })
-          // Guardar en sessionStorage para no emitir de nuevo
           sessionStorage.setItem(`boleta_${orderData.id}`, 'true')
         }
         
         setOrder(orderData)
       } else {
         const errorData = await response.json()
-        console.error('❌ Error cargando orden:', errorData)
         setError(errorData.error || 'Error al cargar la orden')
       }
-    } catch (error) {
-      console.error('❌ Error fetching order:', error)
+    } catch (error: any) {
       setError('No se pudo cargar la información del pedido')
     } finally {
       setLoading(false)
@@ -176,14 +167,11 @@ export default function OrderSuccessPage() {
     setBoletaError(null)
 
     try {
-      console.log('📄 Emitiendo boleta para orden:', order.id)
-      
       let rutCliente = order.customer_rut || '55555555-5'
       let nombreCliente = order.customer_first_name || 'Consumidor'
       let apellidoCliente = order.customer_last_name || 'Final'
       
       if (rutCliente === '11111111-2' || !rutCliente.match(/^[0-9]+-[0-9Kk]$/)) {
-        console.log('RUT inválido, usando consumidor final')
         rutCliente = '55555555-5'
         nombreCliente = 'Consumidor'
         apellidoCliente = 'Final'
@@ -195,7 +183,7 @@ export default function OrderSuccessPage() {
           nombre: `${nombreCliente} ${apellidoCliente}`.trim(),
           direccion: order.shipping_address?.street || 'Santiago',
           comuna: order.shipping_address?.commune_name || 'Santiago',
-          ciudad: 'Santiago'
+          ciudad: order.shipping_address?.region_name || 'Santiago'
         },
         productos: order.items?.map(item => ({
           nombre: item.product_name,
@@ -222,7 +210,6 @@ export default function OrderSuccessPage() {
           data: resultado.data
         })
         sessionStorage.setItem(`boleta_${order.id}`, 'true')
-        console.log('✅ Boleta emitida con folio:', resultado.folio)
         
         // Recargar la orden para obtener los datos actualizados
         setTimeout(() => {
@@ -230,10 +217,8 @@ export default function OrderSuccessPage() {
         }, 1000)
       } else {
         setBoletaError(resultado.error || 'Error al emitir boleta')
-        console.error('❌ Error emitiendo boleta:', resultado)
       }
     } catch (error: any) {
-      console.error('❌ Error emitiendo boleta:', error)
       setBoletaError('Error de conexión al emitir boleta')
     } finally {
       setEmitiendoBoleta(false)
@@ -280,7 +265,6 @@ export default function OrderSuccessPage() {
         })
       }
     } catch (error) {
-      console.error('Error descargando PDF:', error)
       toast({
         title: "Error",
         description: "No se pudo descargar el PDF",
@@ -324,7 +308,6 @@ export default function OrderSuccessPage() {
         })
       }
     } catch (error) {
-      console.error('Error reenviando email:', error)
       toast({
         title: "Error",
         description: "No se pudo reenviar el email. Inténtalo de nuevo.",
@@ -381,7 +364,6 @@ export default function OrderSuccessPage() {
     }
   }
 
-  // Mostrar loading
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -393,7 +375,6 @@ export default function OrderSuccessPage() {
     )
   }
 
-  // Mostrar error
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -415,7 +396,6 @@ export default function OrderSuccessPage() {
     )
   }
 
-  // Si no hay status
   if (!status) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -453,22 +433,90 @@ export default function OrderSuccessPage() {
 
           <CardContent className="space-y-6">
             {order && (
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Detalles del Pedido
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Número de Pedido:</span>
-                    <span className="font-mono">{order.order_number}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span>${order.total.toLocaleString('es-CL')}</span>
+              <>
+                {/* Detalles del Pedido */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Detalles del Pedido
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Número de Pedido:</span>
+                      <span className="font-mono">{order.order_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total:</span>
+                      <span>${order.total.toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Estado:</span>
+                      <Badge variant="outline" className="text-xs">
+                        {order.status === 'processing' ? 'Procesando' : 
+                         order.status === 'pending' ? 'Pendiente' :
+                         order.status === 'shipped' ? 'Enviado' :
+                         order.status === 'delivered' ? 'Entregado' :
+                         order.status === 'cancelled' ? 'Cancelado' : order.status}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cliente:</span>
+                      <span>{order.is_guest ? 'Invitado' : 'Registrado'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+
+                {/* Dirección de Envío - AHORA CON LOS DATOS CORRECTOS */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <MapPin className="w-4 h-4" />
+                    Dirección de Envío
+                  </h3>
+                  {order.shipping_address ? (
+                    <div className="space-y-1 text-sm">
+                      {order.shipping_address.title && (
+                        <p className="font-medium">{order.shipping_address.title}</p>
+                      )}
+                      <p>{order.shipping_address.street}</p>
+                      <p>
+                        {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                      </p>
+                      <p>Código Postal: {order.shipping_address.postal_code || '000000'}</p>
+                      {order.shipping_address.department && (
+                        <p>Departamento: {order.shipping_address.department}</p>
+                      )}
+                      {order.shipping_address.delivery_instructions && (
+                        <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                          <p className="text-xs font-medium text-blue-800">Instrucciones de entrega:</p>
+                          <p className="text-xs text-blue-700">{order.shipping_address.delivery_instructions}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No se encontró dirección de envío</p>
+                  )}
+                </div>
+
+                {/* Datos del Cliente */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Datos del Cliente
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      {order.customer_first_name} {order.customer_last_name}
+                    </p>
+                    <p className="text-muted-foreground">{order.customer_email}</p>
+                    {order.customer_phone && (
+                      <p className="text-muted-foreground">Teléfono: {order.customer_phone}</p>
+                    )}
+                    {order.customer_rut && order.customer_rut !== '55555555-5' && (
+                      <p className="text-muted-foreground">RUT: {order.customer_rut}</p>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             {status === 'success' && (

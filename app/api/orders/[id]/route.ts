@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function GET(
   request: NextRequest,
@@ -14,42 +13,45 @@ export async function GET(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // Intentar obtener userId si existe (para usuarios autenticados)
-    let userId = null
-    try {
-      userId = await getUserIdFromRequest(request)
-    } catch (error) {
-      // Si no hay token, userId se queda como null (invitado)
-      console.log('Usuario no autenticado, accediendo como invitado')
-    }
-
-    // Obtener la orden principal (sin filtrar por user_id para permitir acceso por orderId)
-    let orders
-    if (userId) {
-      // Si hay usuario autenticado, verificar que la orden le pertenezca
-      orders = await query(
-        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
-         FROM orders o 
-         LEFT JOIN users u ON o.user_id = u.id 
-         WHERE o.id = ? AND o.user_id = ?`,
-        [orderId, userId]
-      ) as any[]
-    } else {
-      // Si es invitado, solo buscar por ID (sin verificar usuario)
-      orders = await query(
-        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
-         FROM orders o 
-         LEFT JOIN users u ON o.user_id = u.id 
-         WHERE o.id = ?`,
-        [orderId]
-      ) as any[]
-    }
+    // 🔥 QUERY CORREGIDO - Trae TODOS los datos incluyendo la dirección
+    const orders = await query(
+      `SELECT 
+        o.*,
+        u.email as customer_email, 
+        u.first_name as customer_first_name, 
+        u.last_name as customer_last_name, 
+        u.phone as customer_phone, 
+        u.rut as customer_rut,
+        u.is_guest,
+        ua.id as address_id,
+        ua.street as shipping_street,
+        ua.commune_name as shipping_commune,
+        ua.region_name as shipping_region,
+        ua.postal_code as shipping_postal_code,
+        ua.department as shipping_department,
+        ua.delivery_instructions as shipping_delivery_instructions,
+        ua.title as shipping_title
+      FROM orders o 
+      LEFT JOIN users u ON o.user_id = u.id 
+      LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+      WHERE o.id = ?`,
+      [orderId]
+    ) as any[]
 
     if (orders.length === 0) {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
 
     const order = orders[0]
+
+    // Log para depuración
+    console.log('📦 Orden encontrada:', {
+      id: order.id,
+      shipping_address_id: order.shipping_address_id,
+      shipping_street: order.shipping_street,
+      shipping_commune: order.shipping_commune,
+      has_address: !!order.shipping_street
+    })
 
     // Obtener los items de la orden
     const orderItems = await query(
@@ -75,37 +77,24 @@ export async function GET(
         } catch (error) {
           console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
         }
-        
         return item
       })
     )
 
-    // Si hay shipping_address_id, obtener la dirección
-    let shippingAddress = undefined
-    if (order.shipping_address_id) {
-      const addresses = await query(
-        `SELECT street, commune_name, region_name, postal_code, department, delivery_instructions 
-         FROM user_addresses WHERE id = ?`,
-        [order.shipping_address_id]
-      ) as any[]
-      
-      if (addresses.length > 0) {
-        const address = addresses[0]
-        shippingAddress = {
-          street: address.street,
-          commune_name: address.commune_name,
-          region_name: address.region_name,
-          postal_code: address.postal_code,
-          department: address.department,
-          delivery_instructions: address.delivery_instructions
-        }
-      }
-    }
+    // 🔥 CONSTRUIR DIRECCIÓN DE ENVÍO - AHORA CON LOS DATOS CORRECTOS
+    const shippingAddress = order.shipping_street ? {
+      street: order.shipping_street || 'Dirección no especificada',
+      commune_name: order.shipping_commune || 'Comuna no especificada',
+      region_name: order.shipping_region || 'Región no especificada',
+      postal_code: order.shipping_postal_code || '000000',
+      department: order.shipping_department || '',
+      delivery_instructions: order.shipping_delivery_instructions || '',
+      title: order.shipping_title || 'Dirección de envío'
+    } : null
 
-    // Obtener información de la boleta - MEJORADO
+    // Obtener información de la boleta
     let boletaInfo = null
     
-    // Primero intentar por boleta_id de la orden
     if (order.boleta_id) {
       const boletas = await query(
         `SELECT id, folio, monto_total, fecha_emision, estado_sii, 
@@ -159,12 +148,13 @@ export async function GET(
       }
     }
 
-    // Combinar datos
+    // Combinar datos finales
     const orderWithItems = {
       id: order.id,
       order_number: order.order_number,
       status: order.status,
       payment_status: order.payment_status,
+      payment_method: order.payment_method || 'transbank',
       subtotal: parseFloat(order.subtotal) || 0,
       discount: parseFloat(order.discount) || 0,
       shipping: parseFloat(order.shipping) || 0,
@@ -172,12 +162,12 @@ export async function GET(
       total: parseFloat(order.total) || 0,
       notes: order.notes,
       coupon_code: order.coupon_code,
-      shipping_method: order.payment_method,
-      customer_email: order.email || '',
-      customer_first_name: order.first_name || '',
-      customer_last_name: order.last_name || '',
-      customer_phone: order.phone || '',
-      customer_rut: order.rut || '55555555-5',
+      customer_email: order.customer_email || '',
+      customer_first_name: order.customer_first_name || '',
+      customer_last_name: order.customer_last_name || '',
+      customer_phone: order.customer_phone || '',
+      customer_rut: order.customer_rut || '55555555-5',
+      is_guest: order.is_guest === 1,
       boleta_id: order.boleta_id,
       boleta_emitida: order.boleta_emitida || (boletaInfo ? 1 : 0),
       boleta_info: boletaInfo,
@@ -196,67 +186,17 @@ export async function GET(
       shipping_address: shippingAddress
     }
 
+    // Log de la respuesta
+    console.log('📤 Respuesta enviada:', {
+      has_shipping_address: !!shippingAddress,
+      shipping_street: shippingAddress?.street,
+      order_id: order.id
+    })
+
     return NextResponse.json(orderWithItems)
 
   } catch (error) {
     console.error('Error obteniendo orden:', error)
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const userId = await getUserIdFromRequest(request)
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
-
-    const users = await query(
-      `SELECT role FROM users WHERE id = ?`,
-      [userId]
-    ) as any[]
-
-    const user = users.length > 0 ? users[0] : null
-    
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ error: 'No tienes permisos para actualizar pedidos' }, { status: 403 })
-    }
-
-    const { id } = await params
-    const orderId = parseInt(id)
-
-    if (isNaN(orderId)) {
-      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
-    }
-
-    const body = await request.json()
-    const { status } = body
-
-    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
-      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
-    }
-
-    await query(
-      `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [status, orderId]
-    )
-
-    console.log(`Order ${orderId} status updated to ${status}`)
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Estado actualizado correctamente' 
-    })
-
-  } catch (error) {
-    console.error('Error actualizando estado de orden:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
