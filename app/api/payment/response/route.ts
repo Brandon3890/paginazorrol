@@ -97,6 +97,68 @@ async function emitirBoleta(orderId: number) {
   }
 }
 
+// ============================================================
+// FUNCIÓN PARA DESCONTAR STOCK DE PRODUCTOS
+// ============================================================
+async function descontarStock(orderId: number) {
+  try {
+    console.log('🔄 Descontando stock para orden:', orderId);
+    
+    // Obtener los items de la orden
+    const orderItems = await query(
+      `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (!orderItems || orderItems.length === 0) {
+      console.log('⚠️ No hay items en la orden, no se descuenta stock');
+      return true;
+    }
+
+    console.log(`📦 Descontando stock de ${orderItems.length} productos...`);
+
+    for (const item of orderItems) {
+      // Verificar stock actual
+      const [productCheck] = await query(
+        `SELECT stock, name FROM products WHERE id = ?`,
+        [item.product_id]
+      ) as any[];
+
+      if (!productCheck) {
+        console.warn(`⚠️ Producto ${item.product_id} no encontrado, saltando...`);
+        continue;
+      }
+
+      const stockActual = productCheck.stock;
+      const nuevaCantidad = stockActual - item.quantity;
+
+      if (nuevaCantidad < 0) {
+        console.error(`❌ Stock insuficiente para producto ${item.product_id}. Stock: ${stockActual}, Solicitado: ${item.quantity}`);
+        // Podríamos lanzar un error o continuar
+        continue;
+      }
+
+      // Actualizar stock
+      await query(
+        `UPDATE products SET stock = ?, in_stock = CASE WHEN ? > 0 THEN 1 ELSE 0 END WHERE id = ?`,
+        [nuevaCantidad, nuevaCantidad, item.product_id]
+      );
+
+      console.log(`✅ Stock actualizado: ${productCheck.name} (ID: ${item.product_id}) ${stockActual} → ${nuevaCantidad}`);
+    }
+
+    console.log('✅ Stock descontado correctamente');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Error descontando stock:', error);
+    return false;
+  }
+}
+
+// ============================================================
+// FUNCIÓN PARA LIBERAR RESERVAS DE STOCK (SOLO USUARIOS AUTENTICADOS)
+// ============================================================
 async function liberarStock(userId: number) {
   try {
     const reservations = await query(
@@ -151,6 +213,7 @@ export async function POST(request: NextRequest) {
       TBK_TOKEN: TBK_TOKEN ? 'PRESENTE (' + TBK_TOKEN.substring(0, 10) + '...)' : 'AUSENTE' 
     })
 
+    // CASO: Pago ABORTADO por el usuario
     if (TBK_TOKEN && !token_ws) {
       console.log('Pago ABORTADO por el usuario')
       
@@ -162,7 +225,12 @@ export async function POST(request: NextRequest) {
       if (orders.length > 0) {
         const order = orders[0]
         
-        await liberarStock(order.user_id)
+        // Liberar reservas solo si hay userId (usuario autenticado)
+        if (order.user_id) {
+          await liberarStock(order.user_id)
+        } else {
+          console.log('⚠️ Usuario invitado, no hay reservas que liberar');
+        }
         
         await query(
           `UPDATE orders SET 
@@ -183,6 +251,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // CASO: Pago EXITOSO
     if (token_ws && !TBK_TOKEN) {
       console.log('Procesando pago EXITOSO con token_ws')
       
@@ -220,13 +289,27 @@ export async function POST(request: NextRequest) {
           }
           
           if (order.payment_status !== 'paid') {
-            console.log('Procesando pago exitoso - ELIMINANDO RESERVAS (stock ya descontado)')
-            
-            await query(
-              'DELETE FROM stock_reservations WHERE user_id = ?',
-              [order.user_id]
-            );
+            console.log('Procesando pago exitoso');
 
+            // ============================================================
+            // DESCONTAR STOCK - TANTO PARA AUTENTICADOS COMO INVITADOS
+            // ============================================================
+            await descontarStock(order.id);
+
+            // Eliminar reservas de stock solo si hay userId (usuario autenticado)
+            if (order.user_id) {
+              await query(
+                'DELETE FROM stock_reservations WHERE user_id = ?',
+                [order.user_id]
+              );
+              console.log('Reservas eliminadas para usuario:', order.user_id);
+            } else {
+              console.log('✅ Usuario invitado, stock ya descontado directamente');
+            }
+
+            // ============================================================
+            // EMITIR BOLETA
+            // ============================================================
             console.log('Emitiendo boleta electronica...');
             const resultadoBoleta = await emitirBoleta(order.id);
             
@@ -247,6 +330,9 @@ export async function POST(request: NextRequest) {
               console.error('Error emitiendo boleta:', resultadoBoleta.error);
             }
 
+            // ============================================================
+            // ENVIAR EMAIL DE CONFIRMACIÓN
+            // ============================================================
             try {
               const orderDetails = await query(
                 `SELECT 
@@ -328,6 +414,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // ============================================================
+          // ACTUALIZAR ESTADO DE LA ORDEN
+          // ============================================================
           await query(
             `UPDATE orders SET 
               payment_status = 'paid',
@@ -356,7 +445,7 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log('Pago APROBADO')
+          console.log('Pago APROBADO - Stock descontado correctamente')
 
           return NextResponse.redirect(
             new URL(
@@ -366,9 +455,17 @@ export async function POST(request: NextRequest) {
           )
 
         } else {
+          // ============================================================
+          // PAGO RECHAZADO
+          // ============================================================
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
           
-          await liberarStock(order.user_id)
+          // Liberar reservas solo si hay userId (usuario autenticado)
+          if (order.user_id) {
+            await liberarStock(order.user_id)
+          } else {
+            console.log('⚠️ Usuario invitado, no hay reservas que liberar');
+          }
           
           await query(
             `UPDATE orders SET 
