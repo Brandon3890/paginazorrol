@@ -1,54 +1,110 @@
-// app/api/admin/orders/route.ts - CORREGIDO
+// app/api/orders/route.ts - NUEVO ARCHIVO
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyAdmin } from '@/lib/auth'
-import { queryRows } from '@/lib/db'
+import { query } from '@/lib/db'
+import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verificar autenticación y rol de admin
-    const user = await verifyAdmin(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const userId = await getUserIdFromRequest(request)
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Obtener todas las órdenes con información de usuarios y items
-    const orders = await queryRows(`
-      SELECT 
-        o.*,
-        u.email as customer_email,
-        u.first_name as customer_first_name,
-        u.last_name as customer_last_name,
-        u.phone as customer_phone,
-        ua.street,
-        ua.commune_name,
-        ua.region_name,
-        ua.postal_code
-      FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
-      ORDER BY o.created_at DESC
-    `)
+    // Obtener todas las órdenes del usuario
+    const orders = await query(
+      `SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC`,
+      [userId]
+    ) as any[]
 
-    // Obtener items para cada orden
+    console.log(`📦 Found ${orders.length} orders for user ${userId}`)
+
+    // Para cada orden, obtener los items
     const ordersWithItems = await Promise.all(
       orders.map(async (order: any) => {
-        const items = await queryRows(
-          'SELECT * FROM order_items WHERE order_id = ?',
+        // Obtener items de la orden
+        const orderItems = await query(
+          `SELECT * FROM order_items WHERE order_id = ?`,
           [order.id]
+        ) as any[]
+
+        // Obtener imágenes de los productos
+        const itemsWithImages = await Promise.all(
+          orderItems.map(async (item: any) => {
+            try {
+              const products = await query(
+                `SELECT image FROM products WHERE id = ?`,
+                [item.product_id]
+              ) as any[]
+              
+              if (products.length > 0) {
+                return {
+                  ...item,
+                  image_url: products[0].image
+                }
+              }
+            } catch (error) {
+              console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+            }
+            
+            return item
+          })
         )
 
+        // Obtener dirección de envío si existe
+        let shippingAddress = undefined
+        if (order.shipping_address_id) {
+          const addresses = await query(
+            `SELECT street, commune_name, region_name, postal_code, department 
+             FROM user_addresses WHERE id = ? AND user_id = ?`,
+            [order.shipping_address_id, userId]
+          ) as any[]
+          
+          if (addresses.length > 0) {
+            shippingAddress = addresses[0]
+          }
+        }
+
         return {
-          ...order,
-          items
+          id: order.id,
+          order_number: order.order_number,
+          status: order.status,
+          payment_status: order.payment_status,
+          subtotal: parseFloat(order.subtotal),
+          discount: parseFloat(order.discount),
+          shipping: parseFloat(order.shipping),
+          tax: parseFloat(order.tax),
+          total: parseFloat(order.total),
+          notes: order.notes,
+          coupon_code: order.coupon_code,
+          shipping_method: order.payment_method,
+          created_at: order.created_at,
+          updated_at: order.updated_at,
+          items: itemsWithImages.map((item: any) => ({
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_price: parseFloat(item.product_price),
+            quantity: item.quantity,
+            subtotal: parseFloat(item.subtotal),
+            image_url: item.image_url,
+            category: item.category
+          })),
+          shipping_address: shippingAddress,
+          customer_email: order.customer_email || '',
+          customer_first_name: order.customer_first_name || '',
+          customer_last_name: order.customer_last_name || '',
+          customer_phone: order.customer_phone || ''
         }
       })
     )
 
     return NextResponse.json(ordersWithItems)
+
   } catch (error) {
-    console.error('Error fetching orders:', error)
+    console.error('Error obteniendo órdenes:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }

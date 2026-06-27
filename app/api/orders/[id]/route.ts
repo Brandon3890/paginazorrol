@@ -1,320 +1,221 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { sendBoletaEmail } from '@/lib/email-service';
-import { obtenerPDFSimpleFactura } from '@/lib/simplefactura-service';
-import { getUserIdFromRequest } from '@/lib/auth-utils';
+import { NextRequest, NextResponse } from 'next/server'
+import { query } from '@/lib/db'
+import { getUserIdFromRequest } from '@/lib/auth-utils'
 
-// ============================================
-// GET - Obtener detalles de una orden específica
-// ============================================
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const orderId = parseInt(id);
-    
+    const { id } = await params
+    const orderId = parseInt(id)
+
     if (isNaN(orderId)) {
-      return NextResponse.json(
-        { error: 'ID de orden inválido' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // Verificar autenticación
-    const userId = await getUserIdFromRequest(request);
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    // Intentar obtener userId si existe (para usuarios autenticados)
+    let userId = null
+    try {
+      userId = await getUserIdFromRequest(request)
+    } catch (error) {
+      // Si no hay token, userId se queda como null (invitado)
+      console.log('Usuario no autenticado, accediendo como invitado')
     }
 
-    // Verificar que la orden pertenece al usuario o es admin
-    const userCheck = await query(
-      `SELECT role FROM users WHERE id = ?`,
-      [userId]
-    ) as any[];
-    
-    const userRole = userCheck.length > 0 ? userCheck[0].role : 'customer';
-    const isAdmin = userRole === 'admin';
-
-    // Obtener la orden
-    let orderQuery = `
-      SELECT 
-        o.*,
-        u.email as customer_email,
-        u.first_name as customer_first_name,
-        u.last_name as customer_last_name,
-        u.phone as customer_phone,
-        ua.street as shipping_street,
-        ua.commune_name as shipping_commune,
-        ua.region_name as shipping_region,
-        ua.postal_code as shipping_postal_code,
-        ua.department as shipping_department,
-        ua.delivery_instructions as shipping_instructions,
-        b.folio as boleta_folio,
-        b.id as boleta_id,
-        b.monto_total as boleta_monto,
-        b.fecha_emision as boleta_fecha,
-        b.estado_sii as boleta_estado
-      FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
-      LEFT JOIN boletas b ON o.id = b.order_id
-      WHERE o.id = ?
-    `;
-
-    const orderData = await query(orderQuery, [orderId]) as any[];
-
-    if (orderData.length === 0) {
-      return NextResponse.json(
-        { error: 'Orden no encontrada' },
-        { status: 404 }
-      );
+    // Obtener la orden principal (sin filtrar por user_id para permitir acceso por orderId)
+    let orders
+    if (userId) {
+      // Si hay usuario autenticado, verificar que la orden le pertenezca
+      orders = await query(
+        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE o.id = ? AND o.user_id = ?`,
+        [orderId, userId]
+      ) as any[]
+    } else {
+      // Si es invitado, solo buscar por ID (sin verificar usuario)
+      orders = await query(
+        `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.rut 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE o.id = ?`,
+        [orderId]
+      ) as any[]
     }
 
-    const order = orderData[0];
-
-    // Verificar permisos: solo el dueño o admin pueden ver
-    if (!isAdmin && order.user_id !== userId) {
-      return NextResponse.json(
-        { error: 'No tienes permisos para ver esta orden' },
-        { status: 403 }
-      );
+    if (orders.length === 0) {
+      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
 
-    // Obtener los items de la orden con imágenes
+    const order = orders[0]
+
+    // Obtener los items de la orden
     const orderItems = await query(
-      `SELECT 
-        oi.id,
-        oi.product_id,
-        oi.product_name,
-        oi.product_price,
-        oi.quantity,
-        oi.subtotal,
-        p.image as image_url,
-        c.name as category
-      FROM order_items oi
-      LEFT JOIN products p ON oi.product_id = p.id
-      LEFT JOIN categories c ON p.category_id = c.id
-      WHERE oi.order_id = ?`,
+      `SELECT * FROM order_items WHERE order_id = ?`,
       [orderId]
-    ) as any[];
+    ) as any[]
 
-    console.log(`📦 Orden ${order.order_number}: ${orderItems.length} productos encontrados`);
+    // Obtener las imágenes de los productos
+    const itemsWithImages = await Promise.all(
+      orderItems.map(async (item: any) => {
+        try {
+          const products = await query(
+            `SELECT image FROM products WHERE id = ?`,
+            [item.product_id]
+          ) as any[]
+          
+          if (products.length > 0) {
+            return {
+              ...item,
+              image_url: products[0].image
+            }
+          }
+        } catch (error) {
+          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+        }
+        
+        return item
+      })
+    )
 
-    // Construir respuesta
-    const response = {
+    // Si hay shipping_address_id, obtener la dirección
+    let shippingAddress = undefined
+    if (order.shipping_address_id) {
+      const addresses = await query(
+        `SELECT street, commune_name, region_name, postal_code, department, delivery_instructions 
+         FROM user_addresses WHERE id = ?`,
+        [order.shipping_address_id]
+      ) as any[]
+      
+      if (addresses.length > 0) {
+        const address = addresses[0]
+        shippingAddress = {
+          street: address.street,
+          commune_name: address.commune_name,
+          region_name: address.region_name,
+          postal_code: address.postal_code,
+          department: address.department,
+          delivery_instructions: address.delivery_instructions
+        }
+      }
+    }
+
+    // Obtener información de la boleta si existe
+    let boletaInfo = null
+    if (order.boleta_id) {
+      const boletas = await query(
+        `SELECT folio, monto_total, fecha_emision, estado_sii FROM boletas WHERE id = ?`,
+        [order.boleta_id]
+      ) as any[]
+      
+      if (boletas.length > 0) {
+        boletaInfo = boletas[0]
+      }
+    }
+
+    // Combinar datos
+    const orderWithItems = {
       id: order.id,
       order_number: order.order_number,
       status: order.status,
       payment_status: order.payment_status,
-      subtotal: parseFloat(order.subtotal),
-      discount: parseFloat(order.discount || 0),
-      shipping: parseFloat(order.shipping || 0),
-      tax: parseFloat(order.tax || 0),
-      total: parseFloat(order.total),
+      subtotal: parseFloat(order.subtotal) || 0,
+      discount: parseFloat(order.discount) || 0,
+      shipping: parseFloat(order.shipping) || 0,
+      tax: parseFloat(order.tax) || 0,
+      total: parseFloat(order.total) || 0,
       notes: order.notes,
       coupon_code: order.coupon_code,
       shipping_method: order.payment_method,
+      customer_email: order.email || '',
+      customer_first_name: order.first_name || '',
+      customer_last_name: order.last_name || '',
+      customer_phone: order.phone || '',
+      customer_rut: order.rut || '55555555-5',
+      boleta_id: order.boleta_id,
+      boleta_emitida: order.boleta_emitida || 0,
+      boleta_info: boletaInfo,
       created_at: order.created_at,
       updated_at: order.updated_at,
-      items: orderItems.map((item: any) => ({
+      items: itemsWithImages.map((item: any) => ({
         id: item.id,
         product_id: item.product_id,
         product_name: item.product_name,
-        product_price: parseFloat(item.product_price),
+        product_price: parseFloat(item.product_price) || 0,
         quantity: item.quantity,
-        subtotal: parseFloat(item.subtotal),
+        subtotal: parseFloat(item.subtotal) || 0,
         image_url: item.image_url,
         category: item.category
       })),
-      customer_email: order.customer_email || '',
-      customer_first_name: order.customer_first_name || '',
-      customer_last_name: order.customer_last_name || '',
-      customer_phone: order.customer_phone || '',
-      shipping_address: order.shipping_street ? {
-        street: order.shipping_street,
-        commune_name: order.shipping_commune || '',
-        region_name: order.shipping_region || '',
-        postal_code: order.shipping_postal_code || '',
-        department: order.shipping_department || '',
-        delivery_instructions: order.shipping_instructions || ''
-      } : undefined,
-      boleta_emitida: order.boleta_id ? 1 : 0,
-      boleta_info: order.boleta_folio ? {
-        folio: order.boleta_folio,
-        monto_total: parseFloat(order.boleta_monto || 0),
-        fecha_emision: order.boleta_fecha,
-        estado_sii: order.boleta_estado || 'emitida'
-      } : undefined
-    };
+      shipping_address: shippingAddress
+    }
 
-    return NextResponse.json(response);
+    return NextResponse.json(orderWithItems)
 
-  } catch (error: any) {
-    console.error('Error obteniendo orden:', error);
+  } catch (error) {
+    console.error('Error obteniendo orden:', error)
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
-    );
+    )
   }
 }
 
-// ============================================
-// POST - Reenviar email con boleta
-// ============================================
-export async function POST(
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const orderId = id;
-
-    // Obtener datos de la orden
-    const orderData = await query(
-      `SELECT 
-        o.*,
-        u.email as customer_email,
-        u.first_name as customer_first_name,
-        u.last_name as customer_last_name,
-        u.phone as customer_phone,
-        ua.street as shipping_street,
-        ua.commune_name as shipping_commune,
-        ua.region_name as shipping_region,
-        ua.postal_code as shipping_postal_code,
-        b.folio as boleta_folio,
-        b.id as boleta_id
-      FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
-      LEFT JOIN boletas b ON o.id = b.order_id
-      WHERE o.id = ?`,
-      [orderId]
-    ) as any[];
-
-    if (orderData.length === 0) {
-      return NextResponse.json(
-        { error: 'Orden no encontrada' },
-        { status: 404 }
-      );
-    }
-
-    const order = orderData[0];
+    const userId = await getUserIdFromRequest(request)
     
-    if (!order.customer_email) {
-      return NextResponse.json(
-        { error: 'No se encontró información del cliente para esta orden' },
-        { status: 400 }
-      );
+    if (!userId) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    if (!order.boleta_folio) {
-      return NextResponse.json(
-        { error: 'Esta orden aún no tiene una boleta electrónica emitida' },
-        { status: 400 }
-      );
+    const users = await query(
+      `SELECT role FROM users WHERE id = ?`,
+      [userId]
+    ) as any[]
+
+    const user = users.length > 0 ? users[0] : null
+    
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'No tienes permisos para actualizar pedidos' }, { status: 403 })
     }
 
-    // Obtener TODOS los productos de la orden
-    const orderItems = await query(
-      `SELECT 
-        oi.product_name,
-        oi.product_price,
-        oi.quantity,
-        oi.subtotal
-      FROM order_items oi
-      WHERE oi.order_id = ?`,
-      [orderId]
-    ) as any[];
+    const { id } = await params
+    const orderId = parseInt(id)
 
-    if (orderItems.length === 0) {
-      return NextResponse.json(
-        { error: 'No se encontraron productos para esta orden' },
-        { status: 400 }
-      );
+    if (isNaN(orderId)) {
+      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    console.log('Productos encontrados en la orden:', orderItems.length);
+    const body = await request.json()
+    const { status } = body
 
-    // Calcular el IVA incluido
-    const subtotalConIVA = parseFloat(order.subtotal) || 0;
-    const subtotalNeto = Math.round(subtotalConIVA / 1.19);
-    const ivaIncluido = subtotalConIVA - subtotalNeto;
-
-    // Preparar datos para el email
-    const emailData = {
-      orderNumber: order.order_number,
-      customerName: `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() || 'Cliente',
-      customerEmail: order.customer_email,
-      customerPhone: order.customer_phone || 'No especificado',
-      orderDate: new Date(order.created_at).toLocaleDateString('es-CL', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      }),
-      paymentMethod: "Transbank Webpay",
-      items: orderItems.map((item: any) => ({
-        product_name: item.product_name,
-        product_price: parseFloat(item.product_price),
-        quantity: item.quantity,
-        subtotal: parseFloat(item.subtotal)
-      })),
-      subtotal: subtotalConIVA,
-      discount: parseFloat(order.discount || 0),
-      shipping: parseFloat(order.shipping || 0),
-      tax: ivaIncluido,
-      total: parseFloat(order.total || 0),
-      shippingAddress: {
-        street: order.shipping_street || 'No especificada',
-        commune_name: order.shipping_commune || 'No especificada',
-        region_name: order.shipping_region || 'No especificada',
-        postal_code: order.shipping_postal_code || '000000'
-      },
-      storeInfo: {
-        name: "Zorro Ludico",
-        rut: process.env.SIMPLEFACTURA_RUT_EMISOR || "78181331-1",
-        giro: process.env.SIMPLEFACTURA_GIRO || "Venta de juegos",
-        direccion: process.env.SIMPLEFACTURA_DIRECCION || "Calle 7 numero 3",
-        comuna: process.env.SIMPLEFACTURA_COMUNA || "Santiago",
-        ciudad: process.env.SIMPLEFACTURA_CIUDAD || "Santiago"
-      }
-    };
-
-    try {
-      const pdfUint8Array = await obtenerPDFSimpleFactura(order.boleta_folio);
-      const pdfBuffer = Buffer.from(pdfUint8Array);
-      
-      const emailSent = await sendBoletaEmail(emailData, pdfBuffer, order.boleta_folio);
-      
-      if (emailSent) {
-        return NextResponse.json({
-          success: true,
-          message: `Email con boleta reenviado exitosamente. ${orderItems.length} producto(s) incluido(s).`,
-          boleta: { folio: order.boleta_folio },
-          productsCount: orderItems.length
-        });
-      } else {
-        return NextResponse.json(
-          { error: 'No se pudo enviar el email de confirmación' },
-          { status: 500 }
-        );
-      }
-      
-    } catch (pdfError) {
-      console.error('Error obteniendo PDF o enviando email:', pdfError);
-      return NextResponse.json(
-        { error: 'Error al obtener la boleta PDF o enviar el email' },
-        { status: 500 }
-      );
+    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
     }
 
-  } catch (error: any) {
-    console.error('Error reenviando email de orden:', error);
+    await query(
+      `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, orderId]
+    )
+
+    console.log(`Order ${orderId} status updated to ${status}`)
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Estado actualizado correctamente' 
+    })
+
+  } catch (error) {
+    console.error('Error actualizando estado de orden:', error)
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
-    );
+    )
   }
 }

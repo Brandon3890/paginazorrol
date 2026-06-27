@@ -1,3 +1,4 @@
+// app/api/orders/route.ts - NUEVO ARCHIVO
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -9,14 +10,6 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    // Obtener información del usuario
-    const userInfo = await query(
-      `SELECT email, first_name, last_name, phone FROM users WHERE id = ?`,
-      [userId]
-    ) as any[]
-
-    const user = userInfo.length > 0 ? userInfo[0] : null
 
     // Obtener todas las órdenes del usuario
     const orders = await query(
@@ -31,29 +24,40 @@ export async function GET(request: NextRequest) {
       orders.map(async (order: any) => {
         // Obtener items de la orden
         const orderItems = await query(
-          `SELECT 
-            oi.id,
-            oi.product_id,
-            oi.product_name,
-            oi.product_price,
-            oi.quantity,
-            oi.subtotal,
-            p.image as image_url,
-            c.name as category
-          FROM order_items oi
-          LEFT JOIN products p ON oi.product_id = p.id
-          LEFT JOIN categories c ON p.category_id = c.id
-          WHERE oi.order_id = ?`,
+          `SELECT * FROM order_items WHERE order_id = ?`,
           [order.id]
         ) as any[]
+
+        // Obtener imágenes de los productos
+        const itemsWithImages = await Promise.all(
+          orderItems.map(async (item: any) => {
+            try {
+              const products = await query(
+                `SELECT image FROM products WHERE id = ?`,
+                [item.product_id]
+              ) as any[]
+              
+              if (products.length > 0) {
+                return {
+                  ...item,
+                  image_url: products[0].image
+                }
+              }
+            } catch (error) {
+              console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+            }
+            
+            return item
+          })
+        )
 
         // Obtener dirección de envío si existe
         let shippingAddress = undefined
         if (order.shipping_address_id) {
           const addresses = await query(
-            `SELECT street, commune_name, region_name, postal_code, department, delivery_instructions
-             FROM user_addresses WHERE id = ?`,
-            [order.shipping_address_id]
+            `SELECT street, commune_name, region_name, postal_code, department 
+             FROM user_addresses WHERE id = ? AND user_id = ?`,
+            [order.shipping_address_id, userId]
           ) as any[]
           
           if (addresses.length > 0) {
@@ -67,16 +71,16 @@ export async function GET(request: NextRequest) {
           status: order.status,
           payment_status: order.payment_status,
           subtotal: parseFloat(order.subtotal),
-          discount: parseFloat(order.discount || 0),
-          shipping: parseFloat(order.shipping || 0),
-          tax: parseFloat(order.tax || 0),
+          discount: parseFloat(order.discount),
+          shipping: parseFloat(order.shipping),
+          tax: parseFloat(order.tax),
           total: parseFloat(order.total),
           notes: order.notes,
           coupon_code: order.coupon_code,
           shipping_method: order.payment_method,
           created_at: order.created_at,
           updated_at: order.updated_at,
-          items: orderItems.map((item: any) => ({
+          items: itemsWithImages.map((item: any) => ({
             id: item.id,
             product_id: item.product_id,
             product_name: item.product_name,
@@ -87,10 +91,10 @@ export async function GET(request: NextRequest) {
             category: item.category
           })),
           shipping_address: shippingAddress,
-          customer_email: user?.email || order.customer_email || '',
-          customer_first_name: user?.first_name || order.customer_first_name || '',
-          customer_last_name: user?.last_name || order.customer_last_name || '',
-          customer_phone: user?.phone || order.customer_phone || ''
+          customer_email: order.customer_email || '',
+          customer_first_name: order.customer_first_name || '',
+          customer_last_name: order.customer_last_name || '',
+          customer_phone: order.customer_phone || ''
         }
       })
     )
