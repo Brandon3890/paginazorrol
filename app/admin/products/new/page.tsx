@@ -15,11 +15,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { 
   ArrowLeft, Upload, X, Loader2, Percent, Youtube, Search, ExternalLink,
-  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler
+  Rocket, Sparkles, Package, AlertCircle, Tag, Weight, Ruler, CheckCircle
 } from "lucide-react"
 import Link from "next/link"
 import { SpecsEditor } from "@/components/SpecsEditor"
 import { ProductSpec } from "@/lib/product-specs"
+import { useToast } from "@/hooks/use-toast"
+
+// ============================================================
+// FUNCIONES UTILITARIAS
+// ============================================================
 
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
@@ -112,6 +117,10 @@ const safeToNumber = (value: any): number => {
   return isNaN(num) ? 0 : num
 }
 
+// ============================================================
+// COMPONENTES REUTILIZABLES
+// ============================================================
+
 const SubcategoryCheckbox = React.memo(({ 
   subcat, 
   isSelected, 
@@ -153,6 +162,24 @@ const RecommendedProductCard = React.memo(({
   isSelected: boolean
   onToggle: (id: number) => void
 }) => {
+  const getImageUrl = (url: string) => {
+    if (!url) return '/api/images/diverse-products-still-life.png';
+    if (url.includes('diverse-products-still-life.png')) return '/api/images/diverse-products-still-life.png';
+    if (url.startsWith('/api/images/')) return url;
+    if (url.startsWith('blob:')) return url;
+    
+    let filename = url;
+    if (url.includes('/uploads/products/')) {
+      filename = url.split('/uploads/products/')[1];
+    } else if (url.includes('uploads/products/')) {
+      filename = url.split('uploads/products/')[1];
+    } else if (url.includes('/')) {
+      filename = url.split('/').pop() || url;
+    }
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  };
+
   return (
     <div
       className={`border rounded-lg p-3 cursor-pointer transition-colors ${
@@ -162,9 +189,13 @@ const RecommendedProductCard = React.memo(({
     >
       <div className="flex items-start gap-3">
         <img
-          src={product.image || "/placeholder.svg"}
+          src={getImageUrl(product.image)}
           alt={product.name}
           className="w-16 h-16 object-cover rounded"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = '/api/images/diverse-products-still-life.png';
+          }}
         />
         <div className="flex-1">
           <p className="font-medium text-sm line-clamp-2">{product.name}</p>
@@ -185,12 +216,21 @@ const RecommendedProductCard = React.memo(({
 
 RecommendedProductCard.displayName = 'RecommendedProductCard';
 
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+
 export default function NewProductPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const { user, isAuthenticated } = useAuthStore()
   const { addProduct } = useProductStore()
   const { categories, loading: categoriesLoading } = useCategories()
   const { products: allProducts, loading: productsLoading } = useProducts({ perPage: 100 })
+
+  // ============================================================
+  // ESTADOS
+  // ============================================================
 
   const [formData, setFormData] = useState({
     name: "",
@@ -207,7 +247,6 @@ export default function NewProductPage() {
     playersMax: "",
     duration: "",
     durationMin: "",
-    tags: "",
     description: "",
     stock: "",
     inStock: true,
@@ -230,9 +269,15 @@ export default function NewProductPage() {
   const [selectedTag, setSelectedTag] = useState<string>("")
   const [productSpecs, setProductSpecs] = useState<ProductSpec[]>([])
   const [errors, setErrors] = useState<Record<string, boolean>>({})
+  const [createSuccess, setCreateSuccess] = useState(false)
   
   const [newAdditionalImageFiles, setNewAdditionalImageFiles] = useState<File[]>([])
   const [newAdditionalImagePreviews, setNewAdditionalImagePreviews] = useState<string[]>([])
+  const [blobUrls, setBlobUrls] = useState<string[]>([])
+
+  // ============================================================
+  // MEMOS
+  // ============================================================
 
   const availableSubcategories = useMemo(() => {
     if (!selectedCategory || categories.length === 0) return []
@@ -243,11 +288,36 @@ export default function NewProductPage() {
   const totalImages = (imageFile ? 1 : 0) + newAdditionalImageFiles.length
   const MAX_TOTAL_IMAGES = 6
 
+  const filteredProducts = useMemo(() => {
+    return allProducts.filter((product: any) => 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [allProducts, searchTerm])
+
+  // ============================================================
+  // EFECTOS
+  // ============================================================
+
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
       router.push("/")
     }
   }, [isAuthenticated, user, router])
+
+  // Limpiar URLs blob al desmontar
+  useEffect(() => {
+    return () => {
+      blobUrls.forEach(url => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url)
+        }
+      })
+    }
+  }, [blobUrls])
+
+  // ============================================================
+  // VALIDACIONES
+  // ============================================================
 
   const validateField = (field: string, value: any): boolean => {
     if (!value || (typeof value === 'string' && value.trim() === '')) {
@@ -262,7 +332,6 @@ export default function NewProductPage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, boolean> = {}
     
-    // Campos requeridos
     if (!validateField('name', formData.name)) newErrors.name = true
     if (!validateField('price', formData.price)) newErrors.price = true
     if (!validateField('categoryId', formData.categoryId)) newErrors.categoryId = true
@@ -281,12 +350,10 @@ export default function NewProductPage() {
     if (!validateField('width', formData.width)) newErrors.width = true
     if (!validateField('length', formData.length)) newErrors.length = true
     
-    // Validar imagen (si no hay imagen ni archivo)
     if (!formData.image && !imageFile) {
       newErrors.image = true
     }
     
-    // Validar specs (al menos una característica)
     if (productSpecs.length === 0) {
       newErrors.specs = true
     }
@@ -295,12 +362,20 @@ export default function NewProductPage() {
     return Object.keys(newErrors).length === 0
   }
 
+  const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
+    const hasError = errors[fieldName]
+    return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
+  }
+
+  // ============================================================
+  // HANDLERS
+  // ============================================================
+
   const handleTagSelect = (tagValue: string) => {
     if (selectedTag === tagValue) {
       setSelectedTag("")
       setFormData(prev => ({ 
         ...prev, 
-        tags: "",
         discountPercent: "0",
         originalPrice: "",
         isOnSale: false,
@@ -313,7 +388,6 @@ export default function NewProductPage() {
       if (tagValue === "") {
         setFormData(prev => ({ 
           ...prev, 
-          tags: "",
           discountPercent: "0",
           originalPrice: "",
           isOnSale: false,
@@ -323,7 +397,6 @@ export default function NewProductPage() {
       } else if (tagValue === "agotado") {
         setFormData(prev => ({ 
           ...prev, 
-          tags: tagValue,
           stock: "0",
           inStock: false,
           discountPercent: "0",
@@ -333,16 +406,14 @@ export default function NewProductPage() {
       } else if (tagValue === "descuento") {
         setFormData(prev => ({ 
           ...prev, 
-          tags: tagValue,
           discountPercent: prev.discountPercent !== "0" ? prev.discountPercent : "10",
           isOnSale: true,
           stock: prev.stock === "0" ? "1" : prev.stock,
           inStock: true
         }))
-      } else {
+      } else if (tagValue === "preventa" || tagValue === "novedad") {
         setFormData(prev => ({ 
           ...prev, 
-          tags: tagValue,
           discountPercent: "0",
           originalPrice: "",
           isOnSale: false,
@@ -360,7 +431,6 @@ export default function NewProductPage() {
         ? prev.subcategoryIds.filter(id => id !== subcategoryId)
         : [...prev.subcategoryIds, subcategoryId]
     }));
-    // Limpiar error de subcategorías cuando se selecciona alguna
     if (errors.subcategoryIds) {
       setErrors(prev => ({ ...prev, subcategoryIds: false }))
     }
@@ -436,10 +506,10 @@ export default function NewProductPage() {
         try {
           const resizedFile = await resizeImage(file, 1024, 1024)
           const previewUrl = URL.createObjectURL(resizedFile)
+          setBlobUrls(prev => [...prev, previewUrl])
           setImageFile(resizedFile)
           setImagePreview(previewUrl)
-          // Limpiar error de imagen
-          setErrors(prev => ({ ...prev, image: false }))
+          if (errors.image) setErrors(prev => ({ ...prev, image: false }))
         } catch (error) {
           console.error("Error procesando imagen:", error)
           alert("Error al procesar la imagen")
@@ -453,7 +523,10 @@ export default function NewProductPage() {
   }
 
   const removeMainImage = useCallback(() => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview)
+      setBlobUrls(prev => prev.filter(url => url !== imagePreview))
+    }
     setImageFile(null)
     setImagePreview("")
     setFormData(prev => ({ ...prev, image: "" }))
@@ -472,6 +545,7 @@ export default function NewProductPage() {
         try {
           const resizedFile = await resizeImage(file, 1024, 1024)
           const previewUrl = URL.createObjectURL(resizedFile)
+          setBlobUrls(prev => [...prev, previewUrl])
           setNewAdditionalImageFiles(prev => [...prev, resizedFile])
           setNewAdditionalImagePreviews(prev => [...prev, previewUrl])
         } catch (error) {
@@ -487,23 +561,23 @@ export default function NewProductPage() {
   }
 
   const removeAdditionalImage = useCallback((index: number) => {
-    URL.revokeObjectURL(newAdditionalImagePreviews[index])
+    const url = newAdditionalImagePreviews[index]
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+      setBlobUrls(prev => prev.filter(u => u !== url))
+    }
     setNewAdditionalImageFiles(prev => prev.filter((_, i) => i !== index))
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
   }, [newAdditionalImagePreviews])
 
-  const filteredProducts = useMemo(() => {
-    return allProducts.filter((product: any) => 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  }, [allProducts, searchTerm])
+  // ============================================================
+  // SUBMIT
+  // ============================================================
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validar formulario
     if (!validateForm()) {
-      // Scroll al primer error
       const firstError = document.querySelector('.border-red-500')
       if (firstError) {
         firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -513,76 +587,101 @@ export default function NewProductPage() {
     }
 
     setIsUploading(true)
+    setCreateSuccess(false)
+    
     try {
       const formDataToSend = new FormData()
       
-      formDataToSend.append('name', formData.name)
-      formDataToSend.append('description', formData.description)
-      formDataToSend.append('price', formData.price)
-      formDataToSend.append('categoryId', formData.categoryId)
-      formDataToSend.append('youtubeVideoId', formData.youtubeVideoId)
+      formDataToSend.append('name', safeToString(formData.name))
+      formDataToSend.append('description', safeToString(formData.description))
+      formDataToSend.append('price', safeToString(formData.price))
+      formDataToSend.append('categoryId', safeToString(formData.categoryId))
+      formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('specs', JSON.stringify(productSpecs))
       
-      formDataToSend.append('weight', formData.weight)
-      formDataToSend.append('height', formData.height)
-      formDataToSend.append('width', formData.width)
-      formDataToSend.append('length', formData.length)
-      
-      if (selectedTag && selectedTag !== "") {
-        formDataToSend.append('tags', selectedTag)
-      } else {
-        formDataToSend.append('tags', '') 
-      }
+      formDataToSend.append('weight', safeToString(formData.weight))
+      formDataToSend.append('height', safeToString(formData.height))
+      formDataToSend.append('width', safeToString(formData.width))
+      formDataToSend.append('length', safeToString(formData.length))
       
       if (selectedTag === "descuento" && formData.originalPrice) {
-        formDataToSend.append('originalPrice', formData.originalPrice)
+        formDataToSend.append('originalPrice', safeToString(formData.originalPrice))
         formDataToSend.append('isOnSale', 'true')
       } else {
         formDataToSend.append('isOnSale', 'false')
       }
       
-      formData.subcategoryIds.forEach(id => formDataToSend.append('subcategoryIds', id))
+      formData.subcategoryIds.forEach(id => formDataToSend.append('subcategoryIds', safeToString(id)))
       formData.recommendedProducts.forEach(id => formDataToSend.append('recommendedProducts', id.toString()))
       
-      formDataToSend.append('ageDisplay', formData.age)
-      formDataToSend.append('ageMin', formData.ageMin)
-      formDataToSend.append('playersDisplay', formData.players)
-      formDataToSend.append('playersMin', formData.playersMin)
-      formDataToSend.append('playersMax', formData.playersMax)
-      formDataToSend.append('durationDisplay', formData.duration)
-      formDataToSend.append('durationMin', formData.durationMin)
-      formDataToSend.append('stock', formData.stock)
+      formDataToSend.append('ageDisplay', safeToString(formData.age))
+      formDataToSend.append('ageMin', safeToString(formData.ageMin))
+      formDataToSend.append('playersDisplay', safeToString(formData.players))
+      formDataToSend.append('playersMin', safeToString(formData.playersMin))
+      formDataToSend.append('playersMax', safeToString(formData.playersMax))
+      formDataToSend.append('durationDisplay', safeToString(formData.duration))
+      formDataToSend.append('durationMin', safeToString(formData.durationMin))
+      formDataToSend.append('stock', safeToString(formData.stock))
       formDataToSend.append('inStock', String(formData.inStock))
       formDataToSend.append('tags', selectedTag)
 
       if (imageFile) {
         formDataToSend.append('mainImage', imageFile)
+        console.log('📸 Enviando imagen principal:', imageFile.name)
       } else if (formData.image) {
-        formDataToSend.append('image', formData.image)
+        formDataToSend.append('image', safeToString(formData.image))
+        console.log('📸 Usando URL de imagen:', formData.image)
       } else {
-        formDataToSend.append('image', '/diverse-products-still-life.png')
+        formDataToSend.append('image', '/uploads/products/diverse-products-still-life.png')
+        console.log('📸 Usando imagen por defecto')
       }
 
-      newAdditionalImageFiles.forEach(file => formDataToSend.append('additionalImages', file))
+      newAdditionalImageFiles.forEach(file => {
+        formDataToSend.append('additionalImages', file)
+        console.log('📸 Enviando imagen adicional:', file.name)
+      })
 
       await addProduct(formDataToSend)
       
-      if (imageFile) URL.revokeObjectURL(imagePreview)
-      newAdditionalImagePreviews.forEach(url => URL.revokeObjectURL(url))
+      // Limpiar URLs blob
+      blobUrls.forEach(url => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url)
+        }
+      })
+      setBlobUrls([])
       
-      router.push("/admin/products")
+      setCreateSuccess(true)
+      
+      toast({
+        description: (
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <span>Producto creado correctamente</span>
+          </div>
+        ),
+        duration: 3000,
+      })
+      
+      setTimeout(() => {
+        router.push("/admin/products")
+      }, 1500)
+      
     } catch (error) {
       console.error("Error creating product:", error)
-      alert("Error al crear el producto")
+      toast({
+        description: "Error al crear el producto: " + (error instanceof Error ? error.message : 'Error desconocido'),
+        duration: 4000,
+        variant: "destructive",
+      })
     } finally {
       setIsUploading(false)
     }
   }
 
-  const getFieldClassName = (fieldName: string, baseClassName: string = "") => {
-    const hasError = errors[fieldName]
-    return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
-  }
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   if (!isAuthenticated || user?.role !== 'admin') {
     return (
@@ -622,6 +721,13 @@ export default function NewProductPage() {
           </Button>
         </Link>
 
+        {createSuccess && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <span className="text-green-700">Producto creado correctamente. Redirigiendo...</span>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Añadir Nuevo Producto</CardTitle>
@@ -630,6 +736,9 @@ export default function NewProductPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ============================================================
+                    NOMBRE DEL PRODUCTO
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="name" className={errors.name ? 'text-red-600' : ''}>
                     Nombre del Producto *
@@ -648,6 +757,9 @@ export default function NewProductPage() {
                   {errors.name && <p className="text-xs text-red-500">El nombre es requerido</p>}
                 </div>
 
+                {/* ============================================================
+                    VIDEO DE YOUTUBE
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Video de YouTube (opcional)</Label>
                   <div className="flex items-center gap-2">
@@ -699,6 +811,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    IMAGENES
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
                     <Label className={errors.image ? 'text-red-600' : ''}>
@@ -742,9 +857,13 @@ export default function NewProductPage() {
                     {imagePreview && (
                       <div className="mt-4 relative inline-block">
                         <img
-                          src={imagePreview || "/placeholder.svg"}
+                          src={imagePreview}
                           alt="Preview"
                           className="w-48 h-48 object-cover rounded-lg border"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = '/api/images/diverse-products-still-life.png';
+                          }}
                         />
                         <Button
                           type="button"
@@ -783,15 +902,19 @@ export default function NewProductPage() {
                           {newAdditionalImagePreviews.map((url, index) => (
                             <div key={index} className="relative group">
                               <img
-                                src={url || "/placeholder.svg"}
+                                src={url}
                                 alt={`Additional ${index + 1}`}
                                 className="w-full h-32 object-cover rounded-lg border"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = '/api/images/diverse-products-still-life.png';
+                                }}
                               />
                               <Button
                                 type="button"
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                 onClick={() => removeAdditionalImage(index)}
                               >
                                 <X className="w-3 h-3" />
@@ -804,6 +927,9 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
+                {/* ============================================================
+                    CATEGORIA
+                ============================================================ */}
                 <div className="space-y-2">
                   <Label htmlFor="category-select" className={errors.categoryId ? 'text-red-600' : ''}>
                     Categoria *
@@ -834,6 +960,9 @@ export default function NewProductPage() {
                   {errors.categoryId && <p className="text-xs text-red-500">Debes seleccionar una categoria</p>}
                 </div>
 
+                {/* ============================================================
+                    SUBCATEGORIAS
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2">
                   <Label className={errors.subcategoryIds ? 'text-red-600' : ''}>
                     Subcategorias *
@@ -864,6 +993,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    DIMENSIONES PARA ENVIO
+                ============================================================ */}
                 <div className="md:col-span-2 space-y-3">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -959,6 +1091,9 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
+                {/* ============================================================
+                    ESPECIFICACIONES (SPECS)
+                ============================================================ */}
                 <div className="md:col-span-2 border rounded-lg p-4">
                   <SpecsEditor 
                     specs={productSpecs} 
@@ -969,6 +1104,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    ETIQUETA DEL PRODUCTO (RESPONSIVE)
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Tag className="w-4 h-4" />
@@ -978,7 +1116,8 @@ export default function NewProductPage() {
                     Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
                   </p>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {/* ETIQUETAS - RESPONSIVE */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                     {[
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
                       { value: "preventa", label: "PREVENTA", icon: Rocket, description: "Producto en preventa", color: "bg-amber-500", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
@@ -992,50 +1131,51 @@ export default function NewProductPage() {
                       return (
                         <div
                           key={tag.value || "normal"}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border cursor-pointer transition-all ${
                             isSelected
                               ? `${tag.bgColor} ${tag.borderColor} border-2`
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                           onClick={() => handleTagSelect(tag.value)}
                         >
-                          <div className={`p-2 rounded-full ${isSelected ? tag.color : 'bg-gray-100'}`}>
+                          <div className={`p-1.5 sm:p-2 rounded-full flex-shrink-0 ${isSelected ? tag.color : 'bg-gray-100'}`}>
                             <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
                           </div>
-                          <div>
-                            <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                          <div className="flex-1 text-center sm:text-left min-w-0">
+                            <span className={`text-xs sm:text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
                               {tag.label}
                             </span>
-                            <p className="text-xs text-muted-foreground">{tag.description}</p>
+                            <p className="text-[10px] sm:text-xs text-muted-foreground truncate hidden sm:block">{tag.description}</p>
                           </div>
                           <input
                             type="radio"
                             name="productTag"
                             checked={isSelected}
                             onChange={() => {}}
-                            className="ml-auto h-4 w-4 text-[#C2410C] focus:ring-[#C2410C]"
+                            className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0 text-[#C2410C] focus:ring-[#C2410C]"
                           />
                         </div>
                       );
                     })}
                   </div>
                   
+                  {/* CONTENIDO DE CADA ETIQUETA - RESPONSIVE */}
                   {selectedTag === "" && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
-                        <Package className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="font-semibold text-green-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Package className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Normal
                       </h4>
-                      <p className="text-sm text-green-700 mb-3">
+                      <p className="text-xs sm:text-sm text-green-700 mb-3">
                         Este producto se mostrara sin etiqueta especial.
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                           placeholder="Ej: 25000"
                         />
                       </div>
@@ -1043,50 +1183,51 @@ export default function NewProductPage() {
                   )}
                   
                   {selectedTag === "descuento" && (
-                    <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                      <h4 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-                        <Percent className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                      <h4 className="font-semibold text-orange-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Percent className="w-4 h-4 sm:w-5 sm:h-5" />
                         Configurar Descuento
                       </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         <div className="space-y-2">
-                          <Label className="text-sm">Precio Original (CLP) *</Label>
+                          <Label className="text-xs sm:text-sm">Precio Original (CLP) *</Label>
                           <Input
                             type="number"
                             placeholder="Ej: 50000"
                             value={formData.originalPrice}
                             onChange={(e) => handleDiscountChange('originalPrice', e.target.value)}
+                            className="text-sm"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm">Porcentaje de Descuento (1-99%) *</Label>
-                          <div className="flex items-center gap-4">
+                          <Label className="text-xs sm:text-sm">Porcentaje de Descuento (1-99%) *</Label>
+                          <div className="flex items-center gap-2 sm:gap-4">
                             <input
                               type="range"
                               min="1"
                               max="99"
                               value={formData.discountPercent}
                               onChange={(e) => handleDiscountChange('discountPercent', e.target.value)}
-                              className="flex-1"
+                              className="flex-1 min-w-[60px]"
                             />
-                            <span className="text-sm font-bold text-orange-600 min-w-[45px]">
+                            <span className="text-xs sm:text-sm font-bold text-orange-600 min-w-[35px] sm:min-w-[45px]">
                               {formData.discountPercent}%
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio Final (calculado automaticamente)</Label>
+                        <Label className="text-xs sm:text-sm">Precio Final (calculado automaticamente)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => handleDiscountChange('price', e.target.value)}
-                          className="mt-1 bg-gray-50"
+                          className="mt-1 bg-gray-50 text-sm"
                         />
                       </div>
                       {formData.originalPrice && safeToNumber(formData.originalPrice) > 0 && (
                         <div className="mt-3 p-3 bg-white rounded-lg">
-                          <p className="text-sm">
+                          <p className="text-xs sm:text-sm break-words">
                             <span className="font-semibold">Resumen:</span>{' '}
                             <span className="line-through text-gray-500">
                               ${formatCLP(safeToNumber(formData.originalPrice))} CLP
@@ -1102,21 +1243,21 @@ export default function NewProductPage() {
                   )}
                   
                   {selectedTag === "preventa" && (
-                    <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h4 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                        <Rocket className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h4 className="font-semibold text-amber-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Rocket className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto en Preventa
                       </h4>
-                      <p className="text-sm text-amber-700 mb-3">
+                      <p className="text-xs sm:text-sm text-amber-700 mb-3">
                         Este producto se mostrara con la etiqueta "PREVENTA".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio de Preventa (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio de Preventa (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                           placeholder="Ej: 45000"
                         />
                       </div>
@@ -1124,37 +1265,37 @@ export default function NewProductPage() {
                   )}
                   
                   {selectedTag === "novedad" && (
-                    <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                      <h4 className="font-semibold text-gray-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Nuevo
                       </h4>
-                      <p className="text-sm text-gray-700 mb-3">
+                      <p className="text-xs sm:text-sm text-gray-700 mb-3">
                         Este producto se mostrara con la etiqueta "NOVEDAD".
                       </p>
                       <div className="p-3 bg-white rounded-lg">
-                        <Label className="text-sm">Precio (CLP)</Label>
+                        <Label className="text-xs sm:text-sm">Precio (CLP)</Label>
                         <Input
                           type="number"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                          className="mt-1"
+                          className="mt-1 text-sm"
                         />
                       </div>
                     </div>
                   )}
                   
                   {selectedTag === "agotado" && (
-                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                      <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4" />
+                    <div className="mt-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <h4 className="font-semibold text-red-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
+                        <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                         Producto Agotado
                       </h4>
-                      <p className="text-sm text-red-700">
+                      <p className="text-xs sm:text-sm text-red-700">
                         Este producto se mostrara con la etiqueta "AGOTADO". El stock se ha establecido automaticamente a 0.
                       </p>
                       <div className="mt-3 p-3 bg-white rounded-lg">
-                        <p className="text-sm">
+                        <p className="text-xs sm:text-sm">
                           <span className="font-semibold">Stock actual:</span> 0 unidades
                         </p>
                       </div>
@@ -1163,7 +1304,7 @@ export default function NewProductPage() {
                   
                   {selectedTag && selectedTag !== "" && (
                     <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">Vista previa del badge:</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mb-2">Vista previa del badge:</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedTag === "preventa" && (
                           <span className="px-3 py-1 text-xs font-bold italic rounded-full text-white shadow-md" style={{ backgroundColor: "rgb(251,176,59)" }}>
@@ -1190,6 +1331,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    PRODUCTOS RECOMENDADOS
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -1233,6 +1377,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    STOCK
+                ============================================================ */}
                 <div className="space-y-2">
                   <Label htmlFor="stock" className={errors.stock ? 'text-red-600' : ''}>
                     Stock *
@@ -1255,6 +1402,9 @@ export default function NewProductPage() {
                   )}
                 </div>
 
+                {/* ============================================================
+                    EDAD
+                ============================================================ */}
                 <div className="space-y-2">
                   <Label htmlFor="age" className={errors.age ? 'text-red-600' : ''}>
                     Edad (ej: 8+) *
@@ -1292,6 +1442,9 @@ export default function NewProductPage() {
                   {errors.ageMin && <p className="text-xs text-red-500">La edad minima es requerida</p>}
                 </div>
 
+                {/* ============================================================
+                    JUGADORES
+                ============================================================ */}
                 <div className="space-y-2">
                   <Label htmlFor="players" className={errors.players ? 'text-red-600' : ''}>
                     Jugadores (ej: 2-5) *
@@ -1348,6 +1501,9 @@ export default function NewProductPage() {
                   {errors.playersMax && <p className="text-xs text-red-500">El maximo de jugadores es requerido</p>}
                 </div>
 
+                {/* ============================================================
+                    DURACION
+                ============================================================ */}
                 <div className="space-y-2">
                   <Label htmlFor="duration" className={errors.duration ? 'text-red-600' : ''}>
                     Duracion (ej: 15 min) *
@@ -1385,6 +1541,9 @@ export default function NewProductPage() {
                   {errors.durationMin && <p className="text-xs text-red-500">La duracion minima es requerida</p>}
                 </div>
 
+                {/* ============================================================
+                    DESCRIPCION
+                ============================================================ */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="description" className={errors.description ? 'text-red-600' : ''}>
                     Descripcion *
@@ -1405,9 +1564,19 @@ export default function NewProductPage() {
                 </div>
               </div>
 
+              {/* ============================================================
+                  BOTONES
+              ============================================================ */}
               <div className="flex gap-4">
                 <Button type="submit" disabled={isUploading} className="bg-[#C2410C] hover:bg-[#9A3412]">
-                  {isUploading ? "Creando..." : "Crear Producto"}
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    'Crear Producto'
+                  )}
                 </Button>
                 <Link href="/admin/products">
                   <Button type="button" variant="outline">
