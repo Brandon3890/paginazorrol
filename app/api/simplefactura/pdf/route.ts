@@ -1,4 +1,3 @@
-// app/api/simplefactura/pdf/route.ts - Versión CORREGIDA
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { obtenerPDFSimpleFactura } from '@/lib/simplefactura-service';
@@ -45,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Obtener PDF como Buffer
     const pdfBuffer = await obtenerPDFSimpleFactura(folioNumero);
 
-    // CORRECCIÓN: Convertir Buffer a Uint8Array que es compatible con BodyInit
+    // Convertir Buffer a Uint8Array
     const pdfUint8Array = new Uint8Array(pdfBuffer);
 
     // Usar Response con Uint8Array

@@ -62,23 +62,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let rutCliente = cliente.rut?.toString().trim() || '55555555-5';
-    
-    if (!validarRUT(rutCliente)) {
-      console.log('RUT invalido:', rutCliente, 'usando consumidor final');
-      rutCliente = '55555555-5';
-      cliente.nombre = 'Consumidor Final';
-    } else {
-      rutCliente = limpiarRUT(rutCliente);
-    }
-    
+    // ✅ VERIFICAR SI YA EXISTE BOLETA POR ORDER_ID
     const boletaExistente = await query(
       `SELECT id, folio FROM boletas WHERE order_id = ?`,
       [ordenId]
     ) as any[];
 
     if (boletaExistente.length > 0) {
-      console.log('Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
+      console.log('📋 Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
       return NextResponse.json({
         success: true,
         folio: boletaExistente[0].folio,
@@ -87,6 +78,39 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ✅ VERIFICAR SI LA ORDEN YA TIENE BOLETA_ID
+    const orderCheck = await query(
+      `SELECT boleta_id FROM orders WHERE id = ?`,
+      [ordenId]
+    ) as any[];
+
+    if (orderCheck.length > 0 && orderCheck[0].boleta_id) {
+      const boleta = await query(
+        `SELECT folio FROM boletas WHERE id = ?`,
+        [orderCheck[0].boleta_id]
+      ) as any[];
+      
+      if (boleta.length > 0) {
+        console.log('📋 Orden ya tiene boleta asociada:', boleta[0].folio);
+        return NextResponse.json({
+          success: true,
+          folio: boleta[0].folio,
+          data: { id: orderCheck[0].boleta_id },
+          message: 'Boleta ya asociada a la orden'
+        });
+      }
+    }
+
+    let rutCliente = cliente.rut?.toString().trim() || '55555555-5';
+    
+    if (!validarRUT(rutCliente)) {
+      console.log('RUT inválido:', rutCliente, 'usando consumidor final');
+      rutCliente = '55555555-5';
+      cliente.nombre = 'Consumidor Final';
+    } else {
+      rutCliente = limpiarRUT(rutCliente);
+    }
+    
     const receptor = {
       rut: rutCliente,
       nombre: cliente.nombre || 'Consumidor Final',

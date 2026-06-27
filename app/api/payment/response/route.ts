@@ -44,6 +44,22 @@ async function emitirBoleta(orderId: number) {
 
     const order = orderData[0];
 
+    // VERIFICAR SI YA EXISTE BOLETA
+    const boletaExistente = await query(
+      `SELECT id, folio FROM boletas WHERE order_id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (boletaExistente.length > 0) {
+      console.log('✅ Boleta ya existe para orden:', orderId, 'folio:', boletaExistente[0].folio);
+      return {
+        success: true,
+        folio: boletaExistente[0].folio,
+        boletaId: boletaExistente[0].id,
+        yaExistia: true
+      };
+    }
+
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -59,18 +75,13 @@ async function emitirBoleta(orderId: number) {
       throw new Error('No hay productos en la orden');
     }
 
-    // ============================================================
-    // CORRECCIÓN: Manejar RUT para invitados
-    // ============================================================
     let rutCliente = order.customer_rut || '55555555-5';
     
-    // Si es invitado, usar RUT por defecto
     if (order.is_guest === 1) {
       rutCliente = '55555555-5';
       console.log('👤 Cliente invitado, usando RUT por defecto:', rutCliente);
     }
 
-    // Si el RUT es inválido, usar consumidor final
     if (rutCliente === '55555555-5' || !rutCliente || rutCliente === '') {
       rutCliente = '55555555-5';
     }
@@ -114,7 +125,6 @@ async function emitirBoleta(orderId: number) {
     if (result.status === 200) {
       console.log('✅ Boleta emitida exitosamente. Folio:', result.data.folio);
       
-      // Guardar boleta en base de datos
       const neto = Math.round(total / 1.19);
       const iva = total - neto;
       const fechaEmision = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -147,7 +157,8 @@ async function emitirBoleta(orderId: number) {
       return {
         success: true,
         folio: result.data.folio,
-        boletaId: insertResult.insertId
+        boletaId: insertResult.insertId,
+        yaExistia: false
       };
     } else {
       console.error('❌ Error emitiendo boleta:', result.error);
@@ -293,13 +304,17 @@ export async function POST(request: NextRequest) {
           [order.id]
         )
         
-        return NextResponse.redirect(
-          process.env.NEXTAUTH_URL + '/order-success?orderId=' + order.id + '&status=cancelled'
-        )
+        const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+        redirectUrl.searchParams.set('orderId', order.id.toString())
+        redirectUrl.searchParams.set('status', 'cancelled')
+        
+        return NextResponse.redirect(redirectUrl)
       } else {
-        return NextResponse.redirect(
-          process.env.NEXTAUTH_URL + '/order-success?status=cancelled&message=order_not_found'
-        )
+        const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+        redirectUrl.searchParams.set('status', 'cancelled')
+        redirectUrl.searchParams.set('message', 'order_not_found')
+        
+        return NextResponse.redirect(redirectUrl)
       }
     }
 
@@ -316,9 +331,11 @@ export async function POST(request: NextRequest) {
         ) as any[]
 
         if (orders.length === 0) {
-          return NextResponse.redirect(
-            process.env.NEXTAUTH_URL + '/order-success?status=error&message=order_not_found'
-          )
+          const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+          redirectUrl.searchParams.set('status', 'error')
+          redirectUrl.searchParams.set('message', 'order_not_found')
+          
+          return NextResponse.redirect(redirectUrl)
         }
 
         const order = orders[0]
@@ -332,23 +349,20 @@ export async function POST(request: NextRequest) {
           
           if (orderCheck && orderCheck.payment_status === 'paid') {
             console.log('Esta orden ya fue procesada, saltando...')
-            return NextResponse.redirect(
-              new URL(
-                '/order-success?orderId=' + order.id + '&status=success',
-                process.env.NEXTAUTH_URL
-              )
-            )
+            const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+            redirectUrl.searchParams.set('orderId', order.id.toString())
+            redirectUrl.searchParams.set('status', 'success')
+            
+            return NextResponse.redirect(redirectUrl)
           }
           
           if (order.payment_status !== 'paid') {
             console.log('Procesando pago exitoso');
 
-            // ============================================================
-            // DESCONTAR STOCK - TANTO PARA AUTENTICADOS COMO INVITADOS
-            // ============================================================
+            // DESCONTAR STOCK
             await descontarStock(order.id);
 
-            // Eliminar reservas de stock solo si hay userId (usuario autenticado)
+            // Eliminar reservas de stock
             if (order.user_id) {
               await query(
                 'DELETE FROM stock_reservations WHERE user_id = ?',
@@ -359,9 +373,7 @@ export async function POST(request: NextRequest) {
               console.log('✅ Usuario invitado, stock ya descontado directamente');
             }
 
-            // ============================================================
-            // EMITIR BOLETA - AHORA FUNCIONA PARA INVITADOS
-            // ============================================================
+            // EMITIR BOLETA
             console.log('Emitiendo boleta electronica...');
             const resultadoBoleta = await emitirBoleta(order.id);
             
@@ -370,7 +382,7 @@ export async function POST(request: NextRequest) {
             
             if (resultadoBoleta.success) {
               folio = resultadoBoleta.folio;
-              console.log('✅ Boleta emitida, folio:', folio);
+              console.log('✅ Boleta emitida/obtenida, folio:', folio);
               
               pdfBuffer = await obtenerPDFBoleta(folio);
               if (pdfBuffer) {
@@ -382,9 +394,7 @@ export async function POST(request: NextRequest) {
               console.error('❌ Error emitiendo boleta:', resultadoBoleta.error);
             }
 
-            // ============================================================
-            // ENVIAR EMAIL DE CONFIRMACIÓN CON BOLETA
-            // ============================================================
+            // ENVIAR EMAIL DE CONFIRMACIÓN
             try {
               const orderDetails = await query(
                 `SELECT 
@@ -410,7 +420,6 @@ export async function POST(request: NextRequest) {
                 [order.id]
               ) as any[];
 
-              // Obtener email del cliente (incluso para invitados)
               let customerEmail = null;
               let customerName = 'Cliente';
               
@@ -419,7 +428,6 @@ export async function POST(request: NextRequest) {
                 customerName = (orderDetails[0].customer_first_name || '' + ' ' + orderDetails[0].customer_last_name || '').trim() || 'Cliente';
               }
 
-              // Si no hay email en los detalles, buscar en la orden
               if (!customerEmail) {
                 const userInfo = await query(
                   `SELECT email FROM users WHERE id = ?`,
@@ -489,9 +497,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // ============================================================
           // ACTUALIZAR ESTADO DE LA ORDEN
-          // ============================================================
           await query(
             `UPDATE orders SET 
               payment_status = 'paid',
@@ -522,17 +528,16 @@ export async function POST(request: NextRequest) {
 
           console.log('Pago APROBADO - Stock descontado y boleta emitida correctamente')
 
-          return NextResponse.redirect(
-            new URL(
-              '/order-success?orderId=' + order.id + '&status=success',
-              process.env.NEXTAUTH_URL
-            )
-          )
+          const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+          redirectUrl.searchParams.set('orderId', order.id.toString())
+          redirectUrl.searchParams.set('status', 'success')
+          
+          console.log('🔄 Redirigiendo a:', redirectUrl.toString())
+          
+          return NextResponse.redirect(redirectUrl)
 
         } else {
-          // ============================================================
           // PAGO RECHAZADO
-          // ============================================================
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
           
           if (order.user_id) {
@@ -550,29 +555,39 @@ export async function POST(request: NextRequest) {
             [order.id]
           )
 
-          return NextResponse.redirect(
-            process.env.NEXTAUTH_URL + '/order-success?orderId=' + order.id + '&status=error&message=payment_rejected&reason=' + encodeURIComponent(rejectionReason)
-          )
+          const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+          redirectUrl.searchParams.set('orderId', order.id.toString())
+          redirectUrl.searchParams.set('status', 'error')
+          redirectUrl.searchParams.set('message', 'payment_rejected')
+          redirectUrl.searchParams.set('reason', rejectionReason)
+
+          return NextResponse.redirect(redirectUrl)
         }
 
       } catch (commitError: any) {
         console.error('Error confirmando pago:', commitError)
-        return NextResponse.redirect(
-          process.env.NEXTAUTH_URL + '/order-success?status=error&message=payment_failed'
-        )
+        const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+        redirectUrl.searchParams.set('status', 'error')
+        redirectUrl.searchParams.set('message', 'payment_failed')
+        
+        return NextResponse.redirect(redirectUrl)
       }
     }
 
     console.error('Tokens invalidos o ausentes')
-    return NextResponse.redirect(
-      process.env.NEXTAUTH_URL + '/order-success?status=error&message=invalid_tokens'
-    )
+    const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+    redirectUrl.searchParams.set('status', 'error')
+    redirectUrl.searchParams.set('message', 'invalid_tokens')
+    
+    return NextResponse.redirect(redirectUrl)
 
   } catch (error: any) {
     console.error('Error CRITICO:', error)
-    return NextResponse.redirect(
-      process.env.NEXTAUTH_URL + '/order-success?status=error&message=processing_error'
-    )
+    const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
+    redirectUrl.searchParams.set('status', 'error')
+    redirectUrl.searchParams.set('message', 'processing_error')
+    
+    return NextResponse.redirect(redirectUrl)
   }
 }
 

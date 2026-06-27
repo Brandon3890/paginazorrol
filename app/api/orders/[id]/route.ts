@@ -102,16 +102,60 @@ export async function GET(
       }
     }
 
-    // Obtener información de la boleta si existe
+    // Obtener información de la boleta - MEJORADO
     let boletaInfo = null
+    
+    // Primero intentar por boleta_id de la orden
     if (order.boleta_id) {
       const boletas = await query(
-        `SELECT folio, monto_total, fecha_emision, estado_sii FROM boletas WHERE id = ?`,
+        `SELECT id, folio, monto_total, fecha_emision, estado_sii, 
+                rut_receptor, razon_social_receptor
+         FROM boletas 
+         WHERE id = ?`,
         [order.boleta_id]
-      ) as any[]
+      ) as any[];
       
       if (boletas.length > 0) {
-        boletaInfo = boletas[0]
+        boletaInfo = {
+          id: boletas[0].id,
+          folio: boletas[0].folio,
+          monto_total: parseFloat(boletas[0].monto_total),
+          fecha_emision: boletas[0].fecha_emision,
+          estado_sii: boletas[0].estado_sii,
+          rut_receptor: boletas[0].rut_receptor,
+          razon_social: boletas[0].razon_social_receptor
+        }
+      }
+    }
+
+    // Si no se encontró por boleta_id, buscar por order_id
+    if (!boletaInfo) {
+      const boletas = await query(
+        `SELECT id, folio, monto_total, fecha_emision, estado_sii,
+                rut_receptor, razon_social_receptor
+         FROM boletas 
+         WHERE order_id = ?`,
+        [orderId]
+      ) as any[];
+      
+      if (boletas.length > 0) {
+        boletaInfo = {
+          id: boletas[0].id,
+          folio: boletas[0].folio,
+          monto_total: parseFloat(boletas[0].monto_total),
+          fecha_emision: boletas[0].fecha_emision,
+          estado_sii: boletas[0].estado_sii,
+          rut_receptor: boletas[0].rut_receptor,
+          razon_social: boletas[0].razon_social_receptor
+        }
+        
+        // Actualizar la orden con el boleta_id si no lo tiene
+        if (!order.boleta_id) {
+          await query(
+            `UPDATE orders SET boleta_id = ?, boleta_emitida = 1 WHERE id = ?`,
+            [boletas[0].id, orderId]
+          )
+        }
       }
     }
 
@@ -135,7 +179,7 @@ export async function GET(
       customer_phone: order.phone || '',
       customer_rut: order.rut || '55555555-5',
       boleta_id: order.boleta_id,
-      boleta_emitida: order.boleta_emitida || 0,
+      boleta_emitida: order.boleta_emitida || (boletaInfo ? 1 : 0),
       boleta_info: boletaInfo,
       created_at: order.created_at,
       updated_at: order.updated_at,
