@@ -1,3 +1,5 @@
+// components/product-card.tsx - VERSIÓN CORREGIDA
+
 "use client"
 
 import type React from "react"
@@ -42,14 +44,35 @@ interface ProductCardProps {
   index?: number
 }
 
-// Función para corregir URL de imagen (replicada aquí para evitar dependencias)
-const correctImageUrl = (url: string): string => {
-  if (!url) return '/uploads/products/diverse-products-still-life.png'
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  if (url.startsWith('/')) return url
-  if (url.startsWith('uploads/')) return `/${url}`
-  return `/uploads/products/${url}`
-}
+// 🔥 CORREGIDO: Usar el mismo método que ProductDetailView
+const getImageUrl = (url: string): string => {
+  if (!url) return '/uploads/products/diverse-products-still-life.png';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/api/images/')) return url;
+  
+  // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
+  if (url.includes('/uploads/products/')) {
+    const filename = url.split('/uploads/products/')[1];
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  }
+  
+  if (url.startsWith('/uploads/')) {
+    const filename = url.replace('/uploads/products/', '');
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  }
+  
+  if (url.startsWith('uploads/')) {
+    const filename = url.replace('uploads/products/', '');
+    const encoded = encodeURIComponent(filename);
+    return `/api/images/${encoded}`;
+  }
+  
+  // Si es solo el nombre del archivo
+  const encoded = encodeURIComponent(url);
+  return `/api/images/${encoded}`;
+};
 
 const formatCLP = (price: number): string => {
   return Math.round(price).toLocaleString('es-CL');
@@ -135,14 +158,14 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   
-  // Asegurar que todas las URLs de imágenes están corregidas
+  // 🔥 CORREGIDO: Usar getImageUrl para todas las imágenes
   const allImages = [
-    correctImageUrl(product.image),
-    ...(product.additionalImages || []).map(img => correctImageUrl(img))
-  ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png'); // filtramos la imagen por defecto para que solo aparezca si no hay otra
+    getImageUrl(product.image),
+    ...(product.additionalImages || []).map(img => getImageUrl(img))
+  ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png');
 
   // Si no hay imágenes, usar la imagen por defecto
-  const imagesToShow = allImages.length > 0 ? allImages : ['/uploads/products/diverse-products-still-life.png'];
+  const imagesToShow = allImages.length > 0 ? allImages : ['/api/images/diverse-products-still-life.png'];
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -184,7 +207,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                   className="relative w-full h-full"
                 >
                   <Image
-                    src={imagesToShow[currentImageIndex] || "/uploads/products/diverse-products-still-life.png"}
+                    src={imagesToShow[currentImageIndex] || "/api/images/diverse-products-still-life.png"}
                     alt={product.name}
                     fill
                     className="object-cover"
@@ -192,7 +215,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                     unoptimized={true}
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      target.src = '/uploads/products/diverse-products-still-life.png';
+                      target.src = '/api/images/diverse-products-still-life.png';
                     }}
                   />
                 </motion.div>
