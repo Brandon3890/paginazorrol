@@ -124,16 +124,12 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
         setProduct(productData)
         setImageTimestamp(Date.now())
 
-        // 🔥 Cargar productos recomendados
         if (productData.recommendedProducts?.length) {
           const allProducts = useProductStore.getState().products
           const recs = allProducts.filter(p =>
             productData.recommendedProducts?.includes(p.id) && p.isActive
           )
           setRecommendedProducts(recs)
-          console.log('✅ Productos recomendados cargados:', recs.length)
-        } else {
-          setRecommendedProducts([])
         }
       } catch (error) {
         console.error('Error cargando producto:', error)
@@ -700,7 +696,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             </div>
           </motion.div>
 
-          {/* 🔥 SPECS - AHORA CON col-span-2 PARA OCUPAR TODO EL ANCHO */}
+          {/* 🔥 SPECS - DENTRO DEL GRID CON col-span-2 */}
           <motion.div
             className="mt-10 border-2 border-gray-200 rounded-2xl p-6 col-span-1 lg:col-span-2"
             initial={{ opacity: 0, y: 30 }}
@@ -726,7 +722,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </motion.div>
         </div>
 
-        {/* 🔥 PRODUCTOS RECOMENDADOS - SIEMPRE VISIBLES */}
+        {/* 🔥 PRODUCTOS RECOMENDADOS - FUERA DEL GRID */}
         {recommendedProducts.length > 0 && (
           <motion.div
             className="mt-16"
