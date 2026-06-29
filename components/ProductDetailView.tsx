@@ -121,15 +121,24 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return
         }
 
+        console.log('📦 Producto cargado:', productData)
+        console.log('📋 Specs recibidos:', productData.specs)
+        console.log('📋 Recommended Products:', productData.recommendedProducts)
+
         setProduct(productData)
         setImageTimestamp(Date.now())
 
+        // Cargar productos recomendados desde el store
         if (productData.recommendedProducts?.length) {
           const allProducts = useProductStore.getState().products
           const recs = allProducts.filter(p =>
             productData.recommendedProducts?.includes(p.id) && p.isActive
           )
+          console.log('✅ Productos recomendados encontrados:', recs.length)
           setRecommendedProducts(recs)
+        } else {
+          console.log('ℹ️ No hay productos recomendados para este producto')
+          setRecommendedProducts([])
         }
       } catch (error) {
         console.error('Error cargando producto:', error)
@@ -314,6 +323,12 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   const currentMedia = allMedia[selectedMediaIndex]
   const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
+
+  // 🔥 LOGS DE DEPURACIÓN
+  console.log('🔍 Product specs count:', productSpecs.length)
+  console.log('🔍 Recommended products count:', recommendedProducts.length)
+  console.log('🔍 Product specs data:', productSpecs)
+  console.log('🔍 Recommended products data:', recommendedProducts)
 
   return (
     <div className="min-h-screen bg-white">
@@ -696,7 +711,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             </div>
           </motion.div>
 
-          {/* 🔥 SPECS - DENTRO DEL GRID CON col-span-2 */}
+          {/* 🔥 SPECS - SIEMPRE VISIBLES, CON col-span-2 */}
           <motion.div
             className="mt-10 border-2 border-gray-200 rounded-2xl p-6 col-span-1 lg:col-span-2"
             initial={{ opacity: 0, y: 30 }}
@@ -705,7 +720,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           >
             <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
 
-            {productSpecs.length > 0 ? (
+            {productSpecs && productSpecs.length > 0 ? (
               <div className="space-y-2 text-sm">
                 {productSpecs.map((spec, index) => (
                   <div key={index} className="flex bg-gray-100 p-2 rounded">
@@ -716,14 +731,14 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
-                No hay caracteristicas agregadas para este producto.
+                No hay características agregadas para este producto.
               </p>
             )}
           </motion.div>
         </div>
 
-        {/* 🔥 PRODUCTOS RECOMENDADOS - FUERA DEL GRID */}
-        {recommendedProducts.length > 0 && (
+        {/* 🔥 PRODUCTOS RECOMENDADOS - SIEMPRE VISIBLES, FUERA DEL GRID */}
+        {recommendedProducts && recommendedProducts.length > 0 ? (
           <motion.div
             className="mt-16"
             initial={{ opacity: 0, y: 30 }}
@@ -797,6 +812,12 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
               ))}
             </div>
           </motion.div>
+        ) : (
+          // Si no hay productos recomendados, mostramos un mensaje (opcional)
+          <div className="mt-16 text-center text-gray-500">
+            {/* Puedes descomentar esto si quieres mostrar un mensaje cuando no hay recomendados */}
+            {/* <p>No hay productos recomendados para este artículo.</p> */}
+          </div>
         )}
       </main>
       <Footer />
