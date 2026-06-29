@@ -577,32 +577,53 @@ const correctImageUrl = (url: string) => {
             <div className="mt-8 border-t border-gray-100"></div>
 
             <div className="mt-auto pt-4">
-              <motion.div 
-                className="mb-6"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.55 }}
+              {/* DESCRIPCIÓN CON SCROLL */}
+            <motion.div 
+              className="mt-2 flex-1"
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              transition={{ delay: 0.45 }}
+            >
+              <div 
+                className={`
+                  text-sm font-normal font-poppins leading-relaxed text-gray-600 h-full w-full pr-2
+                  
+                  max-h-[180px]      /* Móvil (por defecto) */
+                  sm:max-h-[200px]   /* Teléfonos grandes */
+                  md:max-h-[240px]   /* Tablets */
+                  lg:max-h-[240px]   /* Laptops */
+                  xl:max-h-[350px]   /* Desktop */
+                  2xl:max-h-[380px]  /* Pantallas grandes */
+                `}
+                style={{ 
+                  fontWeight: 500,
+                  overflowY: 'auto',
+                  paddingRight: '8px',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#C2410C #f1f1f1'
+                }}
               >
-                {product.originalPrice && product.originalPrice > product.price ? (
-                  <div className="flex items-start gap-3">
-                    <span className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins" style={{ backgroundColor: "rgba(228, 78, 43)" }}>
-                      {discountPercent}%
-                    </span>
-                    <div className="flex flex-col">
-                      <span className="text-3xl font-semibold font-poppins text-black">
-                        ${formatCLP(product.price)}
-                      </span>
-                      <span className="text-xl font-extralight italic font-poppins line-through text-gray-400 mt-1">
-                        ${formatCLP(product.originalPrice)}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-3xl font-semibold font-poppins text-black">
-                    ${formatCLP(product.price)}
-                  </span>
-                )}
-              </motion.div>
+                {product.description}
+              </div>
+              
+              {/* Estilos para el scroll en navegadores WebKit */}
+              <style jsx>{`
+                div::-webkit-scrollbar {
+                  width: 6px;
+                }
+                div::-webkit-scrollbar-track {
+                  background: #f1f1f1;
+                  border-radius: 10px;
+                }
+                div::-webkit-scrollbar-thumb {
+                  background: #C2410C;
+                  border-radius: 10px;
+                }
+                div::-webkit-scrollbar-thumb:hover {
+                  background: #9A3412;
+                }
+              `}</style>
+            </motion.div>
 
               <div className="flex items-center gap-3">
                 <motion.div
@@ -835,3 +856,5 @@ const correctImageUrl = (url: string) => {
     </div>
   )
 }
+
+
