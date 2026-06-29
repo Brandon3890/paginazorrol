@@ -25,7 +25,6 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
-    console.log('📁 Creada carpeta:', uploadDir);
   }
 
   let extension = file.type.split('/')[1] || 'png';
@@ -41,8 +40,6 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   const filepath = path.join(uploadDir, uniqueFilename);
 
   fs.writeFileSync(filepath, buffer);
-  console.log(`✅ Imagen guardada: ${filepath}`);
-  console.log(`📸 Nombre de archivo: ${uniqueFilename}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
@@ -141,7 +138,6 @@ async function notifyUsersAboutPriceDrop(
 
     // Verificar que el precio original sea mayor que el precio de oferta
     if (realOriginalPrice <= newPrice) {
-      console.log('⚠️ El precio original no es mayor que el precio de oferta');
       return { notified: false, reason: 'Precio original no es mayor que precio de oferta' };
     }
 
@@ -149,7 +145,6 @@ async function notifyUsersAboutPriceDrop(
     console.log('Usuarios encontrados con este producto en favoritos:', users.length);
 
     if (users.length === 0) {
-      console.log('No hay usuarios para notificar');
       return { notified: false, reason: 'Sin usuarios para notificar', usersFound: 0 };
     }
 
@@ -158,19 +153,12 @@ async function notifyUsersAboutPriceDrop(
     // CALCULAR EL DESCUENTO REAL
     const discountPercent = Math.round(((realOriginalPrice - newPrice) / realOriginalPrice) * 100);
     
-    console.log('📊 Cálculo del descuento:');
-    console.log('  Precio original:', realOriginalPrice);
-    console.log('  Precio de oferta:', newPrice);
-    console.log('  Descuento calculado:', discountPercent, '%');
-    console.log('  Emails a notificar:', emails.length);
-
+   
     if (emails.length === 0) {
-      console.log('No hay emails válidos para notificar');
       return { notified: false, reason: 'No hay emails válidos' };
     }
 
     if (discountPercent <= 0) {
-      console.log('⚠️ Descuento inválido (0% o negativo), no se envía notificación');
       return { notified: false, reason: 'Descuento inválido' };
     }
 
