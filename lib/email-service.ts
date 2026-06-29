@@ -931,6 +931,7 @@ export async function sendContactEmail(formData: {
   }
 }
 
+
 export async function sendProductOnSaleEmail(
   productName: string,
   productPrice: number,
@@ -956,7 +957,6 @@ export async function sendProductOnSaleEmail(
     }).format(price);
   };
 
-  // Funcion para obtener URL correcta de la imagen
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) {
       return process.env.NEXTAUTH_URL + '/diverse-products-still-life.png';
@@ -977,6 +977,25 @@ export async function sendProductOnSaleEmail(
     return process.env.NEXTAUTH_URL + '/uploads/products/' + imagePath;
   };
 
+  // 🔥 CALCULAR EL DESCUENTO REAL basado en los precios
+  const calculateRealDiscount = (originalPrice: number, salePrice: number) => {
+    if (originalPrice <= 0 || salePrice >= originalPrice) return 0;
+    const discount = ((originalPrice - salePrice) / originalPrice) * 100;
+    return Math.round(discount);
+  };
+
+  // Usar el descuento real calculado
+  const realDiscountPercent = calculateRealDiscount(productOriginalPrice, productPrice);
+  
+  // Si el descuento calculado es 0 o negativo, usar el que viene por parámetro
+  const finalDiscountPercent = realDiscountPercent > 0 ? realDiscountPercent : discountPercent;
+
+  console.log('📊 Cálculo de descuento para email:');
+  console.log('  Precio original:', productOriginalPrice);
+  console.log('  Precio oferta:', productPrice);
+  console.log('  Descuento calculado:', finalDiscountPercent, '%');
+  console.log('  Descuento recibido por parámetro:', discountPercent, '%');
+
   const productUrl = process.env.NEXTAUTH_URL + '/products/' + productId;
   const imageUrl = getImageUrl(productImage);
   
@@ -994,116 +1013,191 @@ export async function sendProductOnSaleEmail(
       margin: 0;
       padding: 0;
       background-color: #f3f4f6;
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
-    .container {
-      max-width: 700px;
+    
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f3f4f6;
+      padding: 20px 0;
+    }
+    
+    .main {
+      background: #ffffff;
+      max-width: 600px;
       margin: 0 auto;
-      background-color: #ffffff;
-      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
+    
     .header {
       background: #111827;
-      padding: 30px;
+      padding: 30px 40px;
     }
+    
     .header h1 {
       margin: 0;
       color: #ffffff;
       font-size: 24px;
+      font-weight: 700;
     }
+    
     .header p {
       margin: 5px 0 0 0;
       color: #d1d5db;
       font-size: 14px;
     }
+    
     .header .date {
       color: #d1d5db;
       font-size: 13px;
       margin: 5px 0 0 0;
       text-align: right;
     }
+    
     .content {
-      padding: 30px;
+      padding: 40px 40px 30px;
     }
+    
     .greeting {
-      font-size: 22px;
-      font-weight: bold;
+      font-size: 24px;
+      font-weight: 700;
       color: #111827;
-      margin: 0 0 15px 0;
+      margin: 0 0 12px 0;
     }
+    
     .description {
       color: #374151;
-      font-size: 14px;
-      margin: 0 0 10px 0;
+      font-size: 15px;
+      line-height: 1.6;
+      margin: 0 0 25px 0;
     }
+    
     .offer-box {
       background: #fef2f2;
       border-left: 4px solid #C2410C;
-      border-radius: 8px;
+      border-radius: 4px;
       padding: 16px 20px;
-      margin: 20px 0;
+      margin: 0 0 25px 0;
     }
+    
     .offer-box p {
       margin: 0;
       font-size: 15px;
       color: #374151;
       line-height: 1.6;
     }
+    
     .offer-box strong {
       color: #C2410C;
     }
+    
     .product-card {
-      display: flex;
-      align-items: center;
-      gap: 24px;
       background: #f9fafb;
       border: 2px solid #e5e7eb;
       border-radius: 12px;
-      padding: 24px;
-      margin: 20px 0;
+      padding: 16px 20px;
+      margin: 0 0 25px 0;
+      display: table;
+      width: 100%;
+      box-sizing: border-box;
     }
+    
+    .product-row {
+      display: table-row;
+    }
+    
+    .product-cell {
+      display: table-cell;
+      vertical-align: middle;
+      padding: 0 8px;
+    }
+    
+    .product-image-cell {
+      width: 60px;
+      padding-right: 12px;
+    }
+    
     .product-image {
-      width: 130px;
-      height: 130px;
+      width: 60px;
+      height: 60px;
       border-radius: 8px;
       object-fit: cover;
       background-color: #e5e7eb;
-      flex-shrink: 0;
+      display: block;
     }
-    .product-info {
-      flex: 1;
+    
+    .product-name-cell {
+      white-space: nowrap;
+      padding-right: 16px;
+      width: auto;
     }
+    
     .product-name {
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 600;
       color: #111827;
-      margin: 0 0 12px 0;
+      margin: 0;
+      white-space: nowrap;
+      display: inline-block;
     }
-    .price-container {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+    
+    .prices-cell {
+      text-align: right;
+      white-space: nowrap;
+      padding-left: 16px;
+      width: auto;
     }
+    
+    .prices-container {
+      display: inline-block;
+      white-space: nowrap;
+    }
+    
+    .price-item {
+      display: inline-block;
+      margin: 0 6px;
+      vertical-align: middle;
+    }
+    
     .current-price {
-      font-size: 26px;
+      font-size: 20px;
       font-weight: 700;
       color: #C2410C;
     }
+    
     .original-price {
-      font-size: 18px;
+      font-size: 15px;
       color: #9ca3af;
       text-decoration: line-through;
     }
+    
     .discount-badge {
       display: inline-block;
       background: #dcfce7;
       color: #166534;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 600;
-      padding: 4px 14px;
+      padding: 2px 10px;
       border-radius: 20px;
+      white-space: nowrap;
     }
+    
+    .price-separator {
+      display: inline-block;
+      margin: 0 4px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    
+    .btn-container {
+      text-align: center;
+      margin: 0 0 25px 0;
+    }
+    
     .btn-primary {
       display: inline-block;
       background: #C2410C;
@@ -1113,182 +1207,269 @@ export async function sendProductOnSaleEmail(
       font-weight: 600;
       font-size: 16px;
       border-radius: 8px;
+      text-align: center;
     }
+    
     .btn-primary:hover {
       background: #9A3412;
     }
-    .text-center {
-      text-align: center;
-    }
+    
     .details-table {
       width: 100%;
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       border-collapse: collapse;
+      margin: 0 0 30px 0;
     }
+    
     .details-table td {
       padding: 12px 20px;
       font-size: 14px;
       border-bottom: 1px solid #e5e7eb;
     }
+    
     .details-table tr:last-child td {
       border-bottom: none;
     }
+    
     .details-table .label {
       color: #6b7280;
+      font-weight: 400;
     }
+    
     .details-table .value {
       color: #111827;
       font-weight: 500;
       text-align: right;
     }
+    
     .details-table .value-sale {
       color: #C2410C;
       font-weight: 700;
       text-align: right;
     }
+    
     .hr-divider {
       border: none;
       border-top: 1px solid #e5e7eb;
-      margin: 30px 0;
+      margin: 25px 0;
     }
+    
     .footer {
       background: #f9fafb;
-      padding: 24px 30px;
+      padding: 20px 40px;
       text-align: center;
       border-top: 1px solid #e5e7eb;
     }
+    
     .footer p {
       margin: 0;
       font-size: 12px;
       color: #9ca3af;
     }
-    @media (max-width: 480px) {
-      .product-card {
-        flex-direction: column;
-        text-align: center;
+    
+    @media (max-width: 500px) {
+      .header {
+        padding: 20px;
       }
-      .product-image {
-        width: 150px;
-        height: 150px;
-      }
-      .price-container {
-        justify-content: center;
-      }
+      
       .header h1 {
         font-size: 20px;
       }
-      .current-price {
-        font-size: 24px;
+      
+      .content {
+        padding: 25px 20px;
       }
+      
+      .product-card {
+        padding: 12px 16px;
+      }
+      
+      .product-image-cell {
+        width: 45px;
+        padding-right: 8px;
+      }
+      
+      .product-image {
+        width: 45px;
+        height: 45px;
+      }
+      
+      .product-name {
+        font-size: 13px;
+      }
+      
+      .current-price {
+        font-size: 17px;
+      }
+      
+      .original-price {
+        font-size: 13px;
+      }
+      
+      .discount-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+      }
+      
+      .price-item {
+        margin: 0 4px;
+      }
+      
+      .price-separator {
+        margin: 0 2px;
+        font-size: 12px;
+      }
+      
       .details-table td {
         padding: 10px 14px;
         font-size: 13px;
+      }
+      
+      .btn-primary {
+        display: block;
+        padding: 16px 20px;
+      }
+      
+      .footer {
+        padding: 15px 20px;
+      }
+    }
+    
+    @media (max-width: 400px) {
+      .product-name-cell {
+        max-width: 70px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .product-name {
+        max-width: 70px;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
     }
   </style>
 </head>
 <body>
 
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:20px 0;">
-<tr>
-<td align="center">
-
-<table width="700" cellpadding="0" cellspacing="0" class="container" style="background:#ffffff;border:1px solid #e5e7eb;">
-
-<tr>
-<td class="header" style="background:#111827;padding:30px;">
-  <table width="100%">
-    <tr>
-      <td align="left">
-        <h1 style="margin:0;color:#ffffff;font-size:24px;">Zorro Ludico</h1>
-        <p style="margin:5px 0 0 0;color:#d1d5db;font-size:14px;">Tu producto favorito esta en oferta</p>
-      </td>
-      <td align="right" style="color:#d1d5db;font-size:13px;">
-        ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}
-      </td>
-    </tr>
-  </table>
-</td>
-</tr>
-
-<tr>
-<td class="content" style="padding:30px;">
-
-<p class="greeting" style="font-size:22px;font-weight:bold;color:#111827;margin:0 0 15px 0;">
-  Buenos noticias!
-</p>
-
-<p class="description" style="color:#374151;font-size:14px;margin:0 0 10px 0;">
-  El producto que marcaste como favorito ha bajado de precio.
-</p>
-
-<p class="description" style="color:#374151;font-size:14px;margin:0 0 30px 0;">
-  No dejes pasar esta oportunidad.
-</p>
-
-<div class="offer-box" style="background:#fef2f2;border-left:4px solid #C2410C;border-radius:8px;padding:16px 20px;margin:20px 0;">
-  <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;">
-    Oferta especial: <strong>${discountPercent}%</strong> de descuento en este producto.
-  </p>
-</div>
-
-<div class="product-card" style="display:flex;align-items:center;gap:24px;background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:24px;margin:20px 0;">
-  <img src="${imageUrl}" alt="${productName}" class="product-image" style="width:130px;height:130px;border-radius:8px;object-fit:cover;background:#e5e7eb;flex-shrink:0;" onerror="this.src='${process.env.NEXTAUTH_URL}/diverse-products-still-life.png'">
-  <div class="product-info" style="flex:1;">
-    <p class="product-name" style="font-size:18px;font-weight:600;color:#111827;margin:0 0 12px 0;">${productName}</p>
-    <div class="price-container" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-      <span class="current-price" style="font-size:26px;font-weight:700;color:#C2410C;">${formatPrice(productPrice)}</span>
-      <span class="original-price" style="font-size:18px;color:#9ca3af;text-decoration:line-through;">${formatPrice(productOriginalPrice)}</span>
-      <span class="discount-badge" style="display:inline-block;background:#dcfce7;color:#166534;font-size:14px;font-weight:600;padding:4px 14px;border-radius:20px;">
-        -${discountPercent}%
-      </span>
-    </div>
-  </div>
-</div>
-
-<div class="text-center" style="text-align:center;padding:20px 0;">
-  <a href="${productUrl}" class="btn-primary" style="display:inline-block;background:#C2410C;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:16px;border-radius:8px;">
-    Ver Producto
-  </a>
-</div>
-
-<hr class="hr-divider" style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;">
-
-<table class="details-table" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-collapse:collapse;">
+<table width="100%" cellpadding="0" cellspacing="0" class="wrapper">
   <tr>
-    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Producto</td>
-    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${productName}</td>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" class="main" style="background:#ffffff;max-width:600px;border-radius:8px;overflow:hidden;">
+        
+        <tr>
+          <td class="header" style="background:#111827;padding:30px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="left">
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zorro Ludico</h1>
+                  <p style="margin:5px 0 0 0;color:#d1d5db;font-size:14px;">Tu producto favorito está en oferta</p>
+                </td>
+                <td align="right" style="color:#d1d5db;font-size:13px;white-space:nowrap;">
+                  ${new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        
+        <tr>
+          <td class="content" style="padding:40px 40px 30px;">
+            
+            <p class="greeting" style="font-size:24px;font-weight:700;color:#111827;margin:0 0 12px 0;">
+              ¡Buenas noticias!
+            </p>
+            
+            <p class="description" style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 25px 0;">
+              El producto que marcaste como favorito ha bajado de precio. No dejes pasar esta oportunidad.
+            </p>
+            
+            <div class="offer-box" style="background:#fef2f2;border-left:4px solid #C2410C;border-radius:4px;padding:16px 20px;margin:0 0 25px 0;">
+              <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;">
+                Oferta especial: <strong style="color:#C2410C;">${finalDiscountPercent}%</strong> de descuento en este producto.
+              </p>
+            </div>
+            
+            <div class="product-card" style="background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin:0 0 25px 0;display:table;width:100%;box-sizing:border-box;">
+              <div class="product-row" style="display:table-row;">
+                
+                <div class="product-cell product-image-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;width:60px;padding-right:12px;">
+                  <img src="${imageUrl}" alt="${productName}" class="product-image" style="width:60px;height:60px;border-radius:8px;object-fit:cover;background-color:#e5e7eb;display:block;" onerror="this.src='${process.env.NEXTAUTH_URL}/diverse-products-still-life.png'">
+                </div>
+                
+                <div class="product-cell product-name-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;white-space:nowrap;padding-right:16px;width:auto;">
+                  <span class="product-name" style="font-size:15px;font-weight:600;color:#111827;margin:0;white-space:nowrap;display:inline-block;">
+                    ${productName}
+                  </span>
+                </div>
+                
+                <div class="product-cell prices-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;text-align:right;white-space:nowrap;padding-left:16px;width:auto;">
+                  <div class="prices-container" style="display:inline-block;white-space:nowrap;">
+                    
+                    <span class="price-item current-price" style="display:inline-block;margin:0 6px;vertical-align:middle;font-size:20px;font-weight:700;color:#C2410C;">
+                      ${formatPrice(productPrice)}
+                    </span>
+                    
+                    <span class="price-separator" style="display:inline-block;margin:0 4px;color:#9ca3af;font-size:14px;">|</span>
+                    
+                    <span class="price-item original-price" style="display:inline-block;margin:0 6px;vertical-align:middle;font-size:15px;color:#9ca3af;text-decoration:line-through;">
+                      ${formatPrice(productOriginalPrice)}
+                    </span>
+                    
+                    <span class="price-separator" style="display:inline-block;margin:0 4px;color:#9ca3af;font-size:14px;">|</span>
+                    
+                    <span class="price-item discount-badge" style="display:inline-block;margin:0 6px;vertical-align:middle;background:#dcfce7;color:#166534;font-size:12px;font-weight:600;padding:2px 10px;border-radius:20px;white-space:nowrap;">
+                      -${finalDiscountPercent}%
+                    </span>
+                    
+                  </div>
+                </div>
+                
+              </div>
+            </div>
+            
+            <div class="btn-container" style="text-align:center;margin:0 0 25px 0;">
+              <a href="${productUrl}" class="btn-primary" style="display:inline-block;background:#C2410C;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:16px;border-radius:8px;text-align:center;">
+                Ver Producto
+              </a>
+            </div>
+            
+            <hr class="hr-divider" style="border:none;border-top:1px solid #e5e7eb;margin:25px 0;">
+            
+            <table class="details-table" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-collapse:collapse;margin:0 0 30px 0;">
+              <tr>
+                <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:400;border-bottom:1px solid #e5e7eb;">Producto</td>
+                <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${productName}</td>
+              </tr>
+              <tr>
+                <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:400;border-bottom:1px solid #e5e7eb;">Precio original</td>
+                <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productOriginalPrice)}</td>
+              </tr>
+              <tr>
+                <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:400;border-bottom:1px solid #e5e7eb;">Precio de oferta</td>
+                <td class="value-sale" style="padding:12px 20px;font-size:14px;color:#C2410C;font-weight:700;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productPrice)}</td>
+              </tr>
+              <tr>
+                <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;font-weight:400;border-bottom:none;">Descuento</td>
+                <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:none;">${finalDiscountPercent}%</td>
+              </tr>
+            </table>
+            
+          </td>
+        </tr>
+        
+        <tr>
+          <td class="footer" style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">
+              Zorro Ludico &bull; Tu tienda de confianza
+            </p>
+          </td>
+        </tr>
+        
+      </table>
+    </td>
   </tr>
-  <tr>
-    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Precio original</td>
-    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productOriginalPrice)}</td>
-  </tr>
-  <tr>
-    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Precio de oferta</td>
-    <td class="value-sale" style="padding:12px 20px;font-size:14px;color:#C2410C;font-weight:700;text-align:right;border-bottom:1px solid #e5e7eb;">${formatPrice(productPrice)}</td>
-  </tr>
-  <tr>
-    <td class="label" style="padding:12px 20px;font-size:14px;color:#6b7280;border-bottom:none;">Descuento</td>
-    <td class="value" style="padding:12px 20px;font-size:14px;color:#111827;font-weight:500;text-align:right;border-bottom:none;">${discountPercent}%</td>
-  </tr>
-</table>
-
-</td>
-</tr>
-
-<tr>
-<td class="footer" style="background:#f9fafb;padding:24px 30px;text-align:center;border-top:1px solid #e5e7eb;">
-  <p style="margin:0;font-size:12px;color:#9ca3af;">
-    Zorro Ludico
-  </p>
-</td>
-</tr>
-
-</table>
-
-</td>
-</tr>
 </table>
 
 </body>
@@ -1301,26 +1482,26 @@ export async function sendProductOnSaleEmail(
     const mailOptions = {
       from: process.env.SMTP_FROM || '"Zorro Ludico" <ofertas@zorroludico.cl>',
       bcc: usersEmails.join(','),
-      subject: 'Oferta! ' + productName + ' - ' + discountPercent + '% de descuento',
+      subject: `¡Oferta! ${productName} - ${finalDiscountPercent}% de descuento`,
       html: emailTemplate,
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email de oferta enviado a', usersEmails.length, 'usuarios');
+    console.log('✅ Email de oferta enviado a', usersEmails.length, 'usuarios');
+    console.log('📊 Descuento mostrado en el correo:', finalDiscountPercent, '%');
     return true;
 
   } catch (error) {
-    console.error('Error enviando email de oferta:', error);
+    console.error('❌ Error enviando email de oferta:', error);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DEV] Simulacion de envio de oferta');
+      console.log('[DEV] Simulación de envío de oferta');
       return true;
     }
     
     return false;
   }
 }
-
 
 // Función auxiliar para escapar HTML
 function escapeHtml(text: string): string {

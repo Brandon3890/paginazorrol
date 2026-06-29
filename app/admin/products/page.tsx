@@ -8,7 +8,7 @@ import { useProductStore } from "@/lib/product-store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent, AlertTriangle, CheckCircle } from "lucide-react"
+import { Pencil, Trash2, Plus, RotateCcw, Trash, ArrowLeft, RefreshCw, ImageOff, Percent, AlertTriangle, CheckCircle, Search, X } from "lucide-react"
 import Link from "next/link"
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { Input } from "@/components/ui/input"
 
 interface Product {
   id: number;
@@ -137,6 +138,9 @@ export default function AdminProductsPage() {
   const [localProducts, setLocalProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   
+  // 🔥 NUEVO: Estado para la búsqueda
+  const [searchQuery, setSearchQuery] = useState("")
+  
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false)
   const [reactivateDialogOpen, setReactivateDialogOpen] = useState(false)
@@ -200,7 +204,40 @@ export default function AdminProductsPage() {
   }, [fetchProducts])
 
   // ============================================
-  // ELIMINAR PRODUCTO (DESACTIVAR) - Solo cambia is_active a 0
+  // 🔥 FILTRAR PRODUCTOS POR BÚSQUEDA
+  // ============================================
+  const filterProductsBySearch = (products: Product[], query: string) => {
+    if (!query.trim()) return products
+    
+    const searchLower = query.toLowerCase().trim()
+    return products.filter(product => 
+      product.name.toLowerCase().includes(searchLower) ||
+      product.description.toLowerCase().includes(searchLower) ||
+      product.category.toLowerCase().includes(searchLower) ||
+      product.subcategory.toLowerCase().includes(searchLower) ||
+      product.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
+      product.id.toString().includes(searchLower)
+    )
+  }
+
+  // Aplicar filtro de búsqueda a los productos
+  const activeProducts = filterProductsBySearch(
+    localProducts.filter((p) => p.isActive),
+    searchQuery
+  )
+  
+  const inactiveProducts = filterProductsBySearch(
+    localProducts.filter((p) => !p.isActive),
+    searchQuery
+  )
+
+  // Limpiar búsqueda
+  const clearSearch = () => {
+    setSearchQuery("")
+  }
+
+  // ============================================
+  // ELIMINAR PRODUCTO (DESACTIVAR)
   // ============================================
   const handleDeactivate = (id: number, productName: string) => {
     setProductToDelete(id)
@@ -214,7 +251,6 @@ export default function AdminProductsPage() {
       try {
         console.log(`🗑️ Desactivando producto ${productToDelete}...`);
         
-        // Usar la ruta de desactivación (DELETE normal)
         const response = await fetch(`/api/products/${productToDelete}`, {
           method: 'DELETE',
           headers: {
@@ -236,7 +272,6 @@ export default function AdminProductsPage() {
 
         console.log('✅ Producto desactivado correctamente');
         
-        // Actualizar el estado local directamente
         setLocalProducts(prevProducts => 
           prevProducts.map(p => 
             p.id === productToDelete ? { ...p, isActive: false } : p
@@ -257,7 +292,6 @@ export default function AdminProductsPage() {
           duration: 3000,
         });
         
-        // Recargar en segundo plano
         setTimeout(() => {
           if (!isFetchingRef.current) {
             isFetchingRef.current = true
@@ -282,7 +316,7 @@ export default function AdminProductsPage() {
   }
 
   // ============================================
-  // ELIMINAR PRODUCTO PERMANENTEMENTE - Elimina físicamente de la BD
+  // ELIMINAR PRODUCTO PERMANENTEMENTE
   // ============================================
   const handlePermanentDelete = (id: number, productName: string) => {
     setProductToPermanentlyDelete(id)
@@ -296,7 +330,6 @@ export default function AdminProductsPage() {
       try {
         console.log(`💀 Eliminando permanentemente producto ${productToPermanentlyDelete}...`);
         
-        // Usar la ruta de eliminación permanente
         const response = await fetch(`/api/products/${productToPermanentlyDelete}/permanent`, {
           method: 'DELETE',
           headers: {
@@ -319,7 +352,6 @@ export default function AdminProductsPage() {
         const result = await response.json();
         console.log('✅ Producto eliminado permanentemente:', result);
         
-        // Actualizar el estado local directamente (eliminar el producto de la lista)
         setLocalProducts(prevProducts => 
           prevProducts.filter(p => p.id !== productToPermanentlyDelete)
         );
@@ -338,7 +370,6 @@ export default function AdminProductsPage() {
           duration: 3000,
         });
         
-        // Recargar en segundo plano para sincronizar
         setTimeout(() => {
           if (!isFetchingRef.current) {
             isFetchingRef.current = true
@@ -599,9 +630,9 @@ export default function AdminProductsPage() {
     );
   };
 
-  const activeProducts = localProducts.filter((p) => p.isActive)
-  const inactiveProducts = localProducts.filter((p) => !p.isActive)
-
+  // ============================================
+  // RENDER
+  // ============================================
   if (loading && localProducts.length === 0) {
     return (
       <div className="min-h-screen bg-background">
@@ -628,30 +659,64 @@ export default function AdminProductsPage() {
               Volver al Dashboard
             </Button>
           </Link>
+          
+          {/* 🔥 HEADER CON BÚSQUEDA A LA IZQUIERDA DEL BOTÓN */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Gestión de Productos</h1>
               <p className="text-sm md:text-base text-muted-foreground">
-                {localProducts.length} productos en total ({activeProducts.length} activos, {inactiveProducts.length} inactivos)
+                {localProducts.length} productos en total ({localProducts.filter(p => p.isActive).length} activos, {localProducts.filter(p => !p.isActive).length} inactivos)
               </p>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRefresh}
-                disabled={isFetchingRef.current}
-                className="flex items-center gap-1"
-              >
-                <RefreshCw className={`w-4 h-4 ${isFetchingRef.current ? 'animate-spin' : ''}`} />
-                {isFetchingRef.current ? 'Actualizando...' : 'Actualizar'}
-              </Button>
-              <Link href="/admin/products/new">
-                <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412]" disabled={actionLoading}>
-                  <Plus className="w-4 h-4" />
-                  Añadir Producto
+            
+            {/* 🔥 FILA DE BÚSQUEDA + BOTONES - AHORA LA BÚSQUEDA ESTÁ A LA IZQUIERDA */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
+              {/* 🔥 BARRA DE BÚSQUEDA - A LA IZQUIERDA */}
+              <div className="relative w-full sm:w-64 md:w-80">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="Buscar productos..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-10 py-2 w-full"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={clearSearch}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                    </button>
+                  )}
+                </div>
+                {searchQuery && (
+                  <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap">
+                    Mostrando: <strong className="text-foreground">"{searchQuery}"</strong>
+                  </p>
+                )}
+              </div>
+
+              {/* 🔥 BOTONES - A LA DERECHA */}
+              <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRefresh}
+                  disabled={isFetchingRef.current}
+                  className="flex items-center gap-1 flex-1 sm:flex-none"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isFetchingRef.current ? 'animate-spin' : ''}`} />
+                  {isFetchingRef.current ? 'Actualizando...' : 'Actualizar'}
                 </Button>
-              </Link>
+                <Link href="/admin/products/new" className="flex-1 sm:flex-none">
+                  <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412] w-full sm:w-auto" disabled={actionLoading}>
+                    <Plus className="w-4 h-4" />
+                    Añadir Producto
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -677,7 +742,7 @@ export default function AdminProductsPage() {
             {activeProducts.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No hay productos activos
+                  {searchQuery ? `No hay productos activos que coincidan con "${searchQuery}"` : "No hay productos activos"}
                 </CardContent>
               </Card>
             ) : (
@@ -689,7 +754,7 @@ export default function AdminProductsPage() {
             {inactiveProducts.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  No hay productos inactivos
+                  {searchQuery ? `No hay productos inactivos que coincidan con "${searchQuery}"` : "No hay productos inactivos"}
                 </CardContent>
               </Card>
             ) : (

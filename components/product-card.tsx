@@ -1,4 +1,4 @@
-// components/product-card.tsx - VERSIÓN CORREGIDA
+// components/product-card.tsx - VERSIÓN CORREGIDA (Transición de imágenes con FADE)
 
 "use client"
 
@@ -51,7 +51,6 @@ const getImageUrl = (url: string): string => {
   
   let filename = url;
   
-  // Si la URL ya es /uploads/products/algo.jpg, extraer solo el nombre
   if (url.startsWith('/uploads/products/')) {
     filename = url.replace('/uploads/products/', '');
   } else if (url.startsWith('uploads/products/')) {
@@ -64,7 +63,6 @@ const getImageUrl = (url: string): string => {
     filename = url.split('/uploads/products/')[1];
   }
   
-  // Si el filename tiene espacios o caracteres especiales, codificarlos
   const encoded = encodeURIComponent(filename);
   return `/api/images/${encoded}`;
 };
@@ -153,13 +151,11 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   
-  // 🔥 CORREGIDO: Usar getImageUrl para todas las imágenes
   const allImages = [
     getImageUrl(product.image),
     ...(product.additionalImages || []).map(img => getImageUrl(img))
   ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png');
 
-  // Si no hay imágenes, usar la imagen por defecto
   const imagesToShow = allImages.length > 0 ? allImages : ['/api/images/diverse-products-still-life.png'];
 
   useEffect(() => {
@@ -177,7 +173,6 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.05, type: "spring", stiffness: 100 }}
-      whileHover={{ y: -5 }}
       className="h-full"
     >
       <Link href={`/products/${product.id}`} className="block h-full">
@@ -190,15 +185,16 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
             <motion.div 
               className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted"
               animate={{ scale: isHovered ? 1.02 : 1 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: 0.4 }}
             >
+              {/* 🔥 CORREGIDO: Transición de imágenes con FADE (sin movimiento de abajo hacia arriba) */}
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentImageIndex}
-                  initial={{ opacity: 0, scale: 1.1 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
                   className="relative w-full h-full"
                 >
                   <Image
@@ -253,32 +249,24 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
             </motion.div>
 
             <div className="space-y-2 flex-1 flex flex-col">
-              <motion.h3 
-                className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] break-words"
-                animate={{ color: isHovered && !outOfStock ? "#C2410C" : "#000000" }}
-                transition={{ duration: 0.3 }}
-              >
+              <h3 className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] break-words">
                 {product.name}
-              </motion.h3>
+              </h3>
 
-              <motion.div 
-                className="flex items-center gap-2 mt-auto pt-2 flex-wrap"
-                animate={isHovered ? { scale: 1.05, x: 5 } : { scale: 1, x: 0 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
+              <div className="flex items-center gap-2 mt-auto pt-2 flex-wrap">
                 {outOfStock ? (
                   <span className="text-lg font-bold text-red-600">Sin stock</span>
                 ) : (
                   <>
                     <span className="text-lg font-bold text-[#C2410C]">${formatCLP(product.price)}</span>
                     {hasDiscount && product.originalPrice && (
-                      <motion.span className="text-sm text-muted-foreground line-through" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+                      <span className="text-sm text-muted-foreground line-through">
                         ${formatCLP(product.originalPrice)}
-                      </motion.span>
+                      </span>
                     )}
                   </>
                 )}
-              </motion.div>
+              </div>
             </div>
           </CardContent>
         </Card>

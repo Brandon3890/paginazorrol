@@ -33,7 +33,6 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
-  // 🔥 CORREGIDO: Usar el mismo timestamp para todas las imágenes de la misma operación
   const baseName = normalizeProductName(productName);
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
@@ -41,14 +40,12 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   const uniqueFilename = `${prefix}-${timestamp}-${random}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
-  // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
   console.log(`✅ Imagen guardada: ${filepath}`);
   console.log(`📸 Nombre de archivo: ${uniqueFilename}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
-
 
 function correctImageUrl(imagePath: string | null): string {
   if (!imagePath) {
@@ -109,12 +106,14 @@ async function getUsersWithProductInFavorites(productId: number): Promise<any[]>
   }
 }
 
+// 🔥 FUNCIÓN CORREGIDA - Notificar sobre descuento
 async function notifyUsersAboutPriceDrop(
   productId: number, 
   oldPrice: number, 
   newPrice: number, 
   productName: string, 
   productImage: string,
+  originalPrice: number | null,
   forceNotify: boolean = false
 ) {
   try {
@@ -123,21 +122,30 @@ async function notifyUsersAboutPriceDrop(
     console.log('Producto:', productName);
     console.log('Precio anterior:', oldPrice);
     console.log('Nuevo precio:', newPrice);
+    console.log('Precio original (de la BD):', originalPrice);
     console.log('Forzar notificacion:', forceNotify);
     
-    if (!forceNotify && newPrice >= oldPrice) {
-      console.log('No hay reduccion de precio y no se fuerza, omitiendo notificacion');
-      return { notified: false, reason: 'No hay reduccion de precio' };
+    // Obtener el precio original real
+    let realOriginalPrice = originalPrice;
+    
+    // Si no hay precio original en la BD pero estamos en modo descuento, usar el precio anterior
+    if (!realOriginalPrice || realOriginalPrice <= 0) {
+      if (oldPrice > newPrice) {
+        realOriginalPrice = oldPrice;
+        console.log('📊 Usando precio anterior como original:', realOriginalPrice);
+      } else {
+        console.log('⚠️ No hay precio original válido para calcular descuento');
+        return { notified: false, reason: 'Sin precio original válido' };
+      }
     }
 
-    const effectiveOldPrice = forceNotify ? (oldPrice > newPrice ? oldPrice : newPrice * 1.2) : oldPrice;
-    const effectiveNewPrice = forceNotify ? newPrice : newPrice;
-    
-    console.log('Precio efectivo anterior:', effectiveOldPrice);
-    console.log('Precio efectivo nuevo:', effectiveNewPrice);
+    // Verificar que el precio original sea mayor que el precio de oferta
+    if (realOriginalPrice <= newPrice) {
+      console.log('⚠️ El precio original no es mayor que el precio de oferta');
+      return { notified: false, reason: 'Precio original no es mayor que precio de oferta' };
+    }
 
     const users = await getUsersWithProductInFavorites(productId);
-
     console.log('Usuarios encontrados con este producto en favoritos:', users.length);
 
     if (users.length === 0) {
@@ -146,31 +154,37 @@ async function notifyUsersAboutPriceDrop(
     }
 
     const emails = users.map((u: any) => u.email).filter(Boolean);
-    const discountPercent = Math.round(((effectiveOldPrice - effectiveNewPrice) / effectiveOldPrice) * 100);
-
-    console.log('Emails a notificar:', emails);
-    console.log('Porcentaje de descuento:', discountPercent + '%');
+    
+    // CALCULAR EL DESCUENTO REAL
+    const discountPercent = Math.round(((realOriginalPrice - newPrice) / realOriginalPrice) * 100);
+    
+    console.log('📊 Cálculo del descuento:');
+    console.log('  Precio original:', realOriginalPrice);
+    console.log('  Precio de oferta:', newPrice);
+    console.log('  Descuento calculado:', discountPercent, '%');
+    console.log('  Emails a notificar:', emails.length);
 
     if (emails.length === 0) {
-      console.log('No hay emails validos para notificar');
-      return { notified: false, reason: 'No hay emails validos' };
+      console.log('No hay emails válidos para notificar');
+      return { notified: false, reason: 'No hay emails válidos' };
     }
 
     if (discountPercent <= 0) {
-      console.log('No hay descuento valido (0% o negativo), pero se fuerza notificacion con mensaje generico');
+      console.log('⚠️ Descuento inválido (0% o negativo), no se envía notificación');
+      return { notified: false, reason: 'Descuento inválido' };
     }
 
     const emailResult = await sendProductOnSaleEmail(
       productName,
-      effectiveNewPrice,
-      effectiveOldPrice > effectiveNewPrice ? effectiveOldPrice : effectiveNewPrice * 1.2,
+      newPrice,
+      realOriginalPrice,
       productImage,
       productId,
       emails,
-      Math.max(1, discountPercent)
+      discountPercent
     );
 
-    console.log('Resultado del envio de email:', emailResult);
+    console.log('Resultado del envío de email:', emailResult);
 
     if (emailResult) {
       try {
@@ -179,18 +193,19 @@ async function notifyUsersAboutPriceDrop(
           `INSERT INTO price_drop_notifications 
            (product_id, old_price, new_price, users_notified, notified_at, created_at)
            VALUES (?, ?, ?, ?, NOW(), NOW())`,
-          [productId, effectiveOldPrice, effectiveNewPrice, users.length]
+          [productId, realOriginalPrice, newPrice, users.length]
         );
-        console.log('Notificacion registrada en base de datos');
+        console.log('Notificación registrada en base de datos');
       } catch (dbError) {
-        console.error('Error registrando notificacion:', dbError);
+        console.error('Error registrando notificación:', dbError);
       }
     }
 
     return { 
       notified: emailResult, 
       usersNotified: users.length,
-      emails: emails 
+      emails: emails,
+      discountPercent: discountPercent
     };
 
   } catch (error) {
@@ -388,7 +403,6 @@ export async function PUT(
     const price = parseFloat(formData.get('price') as string)
     const originalPrice = formData.get('originalPrice') ? parseFloat(formData.get('originalPrice') as string) : null
     
-    // 🔥 CORREGIDO: Obtener la imagen actual o usar la que viene en el form
     const imageFromForm = formData.get('image') as string
     
     const youtubeVideoId = formData.get('youtubeVideoId') as string || ''
@@ -454,26 +468,20 @@ export async function PUT(
     const oldPrice = oldProductData.length > 0 ? parseFloat(oldProductData[0].price) : 0;
     const oldOriginalPrice = oldProductData.length > 0 && oldProductData[0].original_price ? parseFloat(oldProductData[0].original_price) : null;
     
-    // 🔥 CORREGIDO: Determinar la imagen final
     let finalImage: string;
     
-    // Si se subió una imagen nueva, se procesará después
     const mainImageFile = formData.get('mainImage') as File
     
     if (mainImageFile && mainImageFile.size > 0) {
-      // Si hay una imagen nueva, se guardará y se usará esa
       finalImage = await saveImage(mainImageFile, name, false);
       console.log('✅ Nueva imagen principal guardada:', finalImage);
     } else if (imageFromForm && imageFromForm !== 'null' && imageFromForm !== '') {
-      // Si no hay imagen nueva pero hay una URL en el form, usarla
       finalImage = imageFromForm;
       console.log('📸 Usando imagen existente del form:', finalImage);
     } else if (oldProductData.length > 0 && oldProductData[0].image) {
-      // Si no hay nada en el form, mantener la imagen existente
       finalImage = oldProductData[0].image;
       console.log('📸 Manteniendo imagen existente de la BD:', finalImage);
     } else {
-      // Fallback: usar imagen por defecto
       finalImage = '/uploads/products/diverse-products-still-life.png';
       console.log('📸 Usando imagen por defecto');
     }
@@ -495,7 +503,7 @@ export async function PUT(
       description,
       price,
       originalPrice,
-      finalImage, // 🔥 AHORA SIEMPRE TIENE UN VALOR
+      finalImage,
       youtubeVideoId,
       categoryId,
       ageMin,
@@ -574,7 +582,7 @@ export async function PUT(
 
     await transaction.commit()
 
-    // Notificaciones de descuento (si aplica)
+    // 🔥 NOTIFICACIONES CORREGIDAS
     try {
       const productName = oldProductData.length > 0 ? oldProductData[0].name : name;
       const productImage = oldProductData.length > 0 ? oldProductData[0].image : finalImage;
@@ -589,24 +597,39 @@ export async function PUT(
       const shouldNotify = (isNowOnSale && priceDrop) || adminSelectedDiscount;
       const forceNotify = adminSelectedDiscount;
       
-      if (shouldNotify) {
+      console.log('🔔 Evaluando notificación:');
+      console.log('  isDiscountTag:', isDiscountTag);
+      console.log('  isNowOnSale:', isNowOnSale);
+      console.log('  priceDrop:', priceDrop);
+      console.log('  adminSelectedDiscount:', adminSelectedDiscount);
+      console.log('  shouldNotify:', shouldNotify);
+      console.log('  forceNotify:', forceNotify);
+      console.log('  newOriginalPrice:', newOriginalPrice);
+      console.log('  newPriceValue:', newPriceValue);
+      
+      if (shouldNotify && newOriginalPrice !== null && newOriginalPrice > 0) {
+        console.log('📧 Enviando notificaciones de oferta...');
         setTimeout(async () => {
           try {
-            await notifyUsersAboutPriceDrop(
+            const result = await notifyUsersAboutPriceDrop(
               productId, 
               oldPrice, 
               newPriceValue, 
               productName, 
               productImage,
+              newOriginalPrice,
               forceNotify
             );
+            console.log('📊 Resultado notificación:', result);
           } catch (error) {
-            console.error('Error en notificacion de oferta:', error);
+            console.error('Error en notificación de oferta:', error);
           }
         }, 1000);
+      } else {
+        console.log('⏭️ No se enviarán notificaciones (no cumple condiciones)');
       }
     } catch (notifyError) {
-      console.error('Error al verificar notificacion de oferta:', notifyError);
+      console.error('Error al verificar notificación de oferta:', notifyError);
     }
 
     return NextResponse.json({ 
