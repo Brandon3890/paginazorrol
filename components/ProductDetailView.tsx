@@ -121,6 +121,10 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return
         }
 
+        console.log('📋 Product data loaded:', productData)
+        console.log('📋 Specs raw:', productData.specs)
+        console.log('📋 Specs type:', typeof productData.specs)
+        
         setProduct(productData)
         setImageTimestamp(Date.now())
 
@@ -273,6 +277,73 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     else router.push("/")
   }
 
+  // Función mejorada para obtener los specs
+  const getProductSpecs = () => {
+    if (!product || !product.specs) return []
+    
+    try {
+      // Si specs es un string, intentar parsearlo
+      if (typeof product.specs === 'string') {
+        // Intentar parsear como JSON
+        try {
+          const parsed = JSON.parse(product.specs)
+          if (Array.isArray(parsed)) {
+            return parsed
+          }
+        } catch (e) {
+          // Si no es JSON válido, usar parseProductSpecs
+          console.log('🔄 Parsing specs con parseProductSpecs')
+          const parsed = parseProductSpecs(product.specs)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+          }
+        }
+      }
+      
+      // Si specs ya es un array
+      if (Array.isArray(product.specs)) {
+        return product.specs
+      }
+      
+      // Si es un objeto, convertirlo a array de pares label-value
+      if (typeof product.specs === 'object' && product.specs !== null) {
+        return Object.entries(product.specs).map(([key, value]) => ({
+          label: key,
+          value: String(value)
+        }))
+      }
+      
+      return []
+    } catch (error) {
+      console.warn('Error procesando specs:', error)
+      return []
+    }
+  }
+
+  // Función para renderizar specs con estilos del segundo diseño
+  const renderSpecs = () => {
+    const specs = getProductSpecs()
+    
+    if (!specs || specs.length === 0) {
+      return (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          No hay características agregadas para este producto.
+        </p>
+      )
+    }
+    
+    return (
+      <div className="space-y-2 text-sm">
+        {specs.map((spec, index) => (
+          <div key={index} className="flex bg-gray-100 p-2 rounded">
+            <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
+            <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">{spec.value}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -313,7 +384,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     : 0
 
   const currentMedia = allMedia[selectedMediaIndex]
-  const productSpecs = product.specs ? parseProductSpecs(product.specs) : []
 
   return (
     <div className="min-h-screen bg-white">
@@ -509,219 +579,202 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </div>
 
           {/* Columna derecha: info */}
-<motion.div
-  className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
-  initial={{ opacity: 0, x: 30 }}
-  animate={{ opacity: 1, x: 0 }}
-  transition={{ duration: 0.5, delay: 0.1 }}
->
-  <motion.p className="text-sm font-bold font-poppins tracking-wide text-gray-700" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-    {product.brand || "DEVIR"}
-  </motion.p>
-
-  <motion.h1 className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-    {product.name}
-  </motion.h1>
-
-  <motion.div className="flex gap-2 flex-wrap mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-    {categoriesInfo.subcategories.map((sub, idx) => (
-      <motion.span
-        key={idx}
-        className="text-xs font-light italic font-poppins bg-gray-100 px-2 py-1 rounded text-gray-700"
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.35 + idx * 0.05 }}
-      >
-        {sub.name}
-      </motion.span>
-    ))}
-  </motion.div>
-
-  <motion.p className="text-sm font-normal font-poppins text-gray-700 mt-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-    <span className="font-semibold">Stock disponible:</span> {product.stock}
-  </motion.p>
-  
-  <motion.div 
-    className="mt-2 flex-1"
-    initial={{ opacity: 0 }} 
-    animate={{ opacity: 1 }} 
-    transition={{ delay: 0.45 }}
-  >
-    <div 
-      className={`
-        text-sm font-normal font-poppins leading-relaxed text-gray-600 h-full w-full pr-2
-        
-        max-h-[180px]      /* Móvil (por defecto) */
-        sm:max-h-[200px]   /* Teléfonos grandes */
-        md:max-h-[240px]   /* Tablets */
-        lg:max-h-[240px]   /* Laptops */
-        xl:max-h-[350px]   /* Desktop */
-        2xl:max-h-[380px]  /* Pantallas grandes */
-      `}
-      style={{ 
-        fontWeight: 500,
-        overflowY: 'auto',
-        paddingRight: '8px',
-        scrollbarWidth: 'thin',
-        scrollbarColor: '#C2410C #f1f1f1'
-        /* O  usar inline en lugar de clases, descomenta esto y comenta las clases de arriba */
-        // maxHeight: '180px', // Cambia este valor
-      }}
-    >
-      {product.description}
-    </div>
-    
-    {/* Estilos para el scroll en navegadores WebKit */}
-    <style jsx>{`
-      div::-webkit-scrollbar {
-        width: 6px;
-      }
-      div::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 10px;
-      }
-      div::-webkit-scrollbar-thumb {
-        background: #C2410C;
-        border-radius: 10px;
-      }
-      div::-webkit-scrollbar-thumb:hover {
-        background: #9A3412;
-      }
-    `}</style>
-  </motion.div>
-
-  <div className="mt-8 border-t border-gray-100"></div>
-
-  <div className="mt-auto pt-4">
-    <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
-      {product.originalPrice && product.originalPrice > product.price ? (
-        <div className="flex items-start gap-3">
-          <span className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins" style={{ backgroundColor: "rgba(228, 78, 43)" }}>
-            {discountPercent}%
-          </span>
-          <div className="flex flex-col">
-            <span className="text-3xl font-semibold font-poppins text-black">
-              ${formatCLP(product.price)}
-            </span>
-            <span className="text-xl font-extralight italic font-poppins line-through text-gray-400 mt-1">
-              ${formatCLP(product.originalPrice)}
-            </span>
-          </div>
-        </div>
-      ) : (
-        <span className="text-3xl font-semibold font-poppins text-black">
-          ${formatCLP(product.price)}
-        </span>
-      )}
-    </motion.div>
-
-    <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 w-full items-center">
-      <motion.div
-        whileHover={{ scale: hasStock() ? 1.02 : 1 }}
-        whileTap={{ scale: hasStock() ? 0.98 : 1 }}
-        className="w-full"
-      >
-        <Button
-          onClick={handleAddToCart}
-          disabled={!hasStock()}
-          className="w-full h-12 text-white font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
-          style={{ backgroundColor: "rgba(228, 78, 43)" }}
-        >
-          <AnimatePresence mode="wait">
-            {isAddingToCart ? (
-              <motion.div
-                key="adding"
-                className="flex items-center justify-center"
-              >
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
-                />
-                <span>Agregando...</span>
-              </motion.div>
-            ) : showCheckmark ? (
-              <motion.div
-                key="success"
-                className="flex items-center justify-center"
-              >
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 400 }}
-                >
-                  <Check className="w-4 h-4 mr-2" />
-                </motion.div>
-                <span>¡Agregado!</span>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="normal"
-                className="flex items-center justify-center"
-              >
-                <motion.div
-                  animate={
-                    hasStock()
-                      ? { rotate: [0, -10, 10, -5, 5, 0] }
-                      : {}
-                  }
-                  transition={{ duration: 0.5 }}
-                >
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                </motion.div>
-
-                <span className="text-xs sm:text-sm md:text-base whitespace-nowrap">
-                  {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Button>
-      </motion.div>
-
-      {isAuthenticated && (
-        <div className="flex items-center justify-start h-full">
           <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <FavoriteButton productId={product.id} size="lg" />
-          </motion.div>
-        </div>
-      )}
-    </div>
-  </div>
-</motion.div>
+            <motion.p className="text-sm font-bold font-poppins tracking-wide text-gray-700" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              {product.brand || "DEVIR"}
+            </motion.p>
 
-          {/* Specs */}
-          <motion.div
-            className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.7 }}
-          >
-            <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
+            <motion.h1 className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+              {product.name}
+            </motion.h1>
 
-            {productSpecs.length > 0 ? (
-              <div className="space-y-2 text-sm">
-                {productSpecs.map((spec, index) => (
-                  <div key={index} className="flex bg-gray-100 p-2 rounded">
-                    <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
-                    <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">{spec.value}</span>
-                  </div>
-                ))}
+            <motion.div className="flex gap-2 flex-wrap mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+              {categoriesInfo.subcategories.map((sub, idx) => (
+                <motion.span
+                  key={idx}
+                  className="text-xs font-light italic font-poppins bg-gray-100 px-2 py-1 rounded text-gray-700"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.35 + idx * 0.05 }}
+                >
+                  {sub.name}
+                </motion.span>
+              ))}
+            </motion.div>
+
+            <motion.p className="text-sm font-normal font-poppins text-gray-700 mt-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+              <span className="font-semibold">Stock disponible:</span> {product.stock}
+            </motion.p>
+            
+            <motion.div 
+              className="mt-2 flex-1"
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              transition={{ delay: 0.45 }}
+            >
+              <div 
+                className={`
+                  text-sm font-normal font-poppins leading-relaxed text-gray-600 h-full w-full pr-2
+                  max-h-[180px]      /* Móvil (por defecto) */
+                  sm:max-h-[200px]   /* Teléfonos grandes */
+                  md:max-h-[240px]   /* Tablets */
+                  lg:max-h-[240px]   /* Laptops */
+                  xl:max-h-[350px]   /* Desktop */
+                  2xl:max-h-[380px]  /* Pantallas grandes */
+                `}
+                style={{ 
+                  fontWeight: 500,
+                  overflowY: 'auto',
+                  paddingRight: '8px',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#C2410C #f1f1f1'
+                }}
+              >
+                {product.description}
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No hay caracteristicas agregadas para este producto.
-              </p>
-            )}
+              
+              {/* Estilos para el scroll en navegadores WebKit */}
+              <style jsx>{`
+                div::-webkit-scrollbar {
+                  width: 6px;
+                }
+                div::-webkit-scrollbar-track {
+                  background: #f1f1f1;
+                  border-radius: 10px;
+                }
+                div::-webkit-scrollbar-thumb {
+                  background: #C2410C;
+                  border-radius: 10px;
+                }
+                div::-webkit-scrollbar-thumb:hover {
+                  background: #9A3412;
+                }
+              `}</style>
+            </motion.div>
+
+            <div className="mt-8 border-t border-gray-100"></div>
+
+            <div className="mt-auto pt-4">
+              <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
+                {product.originalPrice && product.originalPrice > product.price ? (
+                  <div className="flex items-start gap-3">
+                    <span className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins" style={{ backgroundColor: "rgba(228, 78, 43)" }}>
+                      {discountPercent}%
+                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-3xl font-semibold font-poppins text-black">
+                        ${formatCLP(product.price)}
+                      </span>
+                      <span className="text-xl font-extralight italic font-poppins line-through text-gray-400 mt-1">
+                        ${formatCLP(product.originalPrice)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-3xl font-semibold font-poppins text-black">
+                    ${formatCLP(product.price)}
+                  </span>
+                )}
+              </motion.div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 w-full items-center">
+                <motion.div
+                  whileHover={{ scale: hasStock() ? 1.02 : 1 }}
+                  whileTap={{ scale: hasStock() ? 0.98 : 1 }}
+                  className="w-full"
+                >
+                  <Button
+                    onClick={handleAddToCart}
+                    disabled={!hasStock()}
+                    className="w-full h-12 text-white font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                    style={{ backgroundColor: "rgba(228, 78, 43)" }}
+                  >
+                    <AnimatePresence mode="wait">
+                      {isAddingToCart ? (
+                        <motion.div
+                          key="adding"
+                          className="flex items-center justify-center"
+                        >
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{
+                              duration: 1,
+                              repeat: Infinity,
+                              ease: "linear",
+                            }}
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
+                          />
+                          <span>Agregando...</span>
+                        </motion.div>
+                      ) : showCheckmark ? (
+                        <motion.div
+                          key="success"
+                          className="flex items-center justify-center"
+                        >
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 400 }}
+                          >
+                            <Check className="w-4 h-4 mr-2" />
+                          </motion.div>
+                          <span>¡Agregado!</span>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="normal"
+                          className="flex items-center justify-center"
+                        >
+                          <motion.div
+                            animate={
+                              hasStock()
+                                ? { rotate: [0, -10, 10, -5, 5, 0] }
+                                : {}
+                            }
+                            transition={{ duration: 0.5 }}
+                          >
+                            <ShoppingCart className="w-4 h-4 mr-2" />
+                          </motion.div>
+
+                          <span className="text-xs sm:text-sm md:text-base whitespace-nowrap">
+                            {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
+                          </span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Button>
+                </motion.div>
+
+                {isAuthenticated && (
+                  <div className="flex items-center justify-start h-full">
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <FavoriteButton productId={product.id} size="lg" />
+                    </motion.div>
+                  </div>
+                )}
+              </div>
+            </div>
           </motion.div>
         </div>
+
+        {/* Specs - MODIFICADO: usando la nueva función renderSpecs */}
+        <motion.div
+          className="mt-10 border-2 border-gray-200 rounded-2xl p-6"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.7 }}
+        >
+          <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
+          {renderSpecs()}
+        </motion.div>
 
         {/* Productos recomendados */}
         {recommendedProducts.length > 0 && (
