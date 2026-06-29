@@ -1,9 +1,9 @@
-// components/product-card.tsx - VERSIÓN CORREGIDA (Transición de imágenes con FADE)
+// components/product-card.tsx - VERSIÓN OPTIMIZADA PARA CARGA RÁPIDA
 
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import Image from "next/image"
@@ -44,52 +44,77 @@ interface ProductCardProps {
   index?: number
 }
 
+// 🔥 CACHE DE IMÁGENES para evitar recargas
+const imageCache = new Map<string, string>()
+
 const getImageUrl = (url: string): string => {
-  if (!url) return '/api/images/diverse-products-still-life.png';
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('/api/images/')) return url;
+  if (!url) return '/api/images/diverse-products-still-life.png'
   
-  let filename = url;
-  
-  if (url.startsWith('/uploads/products/')) {
-    filename = url.replace('/uploads/products/', '');
-  } else if (url.startsWith('uploads/products/')) {
-    filename = url.replace('uploads/products/', '');
-  } else if (url.startsWith('/uploads/')) {
-    filename = url.replace('/uploads/products/', '');
-  } else if (url.startsWith('uploads/')) {
-    filename = url.replace('uploads/products/', '');
-  } else if (url.includes('/uploads/products/')) {
-    filename = url.split('/uploads/products/')[1];
+  // Si ya está en caché, devolverla
+  if (imageCache.has(url)) {
+    return imageCache.get(url)!
   }
   
-  const encoded = encodeURIComponent(filename);
-  return `/api/images/${encoded}`;
-};
+  let result: string
+  
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    result = url
+  } else if (url.startsWith('/api/images/')) {
+    result = url
+  } else {
+    let filename = url
+    
+    if (url.startsWith('/uploads/products/')) {
+      filename = url.replace('/uploads/products/', '')
+    } else if (url.startsWith('uploads/products/')) {
+      filename = url.replace('uploads/products/', '')
+    } else if (url.startsWith('/uploads/')) {
+      filename = url.replace('/uploads/products/', '')
+    } else if (url.startsWith('uploads/')) {
+      filename = url.replace('uploads/products/', '')
+    } else if (url.includes('/uploads/products/')) {
+      filename = url.split('/uploads/products/')[1]
+    }
+    
+    const encoded = encodeURIComponent(filename)
+    result = `/api/images/${encoded}`
+  }
+  
+  // Guardar en caché
+  imageCache.set(url, result)
+  return result
+}
+
+// 🔥 PRECARGA DE IMÁGENES - carga las imágenes en segundo plano
+const preloadImage = (src: string) => {
+  if (!src || src.startsWith('blob:')) return
+  const img = new window.Image()
+  img.src = src
+}
 
 const formatCLP = (price: number): string => {
-  return Math.round(price).toLocaleString('es-CL');
-};
+  return Math.round(price).toLocaleString('es-CL')
+}
 
 const calculateDiscountPercent = (originalPrice: number, currentPrice: number): number => {
-  if (!originalPrice || originalPrice <= currentPrice) return 0;
-  return Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
-};
+  if (!originalPrice || originalPrice <= currentPrice) return 0
+  return Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+}
 
 const hasTag = (tags: string[], tagName: string): boolean => {
-  if (!tags || !Array.isArray(tags)) return false;
-  return tags.some(tag => tag.toLowerCase().includes(tagName.toLowerCase()));
-};
+  if (!tags || !Array.isArray(tags)) return false
+  return tags.some(tag => tag.toLowerCase().includes(tagName.toLowerCase()))
+}
 
 const isProductOutOfStock = (product: Product): boolean => {
-  return !product.inStock || product.stock <= 0;
-};
+  return !product.inStock || product.stock <= 0
+}
 
 interface BadgeConfig {
-  text: string | ((product: Product) => string);
-  color: string;
-  priority: number;
-  condition: (product: Product) => boolean;
+  text: string | ((product: Product) => string)
+  color: string
+  priority: number
+  condition: (product: Product) => boolean
 }
 
 const BADGE_CONFIGS: BadgeConfig[] = [
@@ -107,9 +132,9 @@ const BADGE_CONFIGS: BadgeConfig[] = [
   },
   {
     text: (product) => {
-      if (!product.originalPrice || product.originalPrice <= product.price) return "";
-      const discountPercent = calculateDiscountPercent(product.originalPrice, product.price);
-      return `-${discountPercent}%`;
+      if (!product.originalPrice || product.originalPrice <= product.price) return ""
+      const discountPercent = calculateDiscountPercent(product.originalPrice, product.price)
+      return `-${discountPercent}%`
     },
     color: "rgba(241, 90, 36)",
     priority: 3,
@@ -121,52 +146,80 @@ const BADGE_CONFIGS: BadgeConfig[] = [
     priority: 4,
     condition: (product) => hasTag(product.tags, "novedad") && !isProductOutOfStock(product)
   }
-];
+]
 
 const getAllBadges = (product: Product): Array<{ text: string; color: string; priority: number }> => {
-  const badges: Array<{ text: string; color: string; priority: number }> = [];
+  const badges: Array<{ text: string; color: string; priority: number }> = []
   
   for (const config of BADGE_CONFIGS) {
     if (config.condition(product)) {
-      const text = typeof config.text === 'function' ? config.text(product) : config.text;
+      const text = typeof config.text === 'function' ? config.text(product) : config.text
       if (text) {
         badges.push({
           text,
           color: config.color,
           priority: config.priority
-        });
+        })
       }
-      if (config.priority === 1) break;
+      if (config.priority === 1) break
     }
   }
   
-  return badges.sort((a, b) => a.priority - b.priority);
-};
+  return badges.sort((a, b) => a.priority - b.priority)
+}
 
 export function ProductCard({ product, index = 0 }: ProductCardProps) {
-  const outOfStock = isProductOutOfStock(product);
-  const hasDiscount = !outOfStock && product.originalPrice && product.originalPrice > product.price;
-  const badges = getAllBadges(product);
+  const outOfStock = isProductOutOfStock(product)
+  const hasDiscount = !outOfStock && product.originalPrice && product.originalPrice > product.price
+  const badges = getAllBadges(product)
 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
+  const [imagesLoaded, setImagesLoaded] = useState<boolean[]>([])
   
-  const allImages = [
-    getImageUrl(product.image),
-    ...(product.additionalImages || []).map(img => getImageUrl(img))
-  ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png');
+  // 🔥 MEMOIZAR URLs de imágenes - solo se recalcula cuando cambia el producto
+  const imageUrls = useMemo(() => {
+    const urls = [
+      getImageUrl(product.image),
+      ...(product.additionalImages || []).map(img => getImageUrl(img))
+    ].filter(url => url && url !== '/uploads/products/diverse-products-still-life.png')
+    
+    return urls.length > 0 ? urls : ['/api/images/diverse-products-still-life.png']
+  }, [product.image, product.additionalImages])
 
-  const imagesToShow = allImages.length > 0 ? allImages : ['/api/images/diverse-products-still-life.png'];
-
+  // 🔥 PRECARGAR IMÁGENES en segundo plano (sin bloquear el renderizado)
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isHovered && imagesToShow.length > 1 && !outOfStock) {
+    // Pre-cargar todas las imágenes de este producto
+    imageUrls.forEach((url, index) => {
+      // No pre-cargar la primera imagen ya que se carga con el componente
+      if (index > 0) {
+        preloadImage(url)
+      }
+    })
+    
+    // Inicializar estado de carga
+    setImagesLoaded(new Array(imageUrls.length).fill(false))
+  }, [imageUrls])
+
+  // 🔥 MANEJAR CARGA DE IMÁGENES
+  const handleImageLoad = (index: number) => {
+    setImagesLoaded(prev => {
+      const newState = [...prev]
+      newState[index] = true
+      return newState
+    })
+  }
+
+  // Carrusel automático (solo cuando el mouse está encima y hay más de 1 imagen)
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isHovered && imageUrls.length > 1 && !outOfStock) {
       interval = setInterval(() => {
-        setCurrentImageIndex((prev) => (prev + 1) % imagesToShow.length);
-      }, 2000);
+        setCurrentImageIndex((prev) => (prev + 1) % imageUrls.length)
+      }, 2000)
     }
-    return () => { if (interval) clearInterval(interval); };
-  }, [isHovered, imagesToShow.length, outOfStock]);
+    return () => { if (interval) clearInterval(interval) }
+  }, [isHovered, imageUrls.length, outOfStock])
 
   return (
     <motion.div
@@ -179,47 +232,57 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         <Card
           className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col w-full cursor-pointer border-border/50 relative overflow-hidden"
           onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => { setIsHovered(false); setCurrentImageIndex(0); }}
+          onMouseLeave={() => { setIsHovered(false); setCurrentImageIndex(0) }}
         >
           <CardContent className="p-4 flex-1 flex flex-col relative z-10">
+            {/* Contenedor de imagen con carga optimizada */}
             <motion.div 
               className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted"
               animate={{ scale: isHovered ? 1.02 : 1 }}
               transition={{ duration: 0.4 }}
             >
-              {/* 🔥 CORREGIDO: Transición de imágenes con FADE (sin movimiento de abajo hacia arriba) */}
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentImageIndex}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.5, ease: "easeInOut" }}
+                  transition={{ duration: 0.3 }}
                   className="relative w-full h-full"
                 >
                   <Image
-                    src={imagesToShow[currentImageIndex] || "/api/images/diverse-products-still-life.png"}
+                    src={imageUrls[currentImageIndex] || "/api/images/diverse-products-still-life.png"}
                     alt={product.name}
                     fill
                     className="object-cover"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    priority={index < 6} // 🔥 Las primeras 6 imágenes son prioritarias
+                    loading={index < 6 ? "eager" : "lazy"} // 🔥 Carga eager para las primeras, lazy para el resto
+                    quality={75} // 🔥 Calidad reducida para cargar más rápido
                     unoptimized={true}
+                    onLoad={() => handleImageLoad(currentImageIndex)}
                     onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = '/api/images/diverse-products-still-life.png';
+                      const target = e.target as HTMLImageElement
+                      target.src = '/api/images/diverse-products-still-life.png'
                     }}
                   />
+                  
+                  {/* 🔥 SKELETON LOADER - Mientras la imagen carga */}
+                  {!imagesLoaded[currentImageIndex] && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
+                  )}
                 </motion.div>
               </AnimatePresence>
 
-              {imagesToShow.length > 1 && !outOfStock && (
+              {/* Indicadores de carrusel */}
+              {imageUrls.length > 1 && !outOfStock && (
                 <motion.div 
                   className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
                 >
-                  {imagesToShow.map((_, idx) => (
+                  {imageUrls.map((_, idx) => (
                     <motion.div
                       key={idx}
                       className={`w-1.5 h-1.5 rounded-full transition-colors ${
@@ -230,6 +293,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                 </motion.div>
               )}
 
+              {/* Badges */}
               {badges.length > 0 && (
                 <motion.div
                   initial={{ x: 50, opacity: 0 }}
@@ -238,8 +302,16 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
                   className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
                 >
                   {badges.map((badge, idx) => (
-                    <motion.div key={badge.text} initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.1 + idx * 0.05 }}>
-                      <Badge className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap" style={{ backgroundColor: badge.color, color: "white" }}>
+                    <motion.div 
+                      key={badge.text} 
+                      initial={{ x: 30, opacity: 0 }} 
+                      animate={{ x: 0, opacity: 1 }} 
+                      transition={{ delay: 0.1 + idx * 0.05 }}
+                    >
+                      <Badge 
+                        className="border-0 font-bold italic text-sm px-3 py-1 shadow-md whitespace-nowrap" 
+                        style={{ backgroundColor: badge.color, color: "white" }}
+                      >
                         {badge.text}
                       </Badge>
                     </motion.div>
@@ -248,6 +320,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
               )}
             </motion.div>
 
+            {/* Información del producto */}
             <div className="space-y-2 flex-1 flex flex-col">
               <h3 className="font-semibold text-foreground line-clamp-2 text-sm leading-tight min-h-[2.5rem] break-words">
                 {product.name}
@@ -272,5 +345,5 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         </Card>
       </Link>
     </motion.div>
-  );
+  )
 }
