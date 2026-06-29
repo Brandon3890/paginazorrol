@@ -704,22 +704,50 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.7 }}
           >
-            <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
+            <h2 className="font-semibold font-poppins mb-4 text-gray-900">
+              TODAS LAS CARACTERÍSTICAS
+            </h2>
 
-            {productSpecs.length > 0 ? (
-              <div className="space-y-2 text-sm">
-                {productSpecs.map((spec, index) => (
-                  <div key={index} className="flex bg-gray-100 p-2 rounded">
-                    <span className="font-bold font-poppins text-gray-700 w-1/2">{spec.label}</span>
-                    <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">{spec.value}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No hay caracteristicas agregadas para este producto.
-              </p>
-            )}
+            {(() => {
+              let specsToShow: { label: string; value: string }[] = [];
+
+              try {
+                if (typeof product.specs === "string") {
+                  const parsed = JSON.parse(product.specs);
+
+                  if (Array.isArray(parsed)) {
+                    specsToShow = parsed;
+                  }
+                } else if (Array.isArray(product.specs)) {
+                  specsToShow = product.specs;
+                }
+              } catch (error) {
+                console.warn("Error parsing specs:", error);
+              }
+
+              return specsToShow.length > 0 ? (
+                <div className="space-y-2 text-sm">
+                  {specsToShow.map((spec, index) => (
+                    <div
+                      key={index}
+                      className="flex bg-gray-100 p-2 rounded"
+                    >
+                      <span className="font-bold font-poppins text-gray-700 w-1/2">
+                        {spec.label}
+                      </span>
+
+                      <span className="font-normal font-poppins text-gray-600 w-1/2 text-left whitespace-pre-line">
+                        {spec.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No hay características agregadas para este producto.
+                </p>
+              );
+            })()}
           </motion.div>
         </div>
 
