@@ -722,99 +722,82 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           </motion.div>
         </div>
 
-      {/* Productos recomendados */}
-      {recommendedProducts.length > 0 && (
-        <motion.div
-          className="mt-10"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.8 }}
-        >
-          <div className="flex items-center gap-4 mb-8">
-            <motion.h2
-              className="text-2xl md:text-3xl font-semibold font-poppins mb-4 text-gray-900"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 1.4 }}
-            >
-              PODRÍAN GUSTARTE
-            </motion.h2>
-
-            <motion.div
-              className="flex-1 h-px bg-gradient-to-r from-[#C2410C] to-transparent"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 0.6, delay: 1.5 }}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {recommendedProducts.map((recProduct, idx) => (
-              <motion.div
-                key={recProduct.id}
-                className="group cursor-pointer border border-gray-200 rounded-xl overflow-hidden hover:border-orange-500 hover:shadow-lg transition-all duration-300"
-                onClick={() => {
-                  if (onBack) {
-                    window.scrollTo(0, 0);
-                    setProduct(null);
-                    setLoading(true);
-
-                    setTimeout(() => {
-                      window.location.href = `/products/${recProduct.id}`;
-                    }, 100);
-                  } else {
-                    router.push(`/products/${recProduct.id}`);
-                    window.scrollTo(0, 0);
-                  }
-                }}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9 + idx * 0.1 }}
-                whileHover={{ y: -5 }}
+        {/* Productos recomendados */}
+        {recommendedProducts.length > 0 && (
+          <motion.div
+            className="mt-10"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.8 }}
+          >
+            <div className="flex items-center gap-4 mb-8">
+              <motion.h2
+                className="text-2xl md:text-3xl font-semibold font-poppins mb-4 text-gray-900"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 1.4 }}
               >
-                <div className="relative aspect-square bg-gray-100">
-                  <Image
-                    src={getImageUrlWithTimestamp(recProduct.image)}
-                    alt={recProduct.name}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    unoptimized={true}
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = "/uploads/products/diverse-products-still-life.png";
-                    }}
-                  />
-
-                  {recProduct.isOnSale && (
-                    <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
-                      OFERTA
-                    </span>
-                  )}
-                </div>
-
-                <div className="p-4">
-                  <h3 className="font-semibold font-poppins text-gray-900 mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
-                    {recProduct.name}
-                  </h3>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-semibold font-poppins text-orange-600">
-                      ${formatCLP(recProduct.price)}
-                    </span>
-
-                    {recProduct.originalPrice &&
-                      recProduct.originalPrice > recProduct.price && (
+                PODRÍA GUSTARTE
+              </motion.h2>
+              <motion.div
+                className="flex-1 h-px bg-gradient-to-r from-[#C2410C] to-transparent"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.6, delay: 1.5 }}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {recommendedProducts.map((recProduct, idx) => (
+                <motion.div
+                  key={recProduct.id}
+                  className="group cursor-pointer border border-gray-200 rounded-xl overflow-hidden hover:border-orange-500 hover:shadow-lg transition-all duration-300"
+                  onClick={() => {
+                    router.push(`/products/${recProduct.id}`)
+                    window.scrollTo(0, 0)
+                  }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 + idx * 0.1 }}
+                  whileHover={{ y: -5 }}
+                >
+                  <div className="relative aspect-square bg-gray-100">
+                    <Image
+                      src={correctImageUrl(recProduct.image)}
+                      alt={recProduct.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = '/diverse-products-still-life.png'
+                      }}
+                    />
+                    {recProduct.isOnSale && (
+                      <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded font-bold font-poppins">
+                        OFERTA
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold font-poppins text-gray-900 mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
+                      {recProduct.name}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-semibold font-poppins text-orange-600">
+                        ${formatCLP(recProduct.price)}
+                      </span>
+                      {recProduct.originalPrice && recProduct.originalPrice > recProduct.price && (
                         <span className="text-xs font-extralight italic font-poppins line-through text-gray-400">
                           ${formatCLP(recProduct.originalPrice)}
                         </span>
                       )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </main>
       <Footer />
     </div>
