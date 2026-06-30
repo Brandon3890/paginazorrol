@@ -22,10 +22,6 @@ import { SpecsEditor } from "@/components/SpecsEditor"
 import { ProductSpec } from "@/lib/product-specs"
 import { useToast } from "@/hooks/use-toast"
 
-// ============================================================
-// FUNCIONES UTILITARIAS
-// ============================================================
-
 const resizeImage = (file: File, maxWidth: number, maxHeight: number): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -116,10 +112,6 @@ const safeToNumber = (value: any): number => {
   const num = parseFloat(String(value))
   return isNaN(num) ? 0 : num
 }
-
-// ============================================================
-// COMPONENTES REUTILIZABLES
-// ============================================================
 
 const SubcategoryCheckbox = React.memo(({ 
   subcat, 
@@ -216,10 +208,6 @@ const RecommendedProductCard = React.memo(({
 
 RecommendedProductCard.displayName = 'RecommendedProductCard';
 
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
-
 export default function NewProductPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -227,10 +215,6 @@ export default function NewProductPage() {
   const { addProduct } = useProductStore()
   const { categories, loading: categoriesLoading } = useCategories()
   const { products: allProducts, loading: productsLoading } = useProducts({ perPage: 100 })
-
-  // ============================================================
-  // ESTADOS
-  // ============================================================
 
   const [formData, setFormData] = useState({
     name: "",
@@ -247,6 +231,7 @@ export default function NewProductPage() {
     playersMax: "",
     duration: "",
     durationMin: "",
+    tags: "",
     description: "",
     stock: "",
     inStock: true,
@@ -257,6 +242,7 @@ export default function NewProductPage() {
     height: "10",
     width: "15",
     length: "20",
+    brand: "", // <-- AGREGADO
   })
 
   const [selectedCategory, setSelectedCategory] = useState<string>("")
@@ -275,10 +261,6 @@ export default function NewProductPage() {
   const [newAdditionalImagePreviews, setNewAdditionalImagePreviews] = useState<string[]>([])
   const [blobUrls, setBlobUrls] = useState<string[]>([])
 
-  // ============================================================
-  // MEMOS
-  // ============================================================
-
   const availableSubcategories = useMemo(() => {
     if (!selectedCategory || categories.length === 0) return []
     const category = categories.find((c) => safeToString(c.id) === selectedCategory)
@@ -293,10 +275,6 @@ export default function NewProductPage() {
       product.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
   }, [allProducts, searchTerm])
-
-  // ============================================================
-  // EFECTOS
-  // ============================================================
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
@@ -314,10 +292,6 @@ export default function NewProductPage() {
       })
     }
   }, [blobUrls])
-
-  // ============================================================
-  // VALIDACIONES
-  // ============================================================
 
   const validateField = (field: string, value: any): boolean => {
     if (!value || (typeof value === 'string' && value.trim() === '')) {
@@ -366,10 +340,6 @@ export default function NewProductPage() {
     const hasError = errors[fieldName]
     return `${baseClassName} ${hasError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`
   }
-
-  // ============================================================
-  // HANDLERS
-  // ============================================================
 
   const handleTagSelect = (tagValue: string) => {
     if (selectedTag === tagValue) {
@@ -570,10 +540,6 @@ export default function NewProductPage() {
     setNewAdditionalImagePreviews(prev => prev.filter((_, i) => i !== index))
   }, [newAdditionalImagePreviews])
 
-  // ============================================================
-  // SUBMIT
-  // ============================================================
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -598,6 +564,7 @@ export default function NewProductPage() {
       formDataToSend.append('categoryId', safeToString(formData.categoryId))
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('specs', JSON.stringify(productSpecs))
+      formDataToSend.append('brand', safeToString(formData.brand) || 'Devir') // <-- AGREGADO
       
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
@@ -679,10 +646,6 @@ export default function NewProductPage() {
     }
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   if (!isAuthenticated || user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-background">
@@ -736,9 +699,7 @@ export default function NewProductPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* ============================================================
-                    NOMBRE DEL PRODUCTO
-                ============================================================ */}
+                {/* NOMBRE DEL PRODUCTO */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="name" className={errors.name ? 'text-red-600' : ''}>
                     Nombre del Producto *
@@ -757,9 +718,7 @@ export default function NewProductPage() {
                   {errors.name && <p className="text-xs text-red-500">El nombre es requerido</p>}
                 </div>
 
-                {/* ============================================================
-                    VIDEO DE YOUTUBE
-                ============================================================ */}
+                {/* VIDEO DE YOUTUBE */}
                 <div className="space-y-2 md:col-span-2">
                   <Label>Video de YouTube (opcional)</Label>
                   <div className="flex items-center gap-2">
@@ -811,9 +770,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    IMAGENES
-                ============================================================ */}
+                {/* IMAGENES */}
                 <div className="space-y-2 md:col-span-2">
                   <div className="flex items-center justify-between">
                     <Label className={errors.image ? 'text-red-600' : ''}>
@@ -927,9 +884,7 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
-                {/* ============================================================
-                    CATEGORIA
-                ============================================================ */}
+                {/* CATEGORIA */}
                 <div className="space-y-2">
                   <Label htmlFor="category-select" className={errors.categoryId ? 'text-red-600' : ''}>
                     Categoria *
@@ -960,9 +915,7 @@ export default function NewProductPage() {
                   {errors.categoryId && <p className="text-xs text-red-500">Debes seleccionar una categoria</p>}
                 </div>
 
-                {/* ============================================================
-                    SUBCATEGORIAS
-                ============================================================ */}
+                {/* SUBCATEGORIAS */}
                 <div className="space-y-2 md:col-span-2">
                   <Label className={errors.subcategoryIds ? 'text-red-600' : ''}>
                     Subcategorias *
@@ -993,9 +946,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    DIMENSIONES PARA ENVIO
-                ============================================================ */}
+                {/* DIMENSIONES PARA ENVIO */}
                 <div className="md:col-span-2 space-y-3">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -1091,9 +1042,7 @@ export default function NewProductPage() {
                   </div>
                 </div>
 
-                {/* ============================================================
-                    ESPECIFICACIONES (SPECS)
-                ============================================================ */}
+                {/* ESPECIFICACIONES (SPECS) */}
                 <div className="md:col-span-2 border rounded-lg p-4">
                   <SpecsEditor 
                     specs={productSpecs} 
@@ -1104,9 +1053,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    ETIQUETA DEL PRODUCTO (RESPONSIVE)
-                ============================================================ */}
+                {/* ETIQUETA DEL PRODUCTO */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Tag className="w-4 h-4" />
@@ -1116,7 +1063,6 @@ export default function NewProductPage() {
                     Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
                   </p>
                   
-                  {/* ETIQUETAS - RESPONSIVE */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                     {[
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
@@ -1159,7 +1105,7 @@ export default function NewProductPage() {
                     })}
                   </div>
                   
-                  {/* CONTENIDO DE CADA ETIQUETA - RESPONSIVE */}
+                  {/* CONTENIDO DE CADA ETIQUETA */}
                   {selectedTag === "" && (
                     <div className="mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-semibold text-green-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
@@ -1331,9 +1277,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    PRODUCTOS RECOMENDADOS
-                ============================================================ */}
+                {/* PRODUCTOS RECOMENDADOS */}
                 <div className="space-y-2 md:col-span-2 border rounded-lg p-4">
                   <Label className="text-lg font-semibold flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -1377,9 +1321,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    STOCK
-                ============================================================ */}
+                {/* STOCK */}
                 <div className="space-y-2">
                   <Label htmlFor="stock" className={errors.stock ? 'text-red-600' : ''}>
                     Stock *
@@ -1402,9 +1344,7 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* ============================================================
-                    EDAD
-                ============================================================ */}
+                {/* EDAD */}
                 <div className="space-y-2">
                   <Label htmlFor="age" className={errors.age ? 'text-red-600' : ''}>
                     Edad (ej: 8+) *
@@ -1442,9 +1382,7 @@ export default function NewProductPage() {
                   {errors.ageMin && <p className="text-xs text-red-500">La edad minima es requerida</p>}
                 </div>
 
-                {/* ============================================================
-                    JUGADORES
-                ============================================================ */}
+                {/* JUGADORES */}
                 <div className="space-y-2">
                   <Label htmlFor="players" className={errors.players ? 'text-red-600' : ''}>
                     Jugadores (ej: 2-5) *
@@ -1501,9 +1439,7 @@ export default function NewProductPage() {
                   {errors.playersMax && <p className="text-xs text-red-500">El maximo de jugadores es requerido</p>}
                 </div>
 
-                {/* ============================================================
-                    DURACION
-                ============================================================ */}
+                {/* DURACION */}
                 <div className="space-y-2">
                   <Label htmlFor="duration" className={errors.duration ? 'text-red-600' : ''}>
                     Duracion (ej: 15 min) *
@@ -1541,9 +1477,7 @@ export default function NewProductPage() {
                   {errors.durationMin && <p className="text-xs text-red-500">La duracion minima es requerida</p>}
                 </div>
 
-                {/* ============================================================
-                    DESCRIPCION
-                ============================================================ */}
+                {/* DESCRIPCION */}
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="description" className={errors.description ? 'text-red-600' : ''}>
                     Descripcion *
@@ -1562,11 +1496,27 @@ export default function NewProductPage() {
                   />
                   {errors.description && <p className="text-xs text-red-500">La descripcion es requerida</p>}
                 </div>
+
+                {/* ============================================================
+                    MARCA DEL PRODUCTO - NUEVO CAMPO
+                ============================================================ */}
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="brand">Marca del Producto</Label>
+                  <Input
+                    id="brand"
+                    value={formData.brand || ''}
+                    onChange={(e) => {
+                      setFormData({ ...formData, brand: e.target.value })
+                    }}
+                    placeholder="Ej: Devir, Hasbro, Ravensburger, Wizards of the Coast..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Marca o editorial del producto. Si no se especifica, se usará "Devir" por defecto.
+                  </p>
+                </div>
               </div>
 
-              {/* ============================================================
-                  BOTONES
-              ============================================================ */}
+              {/* BOTONES */}
               <div className="flex gap-4">
                 <Button type="submit" disabled={isUploading} className="bg-[#C2410C] hover:bg-[#9A3412]">
                   {isUploading ? (
