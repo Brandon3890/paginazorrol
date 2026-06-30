@@ -116,7 +116,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   }, [])
 
   useEffect(() => {
-  if (hasLoaded.current) return;
+    if (hasLoaded.current) return;
     const loadEverything = async () => {
       hasLoaded.current = true;
       setLoading(true);
@@ -161,35 +161,35 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     }
   }, [product, products]);
 
-const correctImageUrl = (url: string) => {
-  if (!url) return '/uploads/products/diverse-products-still-life.png';
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('/api/images/')) return url;
-  
-  // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
-  if (url.includes('/uploads/products/')) {
-    const filename = url.split('/uploads/products/')[1];
-    // Codificar caracteres especiales para URL
-    const encoded = encodeURIComponent(filename);
+  const correctImageUrl = (url: string) => {
+    if (!url) return '/uploads/products/diverse-products-still-life.png';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('/api/images/')) return url;
+    
+    // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
+    if (url.includes('/uploads/products/')) {
+      const filename = url.split('/uploads/products/')[1];
+      // Codificar caracteres especiales para URL
+      const encoded = encodeURIComponent(filename);
+      return `/api/images/${encoded}`;
+    }
+    
+    if (url.startsWith('/uploads/')) {
+      const filename = url.replace('/uploads/products/', '');
+      const encoded = encodeURIComponent(filename);
+      return `/api/images/${encoded}`;
+    }
+    
+    if (url.startsWith('uploads/')) {
+      const filename = url.replace('uploads/products/', '');
+      const encoded = encodeURIComponent(filename);
+      return `/api/images/${encoded}`;
+    }
+    
+    // Si es solo el nombre del archivo
+    const encoded = encodeURIComponent(url);
     return `/api/images/${encoded}`;
-  }
-  
-  if (url.startsWith('/uploads/')) {
-    const filename = url.replace('/uploads/products/', '');
-    const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}`;
-  }
-  
-  if (url.startsWith('uploads/')) {
-    const filename = url.replace('uploads/products/', '');
-    const encoded = encodeURIComponent(filename);
-    return `/api/images/${encoded}`;
-  }
-  
-  // Si es solo el nombre del archivo
-  const encoded = encodeURIComponent(url);
-  return `/api/images/${encoded}`;
-};
+  };
 
   // Función para obtener URL de imagen con timestamp para forzar recarga
   const getImageUrlWithTimestamp = (url: string) => {
@@ -512,22 +512,36 @@ const correctImageUrl = (url: string) => {
             </motion.div>
           </div>
 
-          {/* Columna derecha: info */}
-          <motion.div
+          <motion.div 
             className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col h-full"
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <motion.p className="text-sm font-bold font-poppins tracking-wide text-gray-700" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <motion.p 
+              className="text-sm font-bold font-poppins tracking-wide text-gray-700"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
               {product.brand || "DEVIR"}
             </motion.p>
 
-            <motion.h1 className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+            <motion.h1 
+              className="text-2xl font-semibold font-poppins leading-tight text-gray-900 mt-2"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
               {product.name}
             </motion.h1>
 
-            <motion.div className="flex gap-2 flex-wrap mt-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+            <motion.div 
+              className="flex gap-2 flex-wrap mt-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
               {categoriesInfo.subcategories.map((sub, idx) => (
                 <motion.span
                   key={idx}
@@ -541,62 +555,34 @@ const correctImageUrl = (url: string) => {
               ))}
             </motion.div>
 
-            <motion.p className="text-sm font-normal font-poppins text-gray-700 mt-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+            <motion.p 
+              className="text-sm font-normal font-poppins text-gray-700 mt-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
               <span className="font-semibold">Stock disponible:</span> {product.stock}
             </motion.p>
 
-            {/* Descripción con scroll */}
-            <motion.div 
-              className="mt-2 flex-1"
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <motion.p 
+              className="text-sm font-normal font-poppins leading-relaxed text-gray-600 mt-6"
+              style={{ fontWeight: 500 }} 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.45 }}
             >
-              <div 
-                className={`
-                  text-sm font-normal font-poppins leading-relaxed text-gray-600 h-full w-full pr-2
-                  
-                  max-h-[180px]      /* Móvil (por defecto) */
-                  sm:max-h-[200px]   /* Teléfonos grandes */
-                  md:max-h-[240px]   /* Tablets */
-                  lg:max-h-[240px]   /* Laptops */
-                  xl:max-h-[350px]   /* Desktop */
-                  2xl:max-h-[380px]  /* Pantallas grandes */
-                `}
-                style={{ 
-                  fontWeight: 500,
-                  overflowY: 'auto',
-                  paddingRight: '8px',
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: '#C2410C #f1f1f1'
-                }}
-              >
-                {product.description}
-              </div>
-              
-              {/* Estilos para el scroll en navegadores WebKit */}
-              <style jsx>{`
-                div::-webkit-scrollbar {
-                  width: 6px;
-                }
-                div::-webkit-scrollbar-track {
-                  background: #f1f1f1;
-                  border-radius: 10px;
-                }
-                div::-webkit-scrollbar-thumb {
-                  background: #C2410C;
-                  border-radius: 10px;
-                }
-                div::-webkit-scrollbar-thumb:hover {
-                  background: #9A3412;
-                }
-              `}</style>
-            </motion.div>
+              {product.description}
+            </motion.p>
 
             <div className="mt-8 border-t border-gray-100"></div>
 
             <div className="mt-auto pt-4">
-              <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
+              <motion.div 
+                className="mb-6"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.55 }}
+              >
                 {product.originalPrice && product.originalPrice > product.price ? (
                   <div className="flex items-start gap-3">
                     <span className="text-white text-xs px-3 py-1 rounded-full font-bold font-poppins" style={{ backgroundColor: "rgba(228, 78, 43)" }}>
@@ -618,68 +604,41 @@ const correctImageUrl = (url: string) => {
                 )}
               </motion.div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 w-full items-center">
-                <motion.div
-                  whileHover={{ scale: hasStock() ? 1.02 : 1 }}
-                  whileTap={{ scale: hasStock() ? 0.98 : 1 }}
-                  className="w-full"
-                >
+              <div className="flex gap-3">
+                <motion.div whileHover={{ scale: hasStock() ? 1.02 : 1 }} whileTap={{ scale: hasStock() ? 0.98 : 1 }} className="flex-1">
                   <Button
                     onClick={handleAddToCart}
                     disabled={!hasStock()}
-                    className="w-full h-12 text-white font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                    className="text-white w-full font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
                     style={{ backgroundColor: "rgba(228, 78, 43)" }}
                   >
                     <AnimatePresence mode="wait">
                       {isAddingToCart ? (
-                        <motion.div
-                          key="adding"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{
-                              duration: 1,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
-                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
-                          />
+                        <motion.div key="adding" className="flex items-center justify-center">
+                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
                           <span>Agregando...</span>
                         </motion.div>
                       ) : showCheckmark ? (
-                        <motion.div
-                          key="success"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 400 }}
-                          >
+                        <motion.div key="success" className="flex items-center justify-center">
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400 }}>
                             <Check className="w-4 h-4 mr-2" />
                           </motion.div>
-                          <span>¡Agregado!</span>
+                          <span>Agregado!</span>
                         </motion.div>
                       ) : (
-                        <motion.div
-                          key="normal"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={
-                              hasStock()
-                                ? { rotate: [0, -10, 10, -5, 5, 0] }
-                                : {}
-                            }
-                            transition={{ duration: 0.5 }}
-                          >
+                        <motion.div key="normal" className="flex items-center justify-center">
+                          <motion.div animate={hasStock() ? { rotate: [0, -10, 10, -5, 5, 0] } : {}} transition={{ duration: 0.5 }}>
                             <ShoppingCart className="w-4 h-4 mr-2" />
                           </motion.div>
-
-                          <span className="text-xs sm:text-sm md:text-base whitespace-nowrap">
-                            {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
-                          </span>
+                          {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    
+                    <AnimatePresence>
+                      {isAddingToCart && (
+                        <motion.div className="absolute inset-0 pointer-events-none" initial={{ scale: 0, opacity: 0.5 }} animate={{ scale: 2, opacity: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+                          <div className="w-full h-full bg-white/20 rounded-full" />
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -687,14 +646,13 @@ const correctImageUrl = (url: string) => {
                 </motion.div>
 
                 {isAuthenticated && (
-                  <div className="flex items-center justify-start h-full">
-                    <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <FavoriteButton productId={product.id} size="lg" />
-                    </motion.div>
-                  </div>
+                  <motion.div 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex-shrink-0"
+                  >
+                    <FavoriteButton productId={product.id} size="lg" />
+                  </motion.div>
                 )}
               </div>
             </div>
