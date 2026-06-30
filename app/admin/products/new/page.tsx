@@ -1508,7 +1508,7 @@ export default function NewProductPage() {
                     onChange={(e) => {
                       setFormData({ ...formData, brand: e.target.value })
                     }}
-                    placeholder="Ej: Devir, Hasbro, Ravensburger, Wizards of the Coast..."
+                    placeholder="Escribe la marca del Producto"
                   />
                   <p className="text-xs text-muted-foreground">
                     Marca o editorial del producto. Si no se especifica, se usará "Devir" por defecto.
