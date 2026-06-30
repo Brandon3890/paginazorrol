@@ -256,6 +256,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     height: "10",
     width: "15",
     length: "20",
+    brand: "",
   })
 
   const [selectedCategory, setSelectedCategory] = useState<string>("")
@@ -595,6 +596,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
             height: safeToString(productData.height) || "10",
             width: safeToString(productData.width) || "15",
             length: safeToString(productData.length) || "20",
+            brand: safeToString(productData.brand) || 'Devir',
           })
           
           setSelectedCategory(categoryId)
@@ -779,7 +781,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview)
     }
     setImageFile(null)
-    // Usar la imagen por defecto en lugar de eliminar
     setImagePreview('/api/images/diverse-products-still-life.png')
     setImageTimestamp(Date.now())
     setFormData(prev => ({ ...prev, image: '/uploads/products/diverse-products-still-life.png' }))
@@ -893,6 +894,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       formDataToSend.append('youtubeVideoId', safeToString(formData.youtubeVideoId))
       formDataToSend.append('tags', selectedTag)
       formDataToSend.append('specs', JSON.stringify(productSpecs))
+      formDataToSend.append('brand', safeToString(formData.brand) || 'Devir')
       
       formDataToSend.append('weight', safeToString(formData.weight))
       formDataToSend.append('height', safeToString(formData.height))
@@ -921,7 +923,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       // Enviar imágenes eliminadas
       deletedExistingImages.forEach(imageUrl => {
-        // Convertir URL de API a URL de archivo para el servidor
         let filePath = imageUrl
         if (filePath.includes('/api/images/')) {
           filePath = filePath.replace('/api/images/', '')
@@ -1020,7 +1021,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           blobUrlsRef.current = blobUrlsRef.current.filter(url => url !== imagePreview);
         }
         
-        // Actualizar imagen principal
         const realImageUrl = updatedProduct.image || '/uploads/products/diverse-products-still-life.png';
         const apiImageUrl = convertToApiUrl(realImageUrl);
         console.log('📸 URL API de imagen:', apiImageUrl);
@@ -1028,7 +1028,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         setImagePreview(apiImageUrl);
         setFormData(prev => ({ ...prev, image: realImageUrl }));
         
-        // Actualizar imágenes adicionales
         if (updatedProduct.additionalImages && Array.isArray(updatedProduct.additionalImages)) {
           const processedAdditional = updatedProduct.additionalImages.map((img: string) => convertToApiUrl(img));
           setExistingAdditionalImages(processedAdditional);
@@ -1527,7 +1526,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     Selecciona SOLO UNA etiqueta para este producto. <strong className="text-green-600">"Normal" es para productos sin etiqueta especial.</strong>
                   </p>
                   
-                  {/* ETIQUETAS */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
                     {[
                       { value: "", label: "NORMAL", icon: Package, description: "Producto sin etiqueta especial", color: "bg-green-500", bgColor: "bg-green-50", borderColor: "border-green-200" },
@@ -1570,7 +1568,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     })}
                   </div>
                   
-                  {/* CONTENIDO DE CADA ETIQUETA - RESPONSIVE */}
                   {selectedTag === "" && (
                     <div className="mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-semibold text-green-800 mb-2 sm:mb-3 flex items-center gap-2 text-sm sm:text-base">
@@ -1954,6 +1951,24 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     placeholder="Describe el producto..."
                   />
                   {errors.description && <p className="text-xs text-red-500">La descripcion es requerida</p>}
+                </div>
+
+                {/* ============================================================
+                    MARCA DEL PRODUCTO - NUEVO CAMPO
+                ============================================================ */}
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="brand">Marca del Producto</Label>
+                  <Input
+                    id="brand"
+                    value={formData.brand || ''}
+                    onChange={(e) => {
+                      setFormData({ ...formData, brand: e.target.value })
+                    }}
+                    placeholder="Ej: Devir, Hasbro, Ravensburger, Wizards of the Coast..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Marca o editorial del producto. Si no se especifica, se usará "Devir" por defecto.
+                  </p>
                 </div>
               </div>
 
