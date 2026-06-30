@@ -604,12 +604,8 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 )}
               </motion.div>
 
-              <div className="flex items-center gap-3">
-                <motion.div
-                  whileHover={{ scale: hasStock() ? 1.02 : 1 }}
-                  whileTap={{ scale: hasStock() ? 0.98 : 1 }}
-                  className="flex-1"
-                >
+              <div className="flex gap-3">
+                <motion.div whileHover={{ scale: hasStock() ? 1.02 : 1 }} whileTap={{ scale: hasStock() ? 0.98 : 1 }} className="flex-1">
                   <Button
                     onClick={handleAddToCart}
                     disabled={!hasStock()}
@@ -618,64 +614,30 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                   >
                     <AnimatePresence mode="wait">
                       {isAddingToCart ? (
-                        <motion.div
-                          key="adding"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{
-                              duration: 1,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
-                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
-                          />
+                        <motion.div key="adding" className="flex items-center justify-center">
+                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
                           <span>Agregando...</span>
                         </motion.div>
                       ) : showCheckmark ? (
-                        <motion.div
-                          key="success"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 400 }}
-                          >
+                        <motion.div key="success" className="flex items-center justify-center">
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400 }}>
                             <Check className="w-4 h-4 mr-2" />
                           </motion.div>
-                          <span>¡Agregado!</span>
+                          <span>Agregado!</span>
                         </motion.div>
                       ) : (
-                        <motion.div
-                          key="normal"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={
-                              hasStock()
-                                ? { rotate: [0, -10, 10, -5, 5, 0] }
-                                : {}
-                            }
-                            transition={{ duration: 0.5 }}
-                          >
+                        <motion.div key="normal" className="flex items-center justify-center">
+                          <motion.div animate={hasStock() ? { rotate: [0, -10, 10, -5, 5, 0] } : {}} transition={{ duration: 0.5 }}>
                             <ShoppingCart className="w-4 h-4 mr-2" />
                           </motion.div>
                           {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
                         </motion.div>
                       )}
                     </AnimatePresence>
-
+                    
                     <AnimatePresence>
                       {isAddingToCart && (
-                        <motion.div
-                          className="absolute inset-0 pointer-events-none"
-                          initial={{ scale: 0, opacity: 0.5 }}
-                          animate={{ scale: 2, opacity: 0 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.5 }}
-                        >
+                        <motion.div className="absolute inset-0 pointer-events-none" initial={{ scale: 0, opacity: 0.5 }} animate={{ scale: 2, opacity: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
                           <div className="w-full h-full bg-white/20 rounded-full" />
                         </motion.div>
                       )}
@@ -684,10 +646,10 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 </motion.div>
 
                 {isAuthenticated && (
-                  <motion.div
+                  <motion.div 
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    className="flex items-center justify-center self-center flex-shrink-0"
+                    className="flex-shrink-0"
                   >
                     <FavoriteButton productId={product.id} size="lg" />
                   </motion.div>
