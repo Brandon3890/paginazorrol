@@ -10,27 +10,25 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   
   const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
   
-  // Crear la carpeta si no existe
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
     console.log('📁 Creada carpeta:', uploadDir);
   }
 
-  // Obtener la extensión correcta
   let extension = file.type.split('/')[1] || 'png';
   if (extension === 'jpeg') extension = 'jpg';
   if (extension === 'svg+xml') extension = 'svg';
   if (extension === 'vnd.microsoft.icon') extension = 'ico';
   
-  // NORMALIZAR EL NOMBRE - eliminar ñ, acentos, etc.
   const baseName = normalizeProductName(productName);
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
   const prefix = isAdditional ? `${baseName}-additional` : baseName;
-  const uniqueFilename = generateUniqueFilename(prefix, extension);
+  const uniqueFilename = `${prefix}-${timestamp}-${random}.${extension}`;
   const filepath = path.join(uploadDir, uniqueFilename);
 
-  // Guardar el archivo
   fs.writeFileSync(filepath, buffer);
-  console.log(`✅ Imagen guardada: ${filepath} (nombre original: ${file.name})`);
+  console.log(`✅ Imagen guardada: ${filepath}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
@@ -50,12 +48,6 @@ function correctImageUrl(imagePath: string | null): string {
   
   if (imagePath.startsWith('uploads/')) {
     return `/${imagePath}`;
-  }
-  
-  if (imagePath.includes('.jpg') || imagePath.includes('.jpeg') || 
-      imagePath.includes('.png') || imagePath.includes('.webp') || 
-      imagePath.includes('.gif') || imagePath.includes('.svg')) {
-    return `/uploads/products/${imagePath}`;
   }
   
   return '/uploads/products/diverse-products-still-life.png';
@@ -124,7 +116,6 @@ export async function GET(request: Request) {
 
     const productsWithAdditionalImages = await Promise.all(
       products.map(async (product) => {
-        // Obtener imágenes adicionales desde product_images
         const additionalImagesResult = await transaction.query(
           'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
           [product.id]
@@ -202,7 +193,6 @@ export async function GET(request: Request) {
 
     await transaction.commit();
     
-    // HEADERS ANTI-CACHÉ
     return new NextResponse(JSON.stringify(productsWithAdditionalImages), {
       status: 200,
       headers: {
@@ -247,7 +237,7 @@ export async function POST(request: Request) {
     const inStock = formData.get('inStock') === 'true';
     const isOnSale = formData.get('isOnSale') === 'true';
     const tags = formData.get('tags') as string;
-    const brand = formData.get('brand') as string;
+    const brand = formData.get('brand') as string || 'Devir';
     const genre = formData.get('genre') as string;
     const youtubeVideoId = formData.get('youtubeVideoId') as string;
     const weight = formData.get('weight') as string;
@@ -278,7 +268,6 @@ export async function POST(request: Request) {
 
     if (mainImageFile && mainImageFile.size > 0) {
       try {
-        // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
         mainImageUrl = await saveImage(mainImageFile, name, false);
         console.log('✅ Main image saved:', mainImageUrl);
       } catch (error) {
@@ -315,7 +304,7 @@ export async function POST(request: Request) {
         inStock,
         isOnSale,
         tags || null,
-        brand || 'Devir',
+        brand,
         genre || 'Estrategia, Familiar',
         specs || null,
         parseFloat(weight) || 0.5,
@@ -343,7 +332,6 @@ export async function POST(request: Request) {
       const imageFile = additionalImages[i];
       if (imageFile && imageFile.size > 0) {
         try {
-          // PASAR EL NOMBRE DEL PRODUCTO PARA NORMALIZARLO
           const imageUrl = await saveImage(imageFile, name, true);
           await transaction.query(
             'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',

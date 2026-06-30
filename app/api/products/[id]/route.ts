@@ -103,7 +103,6 @@ async function getUsersWithProductInFavorites(productId: number): Promise<any[]>
   }
 }
 
-// 🔥 FUNCIÓN CORREGIDA - Notificar sobre descuento
 async function notifyUsersAboutPriceDrop(
   productId: number, 
   oldPrice: number, 
@@ -122,10 +121,8 @@ async function notifyUsersAboutPriceDrop(
     console.log('Precio original (de la BD):', originalPrice);
     console.log('Forzar notificacion:', forceNotify);
     
-    // Obtener el precio original real
     let realOriginalPrice = originalPrice;
     
-    // Si no hay precio original en la BD pero estamos en modo descuento, usar el precio anterior
     if (!realOriginalPrice || realOriginalPrice <= 0) {
       if (oldPrice > newPrice) {
         realOriginalPrice = oldPrice;
@@ -136,7 +133,6 @@ async function notifyUsersAboutPriceDrop(
       }
     }
 
-    // Verificar que el precio original sea mayor que el precio de oferta
     if (realOriginalPrice <= newPrice) {
       return { notified: false, reason: 'Precio original no es mayor que precio de oferta' };
     }
@@ -150,10 +146,8 @@ async function notifyUsersAboutPriceDrop(
 
     const emails = users.map((u: any) => u.email).filter(Boolean);
     
-    // CALCULAR EL DESCUENTO REAL
     const discountPercent = Math.round(((realOriginalPrice - newPrice) / realOriginalPrice) * 100);
     
-   
     if (emails.length === 0) {
       return { notified: false, reason: 'No hay emails válidos' };
     }
@@ -400,6 +394,7 @@ export async function PUT(
     const recommendedProducts = formData.getAll('recommendedProducts') as string[]
     const tags = formData.get('tags') as string
     const specs = formData.get('specs') as string
+    const brand = formData.get('brand') as string || 'Devir'
     
     const ageMin = parseInt(formData.get('ageMin') as string)
     const ageDisplay = formData.get('ageDisplay') as string
@@ -447,7 +442,6 @@ export async function PUT(
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
 
-    // Obtener el producto antes de actualizar para notificaciones
     const oldProductData = await transaction.query(
       'SELECT price, original_price, name, image FROM products WHERE id = ?',
       [productId]
@@ -481,7 +475,8 @@ export async function PUT(
         players_min = ?, players_max = ?, players_display = ?,
         duration_min = ?, duration_display = ?, stock = ?, in_stock = ?,
         is_on_sale = ?, tags = ?, specs = ?,
-        weight = ?, height = ?, width = ?, length = ?
+        weight = ?, height = ?, width = ?, length = ?,
+        brand = ?
       WHERE id = ?
     `
 
@@ -510,10 +505,10 @@ export async function PUT(
       height,
       width,
       length,
+      brand,
       productId
     ])
 
-    // Eliminar y recrear subcategorías
     await transaction.query('DELETE FROM product_subcategories WHERE product_id = ?', [productId])
     
     for (let i = 0; i < subcategoryIds.length; i++) {
@@ -525,7 +520,6 @@ export async function PUT(
       )
     }
 
-    // Eliminar y recrear recomendaciones
     await transaction.query('DELETE FROM product_recommendations WHERE product_id = ?', [productId])
     
     for (const recProductId of recommendedProducts) {
@@ -535,7 +529,6 @@ export async function PUT(
       )
     }
 
-    // Eliminar imágenes marcadas
     if (deletedImages.length > 0) {
       for (const imageUrl of deletedImages) {
         await transaction.query(
@@ -554,7 +547,6 @@ export async function PUT(
       }
     }
 
-    // Procesar imágenes adicionales NUEVAS
     const additionalImages = formData.getAll('additionalImages') as File[]
     for (let i = 0; i < additionalImages.length; i++) {
       const imageFile = additionalImages[i]
@@ -570,7 +562,6 @@ export async function PUT(
 
     await transaction.commit()
 
-    // 🔥 NOTIFICACIONES CORREGIDAS
     try {
       const productName = oldProductData.length > 0 ? oldProductData[0].name : name;
       const productImage = oldProductData.length > 0 ? oldProductData[0].image : finalImage;
@@ -584,16 +575,7 @@ export async function PUT(
       
       const shouldNotify = (isNowOnSale && priceDrop) || adminSelectedDiscount;
       const forceNotify = adminSelectedDiscount;
-      
-      console.log('🔔 Evaluando notificación:');
-      console.log('  isDiscountTag:', isDiscountTag);
-      console.log('  isNowOnSale:', isNowOnSale);
-      console.log('  priceDrop:', priceDrop);
-      console.log('  adminSelectedDiscount:', adminSelectedDiscount);
-      console.log('  shouldNotify:', shouldNotify);
-      console.log('  forceNotify:', forceNotify);
-      console.log('  newOriginalPrice:', newOriginalPrice);
-      console.log('  newPriceValue:', newPriceValue);
+
       
       if (shouldNotify && newOriginalPrice !== null && newOriginalPrice > 0) {
         console.log('📧 Enviando notificaciones de oferta...');
