@@ -104,7 +104,7 @@ export function Footer() {
             <h3 className="font-semibold mb-3 text-lg">Contáctanos</h3>
             <p className="text-gray-300 text-sm">+56 9 5877 3629</p>
             <p className="text-gray-300 text-sm mb-4">
-              contacto@zorroludico.cl
+              jinfranko@zorroludico.cl
             </p>
           </div>
 

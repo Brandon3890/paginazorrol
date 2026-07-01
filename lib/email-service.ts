@@ -347,7 +347,7 @@ Ver Mis Pedidos
 <tr>
 <td align="center" style="padding:20px;font-size:14px;color:#0369a1;">
 <strong>¿Tienes preguntas sobre tu pedido?</strong><br>
-Contáctanos en soporte@ludicagames.com
+Contáctanos en jinfranko@zorroludico.cl
 </td>
 </tr>
 </table>
@@ -371,7 +371,7 @@ Contáctanos en soporte@ludicagames.com
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Lúdico" <noreply@ludicagames.com>',
+      from: process.env.SMTP_FROM || '"Zorro Lúdico" <jinfranko@zorroludico.cl>',
       to: customerEmail,
       subject: `Boleta Electrónica N° ${folio} - Pedido ${orderNumber}`,
       html: emailTemplate,
@@ -546,7 +546,7 @@ Ingresar Código
 <tr>
 <td align="center" style="font-size:14px;color:#6b7280;padding:10px 0;">
 ¿Necesitas ayuda? Contáctanos en 
-<strong>soporte@ludicagames.com</strong>
+<strong>jinfranko@zorroludico.cl</strong>
 </td>
 </tr>
 </table>
@@ -570,7 +570,7 @@ Ingresar Código
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Lúdico" <noreply@ludicagames.com>',
+      from: process.env.SMTP_FROM || '"Zorro Lúdico" <jinfranko@zorroludico.cl>',
       to: email,
       subject: `Código de verificación - Zorro Lúdico`,
       html: emailTemplate,
@@ -908,7 +908,7 @@ export async function sendContactEmail(formData: {
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Ludico" <contacto@zorroludico.cl>',
+      from: process.env.SMTP_FROM || '"Zorro Ludico" <jinfranko@zorroludico.cl>',
       to: destEmail,
       replyTo: email,
       subject: `Nuevo mensaje de contacto: ${subject}`,
@@ -1480,7 +1480,7 @@ export async function sendProductOnSaleEmail(
     const transporter = (await import('@/lib/email-service')).transporter;
     
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Ludico" <ofertas@zorroludico.cl>',
+      from: process.env.SMTP_FROM || '"Zorro Ludico" <jinfranko@zorroludico.cl>',
       bcc: usersEmails.join(','),
       subject: `¡Oferta! ${productName} - ${finalDiscountPercent}% de descuento`,
       html: emailTemplate,
