@@ -70,7 +70,7 @@ type MediaItem = {
 }
 
 interface ProductDetailViewProps {
-  productId: number;
+  productId: number | string; 
   onBack?: () => void;
 }
 
@@ -121,8 +121,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       hasLoaded.current = true;
       setLoading(true);
       try {
-        // FORZAR RECARGA DEL PRODUCTO (force = true)
-        const productData = await fetchProduct(productId, true);
+        const productData = await fetchProduct(productId);
         if (!productData) { 
           if (onBack) onBack();
           else router.push("/"); 
@@ -166,10 +165,8 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     if (url.startsWith('/api/images/')) return url;
     
-    // Si es una URL de uploads, extraer el nombre del archivo y usar el endpoint API
     if (url.includes('/uploads/products/')) {
       const filename = url.split('/uploads/products/')[1];
-      // Codificar caracteres especiales para URL
       const encoded = encodeURIComponent(filename);
       return `/api/images/${encoded}`;
     }
@@ -186,12 +183,10 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       return `/api/images/${encoded}`;
     }
     
-    // Si es solo el nombre del archivo
     const encoded = encodeURIComponent(url);
     return `/api/images/${encoded}`;
   };
 
-  // Función para obtener URL de imagen con timestamp para forzar recarga
   const getImageUrlWithTimestamp = (url: string) => {
     const corrected = correctImageUrl(url);
     if (corrected.includes('diverse-products-still-life.png')) return corrected;
@@ -272,6 +267,21 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
       onBack();
     } else {
       router.push("/");
+    }
+  };
+
+  const navigateToProduct = (productSlug: string) => {
+    if (onBack) {
+      window.scrollTo(0, 0);
+      setProduct(null);
+      setLoading(true);
+      hasLoaded.current = false;
+      setTimeout(() => {
+        window.location.href = `/products/${productSlug}`;
+      }, 100);
+    } else {
+      router.push(`/products/${productSlug}`);
+      window.scrollTo(0, 0);
     }
   };
 
@@ -710,24 +720,20 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           <h2 className="font-semibold font-poppins mb-4 text-gray-900">TODAS LAS CARACTERÍSTICAS</h2>
           
           {(() => {
-            // Intentar parsear specs de varias formas
             let specsToShow = [];
             try {
-              // Si specs es string, parsearlo
               if (typeof product.specs === 'string') {
                 const parsed = JSON.parse(product.specs);
                 if (Array.isArray(parsed)) {
                   specsToShow = parsed;
                 }
               } else if (Array.isArray(product.specs)) {
-                // Si ya es array, usarlo directamente
                 specsToShow = product.specs;
               }
             } catch (e) {
               console.warn('Error parsing specs:', e);
             }
             
-            // Si no hay specs, mostrar mensaje
             if (!specsToShow || specsToShow.length === 0) {
               return (
                 <p className="text-sm text-muted-foreground text-center py-4">
@@ -777,20 +783,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 <motion.div
                   key={recProduct.id}
                   className="group cursor-pointer border border-gray-200 rounded-xl overflow-hidden hover:border-orange-500 hover:shadow-lg transition-all duration-300"
-                  onClick={() => { 
-                    if (onBack) {
-                      window.scrollTo(0, 0);
-                      setProduct(null);
-                      setLoading(true);
-                      hasLoaded.current = false;
-                      setTimeout(() => {
-                        window.location.href = `/products/${recProduct.id}`;
-                      }, 100);
-                    } else {
-                      router.push(`/products/${recProduct.id}`);
-                      window.scrollTo(0, 0);
-                    }
-                  }}
+                  onClick={() => navigateToProduct(recProduct.slug)}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.9 + idx * 0.1 }}

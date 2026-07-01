@@ -977,29 +977,21 @@ export async function sendProductOnSaleEmail(
     return process.env.NEXTAUTH_URL + '/uploads/products/' + imagePath;
   };
 
-  // 🔥 CALCULAR EL DESCUENTO REAL basado en los precios
   const calculateRealDiscount = (originalPrice: number, salePrice: number) => {
     if (originalPrice <= 0 || salePrice >= originalPrice) return 0;
     const discount = ((originalPrice - salePrice) / originalPrice) * 100;
     return Math.round(discount);
   };
 
-  // Usar el descuento real calculado
   const realDiscountPercent = calculateRealDiscount(productOriginalPrice, productPrice);
   
   // Si el descuento calculado es 0 o negativo, usar el que viene por parámetro
   const finalDiscountPercent = realDiscountPercent > 0 ? realDiscountPercent : discountPercent;
 
-  console.log('📊 Cálculo de descuento para email:');
-  console.log('  Precio original:', productOriginalPrice);
-  console.log('  Precio oferta:', productPrice);
-  console.log('  Descuento calculado:', finalDiscountPercent, '%');
-  console.log('  Descuento recibido por parámetro:', discountPercent, '%');
 
   const productUrl = process.env.NEXTAUTH_URL + '/products/' + productId;
   const imageUrl = getImageUrl(productImage);
   
-  console.log('URL de la imagen para el correo:', imageUrl);
 
   const emailTemplate = `
 <!DOCTYPE html>
@@ -1487,12 +1479,10 @@ export async function sendProductOnSaleEmail(
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email de oferta enviado a', usersEmails.length, 'usuarios');
-    console.log('📊 Descuento mostrado en el correo:', finalDiscountPercent, '%');
     return true;
 
   } catch (error) {
-    console.error('❌ Error enviando email de oferta:', error);
+    console.error('Error enviando email de oferta:', error);
     
     if (process.env.NODE_ENV === 'development') {
       console.log('[DEV] Simulación de envío de oferta');

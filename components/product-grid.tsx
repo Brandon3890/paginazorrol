@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 interface CompatibleProduct {
   id: number
   name: string
+  slug: string  // <--- AHORA ES OBLIGATORIO
   price: number
   originalPrice?: number
   image: string
@@ -28,7 +29,6 @@ interface CompatibleProduct {
   ageMin: number
   playersMin: number
   playersMax: number
-  slug?: string
   categoryId: number
   subcategoryId: number
   subcategoryIds: string[]
@@ -131,22 +131,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [fetchProducts])
 
-
-  useEffect(() => {
-    const handleProductUpdate = () => {
-      console.log('Product update detected, refreshing...');
-      fetchProducts({ force: true });
-    };
-    
-    window.addEventListener('product-updated', handleProductUpdate);
-    window.addEventListener('payment-complete', handleProductUpdate);
-    
-    return () => {
-      window.removeEventListener('product-updated', handleProductUpdate);
-      window.removeEventListener('payment-complete', handleProductUpdate);
-    };
-  }, [fetchProducts]);
-
   useEffect(() => {
     const handlePaymentComplete = () => {
       fetchProducts({ force: true })
@@ -168,6 +152,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     return activeProducts.map(product => ({
       id: product.id,
       name: product.name,
+      slug: product.slug || '',  // <--- Asegurar que slug siempre tenga valor
       price: product.price,
       originalPrice: product.originalPrice,
       image: product.image,
@@ -184,7 +169,6 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       ageMin: product.ageMin,
       playersMin: product.playersMin,
       playersMax: product.playersMax,
-      slug: product.slug,
       categoryId: product.categoryId,
       subcategoryId: product.subcategoryId,
       subcategoryIds: product.subcategoryIds || [],

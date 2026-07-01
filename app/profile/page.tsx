@@ -24,12 +24,14 @@ import {
   Mail,
   Shield,
   AlertCircle,
-  Loader2
+  Loader2,
+  Bell
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import ChangePasswordForm from "@/app/profile/ChangePasswordForm"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -74,7 +76,7 @@ const getAddressIcon = (title: string) => {
 }
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, updateUser, logout, addUserAddress, updateUserAddress, deleteUserAddress, setDefaultAddress } = useAuthStore()
+  const { user, isAuthenticated, updateUser, logout, addUserAddress, updateUserAddress, deleteUserAddress, setDefaultAddress, token } = useAuthStore()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -102,6 +104,11 @@ export default function ProfilePage() {
     deliveryInstructions: ""
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  
+  // Estado para notificaciones de favoritos
+  const [favoriteNotifications, setFavoriteNotifications] = useState(true)
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false)
+  const [favoritesCount, setFavoritesCount] = useState(0)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -120,7 +127,97 @@ export default function ProfilePage() {
 
     // Cargar regiones
     fetchRegions()
+    // Cargar preferencias de notificaciones
+    loadNotificationSettings()
+    // Cargar cantidad de favoritos
+    loadFavoritesCount()
   }, [user, isAuthenticated, router])
+
+  const loadNotificationSettings = async () => {
+    if (!token) return
+    try {
+      const response = await fetch('/api/user/notification-settings', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFavoriteNotifications(data.favoritePriceDrop ?? true)
+      }
+    } catch (error) {
+      console.error('Error loading notification settings:', error)
+    }
+  }
+
+  const loadFavoritesCount = async () => {
+    if (!token) return
+    try {
+      const response = await fetch('/api/user/favorites', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFavoritesCount(data.favorites?.length || 0)
+      }
+    } catch (error) {
+      console.error('Error loading favorites:', error)
+    }
+  }
+
+  const handleNotificationToggle = async () => {
+    if (!token) {
+      console.error('❌ No hay token disponible')
+      toast({
+        title: "Error",
+        description: "No se encontró el token de autenticación",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsSavingNotifications(true)
+    const newValue = !favoriteNotifications
+    setFavoriteNotifications(newValue)
+
+    try {
+      const response = await fetch('/api/user/notification-settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          favoritePriceDrop: newValue,
+          favoriteBackInStock: true,
+          favoriteNewArrivals: false
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al guardar preferencia')
+      }
+
+      toast({
+        title: newValue ? "Notificaciones activadas" : "Notificaciones desactivadas",
+        description: newValue 
+          ? "Recibirás correos cuando tus productos favoritos bajen de precio"
+          : "Ya no recibirás correos de bajada de precio",
+        duration: 3000,
+      })
+    } catch (error) {
+      setFavoriteNotifications(!newValue)
+      toast({
+        title: "Error",
+        description: "No se pudo guardar la preferencia",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSavingNotifications(false)
+    }
+  }
 
   const fetchRegions = async () => {
     try {
@@ -142,7 +239,6 @@ export default function ProfilePage() {
       ...formData,
       [e.target.name]: e.target.value,
     })
-    // Limpiar error del campo cuando el usuario empieza a escribir
     if (formErrors[e.target.name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev }
@@ -161,7 +257,6 @@ export default function ProfilePage() {
 
     setAddressForm(newForm)
 
-    // Limpiar error del campo
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev }
@@ -170,7 +265,6 @@ export default function ProfilePage() {
       })
     }
 
-    // Si cambia la región, limpiar comuna y código postal
     if (name === 'regionIso') {
       setAddressForm(prev => ({
         ...prev,
@@ -179,7 +273,6 @@ export default function ProfilePage() {
       }))
     }
 
-    // Si cambia la comuna, actualizar automáticamente el código postal
     if (name === 'communeName' && value) {
       const selectedRegion = regions.find(r => r.region_iso_3166_2 === newForm.regionIso)
       const selectedCommune = selectedRegion?.communes.find(c => c.name === value)
@@ -382,7 +475,6 @@ export default function ProfilePage() {
     router.push("/")
   }
 
-  // Obtener iniciales para el avatar
   const getInitials = () => {
     const first = formData.firstName.charAt(0).toUpperCase()
     const last = formData.lastName.charAt(0).toUpperCase()
@@ -452,7 +544,6 @@ export default function ProfilePage() {
       transition={{ duration: 0.3 }}
     >
       <div className="max-w-4xl mx-auto">
-        {/* Header con avatar y nombre */}
         <motion.div 
           className="mb-4 sm:mb-8"
           initial={{ opacity: 0, x: -20 }}
@@ -475,7 +566,11 @@ export default function ProfilePage() {
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
             >
-              
+              <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border-2 border-primary/20">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-base sm:text-xl">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
             </motion.div>
             <motion.div 
               className="flex-1 min-w-0"
@@ -656,6 +751,53 @@ export default function ProfilePage() {
                         />
                       </Button>
                     </motion.div>
+
+                    {/* Sección de Notificaciones de Favoritos - DEBAJO DEL BOTÓN DE GUARDAR */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.5 }}
+                      className="mt-6 pt-4 border-t border-gray-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5">
+                            <Bell className="w-5 h-5 text-gray-500" />
+                          </div>
+                          <div>
+                            <Label htmlFor="favorite-notifications" className="text-sm font-medium cursor-pointer">
+                              Notificaciones de productos favoritos
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Recibe un correo cuando un producto en tu lista de favoritos baje de precio
+                              {favoritesCount > 0 && (
+                                <span className="block text-xs text-primary/70 mt-0.5">
+                                  Tienes {favoritesCount} {favoritesCount === 1 ? 'producto' : 'productos'} en favoritos
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isSavingNotifications ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Switch
+                              id="favorite-notifications"
+                              checked={favoriteNotifications}
+                              onCheckedChange={handleNotificationToggle}
+                              disabled={isSavingNotifications || favoritesCount === 0}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {favoritesCount === 0 && (
+                        <p className="text-xs text-muted-foreground mt-2 ml-8">
+                          Agrega productos a favoritos para activar esta opción
+                        </p>
+                      )}
+                    </motion.div>
+
                   </form>
                 </CardContent>
               </Card>
@@ -1135,7 +1277,6 @@ export default function ProfilePage() {
           </TabsContent>
         </Tabs>
 
-        {/* Botón de Cerrar Sesión */}
         <motion.div 
           className="flex justify-end mt-4 sm:mt-6"
           initial={{ opacity: 0 }}
@@ -1154,7 +1295,6 @@ export default function ProfilePage() {
         </motion.div>
       </div>
 
-      {/* Dialog de confirmación para eliminar dirección */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent className="w-[90%] sm:w-full max-w-md">
           <AlertDialogHeader>

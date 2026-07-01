@@ -1,5 +1,3 @@
-// components/product-card.tsx - Con fondo blanco entre imágenes
-
 "use client"
 
 import type React from "react"
@@ -13,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion"
 interface Product {
   id: number
   name: string
+  slug: string
   price: number
   originalPrice?: number
   image: string
@@ -191,7 +190,6 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
 
   // 🔥 PRECARGAR IMÁGENES en segundo plano (excepto la primera que ya carga)
   useEffect(() => {
-    // Pre-cargar todas las imágenes adicionales (no la primera)
     imageUrls.forEach((url, index) => {
       if (index > 0) {
         preloadImage(url)
@@ -214,6 +212,9 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
     };
   }, [isHovered, imageUrls.length, outOfStock]);
 
+  // Usar slug si existe, si no, usar ID como fallback
+  const productLink = product.slug ? `/products/${product.slug}` : `/products/${product.id}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -227,7 +228,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
       whileHover={{ y: -5 }}
       className="h-full"
     >
-      <Link href={`/products/${product.id}`} className="block h-full">
+      <Link href={productLink} className="block h-full">
         <Card
           className="group hover:shadow-xl transition-all duration-300 h-full flex flex-col w-full cursor-pointer border-border/50 relative overflow-hidden"
           onMouseEnter={() => setIsHovered(true)}
@@ -237,9 +238,8 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
           }}
         >
           <CardContent className="p-4 flex-1 flex flex-col relative z-10">
-            {/* 🔥 AQUÍ ESTÁ EL CAMBIO - bg-white en lugar de bg-muted */}
             <motion.div 
-              className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-white"
+              className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted"
               animate={{ scale: isHovered ? 1.02 : 1 }}
               transition={{ duration: 0.3 }}
             >

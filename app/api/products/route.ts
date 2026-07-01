@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { Transaction } from '@/lib/db-transaction';
 import fs from 'fs';
 import path from 'path';
-import { normalizeProductName, generateUniqueFilename } from '@/lib/normalize-filename';
+import { normalizeProductName, generateProductSlug } from '@/lib/normalize-filename';
 
 async function saveImage(file: File, productName: string, isAdditional: boolean = false): Promise<string> {
   const bytes = await file.arrayBuffer();
@@ -147,7 +147,7 @@ export async function GET(request: Request) {
         return {
           id: product.id,
           name: product.name,
-          slug: product.slug || product.name.toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/\s+/g, '-'),
+          slug: product.slug || generateProductSlug(product.name),
           description: product.description || 'Descripción del producto',
           price: parseFloat(product.price),
           originalPrice: product.originalPrice ? parseFloat(product.originalPrice) : undefined,
@@ -258,10 +258,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const slug = name.toLowerCase()
-      .replace(/[^a-z0-9 -]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-');
+    const slug = generateProductSlug(name);
+    console.log('📝 Slug generado:', slug);
 
     const mainImageFile = formData.get('mainImage') as File;
     let mainImageUrl = '/uploads/products/diverse-products-still-life.png';
@@ -315,7 +313,7 @@ export async function POST(request: Request) {
     );
 
     const productId = result.insertId;
-    console.log('✅ Product created with ID:', productId);
+    console.log('✅ Product created with ID:', productId, 'Slug:', slug);
 
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcategoryId = subcategoryIds[i];
@@ -349,6 +347,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       id: productId, 
+      slug: slug,
       message: 'Producto creado exitosamente' 
     });
 

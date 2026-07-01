@@ -1,10 +1,3 @@
-// lib/normalize-filename.ts
-
-/**
- * Normaliza un nombre de archivo eliminando caracteres especiales
- * Convierte: "Camión" → "camion", "Niño" → "nino", "España" → "espana"
- * Mantiene solo letras (a-z), números (0-9), guiones y puntos
- */
 export function normalizeFilename(filename: string): string {
   if (!filename) return '';
   
@@ -59,4 +52,23 @@ export function generateUniqueFilename(baseName: string, extension: string): str
   const normalized = normalizeFilename(baseName);
   const timestamp = Date.now();
   return `${normalized}-${timestamp}.${extension}`;
+}
+
+
+export function generateProductSlug(name: string): string {
+  if (!name) return 'producto';
+  
+ 
+  let slug = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')     
+    .trim()
+    .replace(/\s+/g, '-')              
+    .replace(/-+/g, '-');              
+  
+  slug = slug.replace(/^-+|-+$/g, '');
+  
+  return slug || 'producto';
 }

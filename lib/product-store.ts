@@ -71,7 +71,7 @@ interface ProductStore {
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
   fetchProducts: (options?: { includeInactive?: boolean; isAdmin?: boolean; force?: boolean }) => Promise<void>;
-  fetchProduct: (id: number, force?: boolean) => Promise<Product | null>;
+  fetchProduct: (identifier: number | string) => Promise<Product | null>;
   addProduct: (formData: FormData) => Promise<void>;
   updateProduct: (id: number, formData: FormData) => Promise<void>;
   deactivateProduct: (id: number) => Promise<void>;
@@ -88,7 +88,6 @@ interface ProductStore {
   getProductsBySubcategory: (subcategoryId: number) => Product[];
   getRecommendedProducts: (productId: number) => Product[];
   getSortedProducts: () => Product[];
-  forceRefresh: () => Promise<void>;
 }
 
 const normalizeTags = (tags: any): string[] => {
@@ -156,6 +155,7 @@ const migrateStore = (persistedState: any, version: number) => {
            product.name;
   }).map((product: any) => ({
     ...product,
+    slug: product.slug || '',
     tags: normalizeTags(product.tags || product.tagsRaw),
     brand: product.brand || 'Devir',
     genre: product.genre || 'Estrategia, Familiar',
@@ -179,461 +179,327 @@ const migrateStore = (persistedState: any, version: number) => {
 
 export const useProductStore = create<ProductStore>()(
   persist(
-    (set, get) => {
-      // Set para rastrear productos que están siendo cargados
-      const fetchingProductIds = new Set<number>();
-      // Set para rastrear si ya hay una solicitud de fetchProducts en curso
-      let isFetchingProducts = false;
-
-      return {
-        products: [],
-        loading: false,
-        productsLoaded: false,
-        error: null,
-        version: 0,
-        globalSearchQuery: "",
+    (set, get) => ({
+      products: [],
+      loading: false,
+      productsLoaded: false,
+      error: null,
+      version: 0,
+      globalSearchQuery: "",
+      
+      setGlobalSearchQuery: (query) => {
+        set({ globalSearchQuery: query });
+      },
+      
+      fetchProducts: async (options = {}) => {
+        const { includeInactive = false, isAdmin = false, force = false } = options;
         
-        setGlobalSearchQuery: (query) => {
-          set({ globalSearchQuery: query });
-        },
+        set({ loading: true, error: null });
         
-        forceRefresh: async () => {
-          console.log('🔄 Force refresh products...');
-          set({ productsLoaded: false });
-          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-        },
-        
-        fetchProducts: async (options = {}) => {
-          const { includeInactive = false, isAdmin = false, force = false } = options;
-          
-          if (get().productsLoaded && !force) {
-            console.log('📦 Using cached products (not forcing refresh)');
-            return;
+        try {
+          const params = new URLSearchParams();
+          if (isAdmin || includeInactive) {
+            params.append('includeInactive', 'true');
           }
-
-          // Evitar múltiples solicitudes simultáneas
-          if (isFetchingProducts) {
-            console.log('⏳ Ya hay una solicitud de productos en curso, esperando...');
-            return new Promise((resolve) => {
-              const checkInterval = setInterval(() => {
-                if (!isFetchingProducts) {
-                  clearInterval(checkInterval);
-                  resolve(undefined);
-                }
-              }, 100);
-            });
+          if (isAdmin) {
+            params.append('admin', 'true');
           }
           
-          isFetchingProducts = true;
-          set({ loading: true, error: null });
+          const url = `/api/products?${params.toString()}&_=${Date.now()}`;
           
-          try {
-            const params = new URLSearchParams();
-            if (isAdmin || includeInactive) {
-              params.append('includeInactive', 'true');
+          const response = await fetch(url, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
             }
-            if (isAdmin) {
-              params.append('admin', 'true');
-            }
-            
-            const url = `/api/products?${params.toString()}&_=${Date.now()}`;
-            console.log('🌐 Fetching products from:', url);
-            
-            const response = await fetch(url, {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-              }
-            });
-            
-            if (!response.ok) {
-              if (response.status === 429) {
-                console.warn('⚠️ Rate limit exceeded, retrying in 3 seconds...');
-                // Esperar 3 segundos y reintentar
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                return get().fetchProducts({ ...options, force: true });
-              }
-              throw new Error(`Error fetching products: ${response.status}`);
-            }
-            
-            const productsData = await response.json();
-            console.log(`📦 Received ${productsData.length} products from API`);
-            
-            const normalizedProducts = productsData.map((product: any) => ({
-              ...product,
-              tags: normalizeTags(product.tags || product.tagsRaw),
-              brand: product.brand || 'Devir',
-              genre: product.genre || 'Estrategia, Familiar',
-              specs: product.specs || null,
-              weight: product.weight ?? 0.5,
-              height: product.height ?? 10,
-              width: product.width ?? 15,
-              length: product.length ?? 20,
-            }));
-            
-            const validProducts = Array.isArray(normalizedProducts) ? normalizedProducts : [];
-            
-            set({ 
-              products: validProducts, 
-              productsLoaded: true,
-              loading: false, 
-              error: null 
-            });
-            
-            console.log(`✅ ${validProducts.length} products loaded in store`);
-            
-          } catch (error) {
-            console.error('Error in fetchProducts:', error);
-            set({ 
-              error: error instanceof Error ? error.message : 'Error al cargar productos', 
-              loading: false 
-            });
-          } finally {
-            isFetchingProducts = false;
-          }
-        },
-
-        fetchProduct: async (id: number, force: boolean = false) => {
-          // Si el producto ya está siendo cargado, esperar
-          if (fetchingProductIds.has(id)) {
-            console.log(`⏳ Producto ${id} ya está siendo cargado, esperando...`);
-            return new Promise((resolve) => {
-              const checkInterval = setInterval(() => {
-                if (!fetchingProductIds.has(id)) {
-                  clearInterval(checkInterval);
-                  // Intentar obtener el producto del caché después de que termine la carga
-                  const cached = get().products.find(p => p.id === id);
-                  resolve(cached || null);
-                }
-              }, 100);
-            });
-          }
-
-          // Si no se fuerza y el producto existe en caché, devolverlo
-          if (!force) {
-            const existing = get().products.find(p => p.id === id);
-            if (existing) {
-              console.log(`📦 Returning cached product: ${existing.name}`);
-              return existing;
-            }
-          }
-          
-          // Marcar que este producto está siendo cargado
-          fetchingProductIds.add(id);
-          
-          try {
-            const url = `/api/products/${id}?_=${Date.now()}`;
-            console.log('🌐 Fetching product from:', url);
-            
-            const response = await fetch(url, {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-              }
-            });
-            
-            if (!response.ok) {
-              if (response.status === 429) {
-                console.warn(`⚠️ Rate limit exceeded for product ${id}, retrying in 3 seconds...`);
-                // Esperar 3 segundos y reintentar
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                fetchingProductIds.delete(id);
-                return get().fetchProduct(id, true);
-              }
-              const text = await response.text();
-              console.error('❌ Error response:', text);
-              throw new Error(`Error fetching product: ${response.status}`);
-            }
-            
-            const product = await response.json();
-            console.log(`📦 Received product: ${product.name}`);
-            console.log(`📸 Image: ${product.image}`);
-            console.log(`📸 Additional images: ${product.additionalImages?.length || 0}`);
-            console.log(`📋 Specs:`, product.specs);
-            
-            const normalizedProduct = {
-              ...product,
-              tags: normalizeTags(product.tags || product.tagsRaw),
-              brand: product.brand || 'Devir',
-              genre: product.genre || 'Estrategia, Familiar',
-              specs: product.specs || null,
-              weight: product.weight ?? 0.5,
-              height: product.height ?? 10,
-              width: product.width ?? 15,
-              length: product.length ?? 20,
-            };
-            
-            set(state => {
-              const existingProductIndex = state.products.findIndex(p => p.id === id);
-              if (existingProductIndex >= 0) {
-                const newProducts = [...state.products];
-                newProducts[existingProductIndex] = normalizedProduct;
-                return { products: newProducts };
-              }
-              return { products: [...state.products, normalizedProduct] };
-            });
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated', { 
-                detail: { productId: id }
-              }));
-            }
-            
-            return normalizedProduct;
-          } catch (error) {
-            console.error('❌ Error fetching product:', error);
-            set({ 
-              error: error instanceof Error ? error.message : 'Error al cargar el producto' 
-            });
-            return null;
-          } finally {
-            fetchingProductIds.delete(id);
-          }
-        },
-
-        incrementVersion: () => {
-          set(state => ({ version: state.version + 1 }));
-        },
-
-        getRecommendedProducts: (productId: number) => {
-          const { products } = get();
-          const product = products.find(p => p.id === productId);
-          
-          if (!product || !product.recommendedProducts || product.recommendedProducts.length === 0) {
-            return [];
-          }
-          
-          return products.filter(p => 
-            product.recommendedProducts?.includes(p.id) && p.isActive
-          );
-        },
-
-        getSortedProducts: () => {
-          const { products } = get();
-          const activeProducts = products.filter(p => p.isActive);
-          return [...activeProducts].sort((a, b) => {
-            const priorityA = getProductPriority(a);
-            const priorityB = getProductPriority(b);
-            return priorityA - priorityB;
           });
-        },
-
-        addProduct: async (formData: FormData) => {
-          try {
-            console.log('➕ Creating product...');
-            const response = await fetch('/api/products', {
-              method: 'POST',
-              body: formData,
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Error creating product');
-            }
-            
-            const result = await response.json();
-            console.log('✅ Product created with ID:', result.id);
-            
-            // Esperar un poco antes de recargar para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-            get().incrementVersion();
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated'));
-            }
-            
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
-            set({ error: errorMessage });
-            throw error;
-          }
-        },
-
-        updateProduct: async (id: number, formData: FormData) => {
-          try {
-            console.log(`✏️ Updating product ${id}...`);
-            const response = await fetch(`/api/products/${id}`, {
-              method: 'PUT',
-              body: formData,
-            });
-
-            if (!response.ok) {
-              const text = await response.text();
-              console.error('❌ Error response:', text);
-              let errorData;
-              try {
-                errorData = JSON.parse(text);
-              } catch {
-                errorData = { error: text || 'Error desconocido' };
-              }
-              throw new Error(errorData.error || 'Error updating product');
-            }
-            
-            console.log('✅ Product updated successfully');
-            
-            // Esperar un poco antes de recargar para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await get().fetchProduct(id, true);
-            await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-            get().incrementVersion();
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated', { 
-                detail: { productId: id }
-              }));
-            }
-            
-          } catch (error) {
-            console.error('❌ Error en updateProduct:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Error al actualizar el producto';
-            set({ error: errorMessage });
-            throw error;
-          }
-        },
-
-        deactivateProduct: async (id: number) => {
-          try {
-            console.log(`🗑️ Deactivating product ${id}...`);
-            const response = await fetch(`/api/products/${id}`, {
-              method: 'DELETE',
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Error deactivating product');
-            }
-            
-            console.log('✅ Product deactivated');
-            
-            // Esperar un poco antes de recargar para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-            get().incrementVersion();
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated'));
-            }
-            
-          } catch (error) {
-            console.error(`Error deactivating product ${id}:`, error);
-            const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
-            set({ error: errorMessage });
-            throw error;
-          }
-        },
-
-        reactivateProduct: async (id: number) => {
-          try {
-            console.log(`🔄 Reactivating product ${id}...`);
-            const response = await fetch(`/api/products/${id}/reactivate`, {
-              method: 'PUT',
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Error reactivating product');
-            }
-            
-            console.log('✅ Product reactivated');
-            
-            // Esperar un poco antes de recargar para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-            get().incrementVersion();
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated'));
-            }
-            
-          } catch (error) {
-            console.error(`Error reactivating product ${id}:`, error);
-            const errorMessage = error instanceof Error ? error.message : 'Error al reactivar el producto';
-            set({ error: errorMessage });
-            throw error;
-          }
-        },
-
-        permanentlyDeleteProduct: async (id: number) => {
-          try {
-            console.log(`💀 Permanently deleting product ${id}...`);
-            const response = await fetch(`/api/products/${id}/permanent`, {
-              method: 'DELETE',
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Error deleting product permanently');
-            }
-            
-            console.log('✅ Product permanently deleted');
-            
-            // Esperar un poco antes de recargar para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
-            get().incrementVersion();
-            
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('product-updated'));
-            }
-            
-          } catch (error) {
-            console.error(`Error permanently deleting product ${id}:`, error);
-            const errorMessage = error instanceof Error ? error.message : 'Error al eliminar el producto';
-            set({ error: errorMessage });
-            throw error;
-          }
-        },
-
-        clearError: () => {
-          set({ error: null });
-        },
-
-        getProductCategories: (productId: number) => {
-          const { products } = get();
-          const product = products.find(p => p.id === productId);
           
-          if (!product) {
-            return null;
+          if (!response.ok) {
+            throw new Error(`Error fetching products: ${response.status}`);
           }
-
-          const subcategories = product.subcategoriesData || product.subcategories || [];
-          const subcategoryNames = subcategories.map(sub => sub.name);
           
-          const primarySubcategory = subcategories.find(sub => sub.isPrimary)?.name || 
-                                   subcategories[0]?.name || 
-                                   product.subcategory;
-
-          return {
-            category: product.category,
-            subcategories: subcategoryNames,
-            primarySubcategory: primarySubcategory
-          };
-        },
-
-        getProductsByCategory: (categoryId: number) => {
-          const { products } = get();
-          return products.filter(product => product.categoryId === categoryId && product.isActive);
-        },
-
-        getProductsBySubcategory: (subcategoryId: number) => {
-          const { products } = get();
-          return products.filter(product => 
-            product.subcategoryIds.includes(subcategoryId.toString()) && 
-            product.isActive
-          );
+          const productsData = await response.json();
+          
+          const normalizedProducts = productsData.map((product: any) => ({
+            ...product,
+            slug: product.slug || '',
+            tags: normalizeTags(product.tags || product.tagsRaw),
+            brand: product.brand || 'Devir',
+            genre: product.genre || 'Estrategia, Familiar',
+            specs: product.specs || null,
+            weight: product.weight ?? 0.5,
+            height: product.height ?? 10,
+            width: product.width ?? 15,
+            length: product.length ?? 20,
+          }));
+          
+          const validProducts = Array.isArray(normalizedProducts) ? normalizedProducts : [];
+          
+          set({ 
+            products: validProducts, 
+            productsLoaded: true,
+            loading: false, 
+            error: null 
+          });
+          
+        } catch (error) {
+          console.error('Error in fetchProducts:', error);
+          set({ 
+            error: error instanceof Error ? error.message : 'Error al cargar productos', 
+            loading: false 
+          });
         }
-      };
-    },
+      },
+
+      fetchProduct: async (identifier: number | string) => {
+        try {
+          const response = await fetch(`/api/products/${identifier}?_=${Date.now()}`, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Error fetching product: ${response.status}`);
+          }
+          
+          const product = await response.json();
+          const normalizedProduct = {
+            ...product,
+            slug: product.slug || '',
+            tags: normalizeTags(product.tags || product.tagsRaw),
+            brand: product.brand || 'Devir',
+            genre: product.genre || 'Estrategia, Familiar',
+            specs: product.specs || null,
+            weight: product.weight ?? 0.5,
+            height: product.height ?? 10,
+            width: product.width ?? 15,
+            length: product.length ?? 20,
+          };
+          
+          set(state => {
+            const existingProductIndex = state.products.findIndex(p => p.id === normalizedProduct.id);
+            if (existingProductIndex >= 0) {
+              const newProducts = [...state.products];
+              newProducts[existingProductIndex] = normalizedProduct;
+              return { products: newProducts };
+            }
+            return { products: [...state.products, normalizedProduct] };
+          });
+          
+          return normalizedProduct;
+        } catch (error) {
+          console.error('Error fetching product:', error);
+          set({ 
+            error: error instanceof Error ? error.message : 'Error al cargar el producto' 
+          });
+          return null;
+        }
+      },
+
+      incrementVersion: () => {
+        set(state => ({ version: state.version + 1 }));
+      },
+
+      getRecommendedProducts: (productId: number) => {
+        const { products } = get();
+        const product = products.find(p => p.id === productId);
+        
+        if (!product || !product.recommendedProducts || product.recommendedProducts.length === 0) {
+          return [];
+        }
+        
+        return products.filter(p => 
+          product.recommendedProducts?.includes(p.id) && p.isActive
+        );
+      },
+
+      getSortedProducts: () => {
+        const { products } = get();
+        const activeProducts = products.filter(p => p.isActive);
+        return [...activeProducts].sort((a, b) => {
+          const priorityA = getProductPriority(a);
+          const priorityB = getProductPriority(b);
+          return priorityA - priorityB;
+        });
+      },
+
+      addProduct: async (formData: FormData) => {
+        try {
+          const response = await fetch('/api/products', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error creating product');
+          }
+          
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Error al crear el producto';
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      updateProduct: async (id: number, formData: FormData) => {
+        try {
+          const response = await fetch(`/api/products/${id}`, {
+            method: 'PUT',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error updating product');
+          }
+          
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
+          
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Error al actualizar el producto';
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      deactivateProduct: async (id: number) => {
+        try {
+          const response = await fetch(`/api/products/${id}`, {
+            method: 'DELETE',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error deactivating product');
+          }
+          
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: false } : p
+            )
+          }));
+          
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
+          
+        } catch (error) {
+          console.error(`Error deactivating product ${id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Error al desactivar el producto';
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      reactivateProduct: async (id: number) => {
+        try {
+          const response = await fetch(`/api/products/${id}/reactivate`, {
+            method: 'PUT',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error reactivating product');
+          }
+          
+          set(state => ({
+            products: state.products.map(p =>
+              p.id === id ? { ...p, isActive: true } : p
+            )
+          }));
+          
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
+          
+        } catch (error) {
+          console.error(`Error reactivating product ${id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Error al reactivar el producto';
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      permanentlyDeleteProduct: async (id: number) => {
+        try {
+          const response = await fetch(`/api/products/${id}/permanent`, {
+            method: 'DELETE',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error deleting product permanently');
+          }
+          
+          set(state => ({
+            products: state.products.filter(p => p.id !== id)
+          }));
+          
+          await get().fetchProducts({ includeInactive: true, isAdmin: true, force: true });
+          get().incrementVersion();
+          
+        } catch (error) {
+          console.error(`Error permanently deleting product ${id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Error al eliminar el producto';
+          set({ error: errorMessage });
+          throw error;
+        }
+      },
+
+      clearError: () => {
+        set({ error: null });
+      },
+
+      getProductCategories: (productId: number) => {
+        const { products } = get();
+        const product = products.find(p => p.id === productId);
+        
+        if (!product) {
+          return null;
+        }
+
+        const subcategories = product.subcategoriesData || product.subcategories || [];
+        const subcategoryNames = subcategories.map(sub => sub.name);
+        
+        const primarySubcategory = subcategories.find(sub => sub.isPrimary)?.name || 
+                                 subcategories[0]?.name || 
+                                 product.subcategory;
+
+        return {
+          category: product.category,
+          subcategories: subcategoryNames,
+          primarySubcategory: primarySubcategory
+        };
+      },
+
+      getProductsByCategory: (categoryId: number) => {
+        const { products } = get();
+        return products.filter(product => product.categoryId === categoryId && product.isActive);
+      },
+
+      getProductsBySubcategory: (subcategoryId: number) => {
+        const { products } = get();
+        return products.filter(product => 
+          product.subcategoryIds.includes(subcategoryId.toString()) && 
+          product.isActive
+        );
+      }
+    }),
     {
       name: 'product-store',
-      version: 6,
+      version: 4,
       migrate: migrateStore,
       partialize: (state) => ({ 
+        products: state.products,
+        productsLoaded: state.productsLoaded,
         version: state.version,
         globalSearchQuery: state.globalSearchQuery
       }),

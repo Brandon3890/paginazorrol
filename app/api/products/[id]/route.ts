@@ -3,7 +3,7 @@ import { Transaction } from '@/lib/db-transaction'
 import fs from 'fs'
 import path from 'path'
 import { sendProductOnSaleEmail } from '@/lib/email-service'
-import { normalizeProductName, generateUniqueFilename } from '@/lib/normalize-filename'
+import { normalizeProductName, generateProductSlug } from '@/lib/normalize-filename'
 
 interface QueryResult {
   [key: string]: any;
@@ -82,8 +82,32 @@ function normalizeTags(tagsRaw: any): string[] {
   return [];
 }
 
-async function getUsersWithProductInFavorites(productId: number): Promise<any[]> {
+async function notifyUsersAboutPriceDrop(
+  productId: number, 
+  oldPrice: number, 
+  newPrice: number, 
+  productName: string, 
+  productImage: string,
+  originalPrice: number | null
+) {
   try {
+    console.log('===== INICIANDO NOTIFICACION DE OFERTA =====');
+    
+    let realOriginalPrice = originalPrice;
+    
+    if (!realOriginalPrice || realOriginalPrice <= 0) {
+      if (oldPrice > newPrice) {
+        realOriginalPrice = oldPrice;
+      } else {
+        console.log('⚠️ No hay precio original válido');
+        return { notified: false, reason: 'Sin precio original válido' };
+      }
+    }
+
+    if (realOriginalPrice <= newPrice) {
+      return { notified: false, reason: 'Precio original no es mayor que precio de oferta' };
+    }
+
     const { query } = await import('@/lib/db');
     const users = await query(
       `SELECT 
@@ -93,59 +117,22 @@ async function getUsersWithProductInFavorites(productId: number): Promise<any[]>
         u.last_name
        FROM user_favorites uf
        LEFT JOIN users u ON uf.user_id = u.id
-       WHERE uf.product_id = ? AND u.is_active = 1 AND u.email IS NOT NULL AND u.email != ''`,
+       LEFT JOIN user_notification_settings uns ON u.id = uns.user_id
+       WHERE uf.product_id = ? 
+       AND u.is_active = 1 
+       AND u.email IS NOT NULL 
+       AND u.email != ''
+       AND (uns.favorite_price_drop = 1 OR uns.favorite_price_drop IS NULL)`,
       [productId]
     ) as any[];
-    return users;
-  } catch (error) {
-    console.error('Error obteniendo usuarios favoritos:', error);
-    return [];
-  }
-}
 
-async function notifyUsersAboutPriceDrop(
-  productId: number, 
-  oldPrice: number, 
-  newPrice: number, 
-  productName: string, 
-  productImage: string,
-  originalPrice: number | null,
-  forceNotify: boolean = false
-) {
-  try {
-    console.log('===== INICIANDO NOTIFICACION DE OFERTA =====');
-    console.log('Producto ID:', productId);
-    console.log('Producto:', productName);
-    console.log('Precio anterior:', oldPrice);
-    console.log('Nuevo precio:', newPrice);
-    console.log('Precio original (de la BD):', originalPrice);
-    console.log('Forzar notificacion:', forceNotify);
-    
-    let realOriginalPrice = originalPrice;
-    
-    if (!realOriginalPrice || realOriginalPrice <= 0) {
-      if (oldPrice > newPrice) {
-        realOriginalPrice = oldPrice;
-        console.log('📊 Usando precio anterior como original:', realOriginalPrice);
-      } else {
-        console.log('⚠️ No hay precio original válido para calcular descuento');
-        return { notified: false, reason: 'Sin precio original válido' };
-      }
-    }
-
-    if (realOriginalPrice <= newPrice) {
-      return { notified: false, reason: 'Precio original no es mayor que precio de oferta' };
-    }
-
-    const users = await getUsersWithProductInFavorites(productId);
-    console.log('Usuarios encontrados con este producto en favoritos:', users.length);
+    console.log('Usuarios encontrados con notificaciones activas:', users.length);
 
     if (users.length === 0) {
-      return { notified: false, reason: 'Sin usuarios para notificar', usersFound: 0 };
+      return { notified: false, reason: 'Sin usuarios para notificar' };
     }
 
     const emails = users.map((u: any) => u.email).filter(Boolean);
-    
     const discountPercent = Math.round(((realOriginalPrice - newPrice) / realOriginalPrice) * 100);
     
     if (emails.length === 0) {
@@ -156,6 +143,8 @@ async function notifyUsersAboutPriceDrop(
       return { notified: false, reason: 'Descuento inválido' };
     }
 
+    console.log('📧 Enviando email a', emails.length, 'usuarios con descuento del', discountPercent, '%');
+    
     const emailResult = await sendProductOnSaleEmail(
       productName,
       newPrice,
@@ -170,11 +159,10 @@ async function notifyUsersAboutPriceDrop(
 
     if (emailResult) {
       try {
-        const { query } = await import('@/lib/db');
         await query(
           `INSERT INTO price_drop_notifications 
-           (product_id, old_price, new_price, users_notified, notified_at, created_at)
-           VALUES (?, ?, ?, ?, NOW(), NOW())`,
+           (product_id, old_price, new_price, users_notified, notified_at)
+           VALUES (?, ?, ?, ?, NOW())`,
           [productId, realOriginalPrice, newPrice, users.length]
         );
         console.log('Notificación registrada en base de datos');
@@ -186,16 +174,16 @@ async function notifyUsersAboutPriceDrop(
     return { 
       notified: emailResult, 
       usersNotified: users.length,
-      emails: emails,
       discountPercent: discountPercent
     };
 
   } catch (error) {
     console.error('Error en notifyUsersAboutPriceDrop:', error);
-    return { notified: false, reason: 'Error interno: ' + (error as Error).message };
+    return { notified: false, reason: 'Error interno' };
   }
 }
 
+// ==================== GET (Público - Acepta ID o SLUG) ====================
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -204,16 +192,29 @@ export async function GET(
   
   try {
     const resolvedParams = await params
-    const productId = parseInt(resolvedParams.id)
+    const identifier = resolvedParams.id
 
-    if (isNaN(productId)) {
+    if (!identifier) {
       return NextResponse.json(
-        { error: 'ID de producto invalido' },
+        { error: 'ID o slug de producto requerido' },
         { status: 400 }
       )
     }
 
     await transaction.begin()
+
+    const isNumeric = /^\d+$/.test(identifier)
+    
+    let whereClause: string
+    let queryParams: any[]
+
+    if (isNumeric) {
+      whereClause = 'p.id = ?'
+      queryParams = [parseInt(identifier)]
+    } else {
+      whereClause = 'p.slug = ?'
+      queryParams = [identifier]
+    }
 
     const productQuery = `
       SELECT 
@@ -233,11 +234,11 @@ export async function GET(
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN product_subcategories ps ON p.id = ps.product_id
       LEFT JOIN subcategories s ON ps.subcategory_id = s.id
-      WHERE p.id = ?
+      WHERE ${whereClause}
       GROUP BY p.id
     `
 
-    const products = await transaction.query(productQuery, [productId]) as QueryResult[]
+    const products = await transaction.query(productQuery, queryParams) as QueryResult[]
     
     if (products.length === 0) {
       await transaction.rollback()
@@ -251,12 +252,12 @@ export async function GET(
 
     const additionalImagesResult = await transaction.query(
       'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
-      [productId]
+      [product.id]
     ) as QueryResult[]
 
     const recommendedResult = await transaction.query(
       'SELECT recommended_product_id FROM product_recommendations WHERE product_id = ?',
-      [productId]
+      [product.id]
     ) as QueryResult[]
 
     const recommendedProducts = recommendedResult.map((row: QueryResult) => row.recommended_product_id)
@@ -359,6 +360,7 @@ export async function GET(
   }
 }
 
+// ==================== PUT (Sin protección - para admin) ====================
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -367,13 +369,36 @@ export async function PUT(
   
   try {
     const resolvedParams = await params
-    const productId = parseInt(resolvedParams.id)
-    
-    if (isNaN(productId)) {
+    const identifier = resolvedParams.id
+
+    if (!identifier) {
       return NextResponse.json(
-        { error: 'ID de producto invalido' },
+        { error: 'ID o slug de producto requerido' },
         { status: 400 }
       )
+    }
+
+    // Determinar si es un ID numérico o un slug
+    const isNumeric = /^\d+$/.test(identifier)
+    
+    let productId: number
+
+    if (isNumeric) {
+      productId = parseInt(identifier)
+    } else {
+      const { query } = await import('@/lib/db')
+      const result = await query(
+        'SELECT id FROM products WHERE slug = ?',
+        [identifier]
+      ) as any[]
+      
+      if (result.length === 0) {
+        return NextResponse.json(
+          { error: 'Producto no encontrado' },
+          { status: 404 }
+        )
+      }
+      productId = result[0].id
     }
     
     const formData = await request.formData()
@@ -437,10 +462,8 @@ export async function PUT(
       )
     }
 
-    const slug = name.toLowerCase()
-      .replace(/[^a-z0-9 -]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
+    const slug = generateProductSlug(name)
+    console.log('📝 Slug actualizado:', slug)
 
     const oldProductData = await transaction.query(
       'SELECT price, original_price, name, image FROM products WHERE id = ?',
@@ -448,7 +471,6 @@ export async function PUT(
     ) as QueryResult[]
 
     const oldPrice = oldProductData.length > 0 ? parseFloat(oldProductData[0].price) : 0;
-    const oldOriginalPrice = oldProductData.length > 0 && oldProductData[0].original_price ? parseFloat(oldProductData[0].original_price) : null;
     
     let finalImage: string;
     
@@ -562,33 +584,27 @@ export async function PUT(
 
     await transaction.commit()
 
+    // Verificar si debe notificar a usuarios sobre la bajada de precio
     try {
-      const productName = oldProductData.length > 0 ? oldProductData[0].name : name;
-      const productImage = oldProductData.length > 0 ? oldProductData[0].image : finalImage;
+      const productNameFromDb = oldProductData.length > 0 ? oldProductData[0].name : name;
+      const productImageFromDb = oldProductData.length > 0 ? oldProductData[0].image : finalImage;
       const newPriceValue = price;
       const newOriginalPrice = originalPrice;
       
-      const isDiscountTag = tags === 'descuento';
-      const isNowOnSale = newOriginalPrice !== null && newOriginalPrice > newPriceValue;
-      const priceDrop = newPriceValue < oldPrice;
-      const adminSelectedDiscount = isDiscountTag && newOriginalPrice !== null && newOriginalPrice > 0;
+      const isPriceDrop = newPriceValue < oldPrice;
+      const hasValidOriginalPrice = newOriginalPrice !== null && newOriginalPrice > 0 && newOriginalPrice > newPriceValue;
       
-      const shouldNotify = (isNowOnSale && priceDrop) || adminSelectedDiscount;
-      const forceNotify = adminSelectedDiscount;
-
-      
-      if (shouldNotify && newOriginalPrice !== null && newOriginalPrice > 0) {
-        console.log('📧 Enviando notificaciones de oferta...');
+      if (isPriceDrop && hasValidOriginalPrice) {
+        console.log('📧 Enviando notificaciones de oferta por bajada de precio...');
         setTimeout(async () => {
           try {
             const result = await notifyUsersAboutPriceDrop(
               productId, 
               oldPrice, 
               newPriceValue, 
-              productName, 
-              productImage,
-              newOriginalPrice,
-              forceNotify
+              productNameFromDb, 
+              productImageFromDb,
+              newOriginalPrice
             );
             console.log('📊 Resultado notificación:', result);
           } catch (error) {
@@ -605,7 +621,8 @@ export async function PUT(
     return NextResponse.json({ 
       success: true, 
       message: 'Producto actualizado correctamente',
-      productId: productId
+      productId: productId,
+      slug: slug
     })
 
   } catch (error) {
@@ -618,21 +635,43 @@ export async function PUT(
   }
 }
 
+// ==================== DELETE ====================
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const transaction = new Transaction()
   
   try {
     const resolvedParams = await params
-    const productId = parseInt(resolvedParams.id)
+    const identifier = resolvedParams.id
 
-    if (isNaN(productId)) {
+    if (!identifier) {
       return NextResponse.json(
-        { error: 'ID de producto invalido' },
+        { error: 'ID o slug de producto requerido' },
         { status: 400 }
       )
+    }
+
+    const isNumeric = /^\d+$/.test(identifier)
+    let productId: number
+
+    if (isNumeric) {
+      productId = parseInt(identifier)
+    } else {
+      const { query } = await import('@/lib/db')
+      const result = await query(
+        'SELECT id FROM products WHERE slug = ?',
+        [identifier]
+      ) as any[]
+      
+      if (result.length === 0) {
+        return NextResponse.json(
+          { error: 'Producto no encontrado' },
+          { status: 404 }
+        )
+      }
+      productId = result[0].id
     }
 
     await transaction.begin()
