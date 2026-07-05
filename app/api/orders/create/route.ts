@@ -1,17 +1,17 @@
-// app/api/orders/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getUserIdFromRequest } from '@/lib/auth-utils'
-import { orderNumberService } from '@/lib/order-number-service'
+
+function generateOrderNumber(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const random = Math.floor(Math.random() * 9000 + 1000)
+  return `ORD-${year}${month}${day}-${random}`
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = await getUserIdFromRequest(request)
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
-
     const body = await request.json()
     const {
       items,
@@ -21,114 +21,162 @@ export async function POST(request: NextRequest) {
       notes,
       couponId,
       couponCode,
-      shippingMethod
+      guestSessionId
     } = body
 
-    // Validar datos requeridos
-    if (!items || !items.length || !customerInfo || !totals) {
+    if (!items || !items.length) {
       return NextResponse.json(
-        { error: 'Datos de orden incompletos' },
+        { error: 'No hay productos en la orden' },
         { status: 400 }
       )
     }
 
-    // Generar número de orden único con reintentos
-    let orderNumber: string;
-    let orderId: number;
-    let attempts = 0;
-    const maxAttempts = 5;
-
-    while (attempts < maxAttempts) {
-      try {
-        // Generar número de orden único
-        orderNumber = orderNumberService.generateOrderNumber();
-        
-        console.log('📝 Intentando crear orden con número:', orderNumber);
-
-        // 1. Crear la orden principal
-        const orderResult = await query(
-          `INSERT INTO orders (
-            user_id, order_number, status, subtotal, discount, shipping, tax, total,
-            coupon_id, coupon_code, payment_method, payment_status, notes,
-            shipping_address_id
-          ) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'transbank', 'pending', ?, ?)`,
-          [
-            userId,
-            orderNumber,
-            Math.round(totals.subtotal),
-            Math.round(totals.discount),
-            Math.round(totals.shipping),
-            Math.round(totals.tax),
-            Math.round(totals.total),
-            couponId || null,
-            couponCode || null,
-            notes || null,
-            shippingAddress?.id || null
-          ]
-        ) as any;
-
-        orderId = orderResult.insertId;
-
-        // 2. Crear los items de la orden
-        for (const item of items) {
-          await query(
-            `INSERT INTO order_items (
-              order_id, product_id, product_name, product_price, quantity, subtotal
-            ) VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              orderId,
-              item.id,
-              item.name,
-              item.price,
-              item.quantity,
-              Math.round(item.price * item.quantity)
-            ]
-          );
-        }
-
-        console.log('✅ Orden creada en MySQL con ID:', orderId);
-
-        return NextResponse.json({
-          success: true,
-          orderId: orderId,
-          orderNumber: orderNumber
-        });
-
-      } catch (error: any) {
-        // Si es error de duplicado, reintentar
-        if (error.code === 'ER_DUP_ENTRY' && error.sqlMessage?.includes('order_number')) {
-          attempts++;
-          console.warn(`⚠️ Número de orden duplicado, reintento ${attempts}/${maxAttempts}`);
-          
-          if (attempts >= maxAttempts) {
-            throw new Error('No se pudo generar un número de orden único después de varios intentos');
-          }
-          
-          // Esperar un poco antes del siguiente intento
-          await new Promise(resolve => setTimeout(resolve, 100));
-          continue;
-        }
-        
-        // Si es otro error, lanzarlo
-        throw error;
-      }
+    if (!customerInfo?.email || !customerInfo?.firstName || !customerInfo?.lastName) {
+      return NextResponse.json(
+        { error: 'Datos del cliente incompletos' },
+        { status: 400 }
+      )
     }
 
-    throw new Error('No se pudo crear la orden');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(customerInfo.email)) {
+      return NextResponse.json(
+        { error: 'Email invalido' },
+        { status: 400 }
+      )
+    }
+
+    // Buscar o crear usuario
+    const existingUser = await query(
+      'SELECT id, is_guest FROM users WHERE email = ?',
+      [customerInfo.email]
+    ) as any[]
+    
+    let userId = null
+    
+    if (existingUser.length > 0) {
+      userId = existingUser[0].id
+    } else {
+      const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
+      
+      const insertResult = await query(
+        `INSERT INTO users (email, password_hash, first_name, last_name, phone, rut, role, is_active, email_verified, is_guest)
+         VALUES (?, ?, ?, ?, ?, ?, 'customer', 1, 1, 1)`,
+        [
+          customerInfo.email,
+          fakePasswordHash,
+          customerInfo.firstName,
+          customerInfo.lastName,
+          customerInfo.phone || null,
+          customerInfo.rut || '55555555-5'
+        ]
+      ) as any
+      
+      userId = insertResult.insertId
+    }
+
+    const orderNumber = generateOrderNumber()
+
+    // Validar dirección
+    if (!shippingAddress?.street || !shippingAddress?.communeName) {
+      return NextResponse.json(
+        { error: 'Direccion de envio incompleta' },
+        { status: 400 }
+      )
+    }
+
+    // Crear dirección
+    const addressResult = await query(
+      `INSERT INTO user_addresses 
+       (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        'Dirección de envío',
+        shippingAddress.street,
+        shippingAddress.hasNoNumber || 0,
+        shippingAddress.regionIso || 'CL-RM',
+        shippingAddress.regionName || 'Región Metropolitana',
+        shippingAddress.communeName,
+        shippingAddress.postalCode || '0000000',
+        shippingAddress.department || null,
+        shippingAddress.deliveryInstructions || null,
+        0 // No es predeterminada para no sobrescribir
+      ]
+    ) as any
+    
+    const shippingAddressId = addressResult.insertId
+    console.log('✅ Dirección creada con ID:', shippingAddressId)
+
+    // Calcular impuestos
+    const tax = Math.round(totals.total * 0.19)
+
+    // Crear orden CON el shipping_address_id
+    const orderResult = await query(
+      `INSERT INTO orders (
+        user_id, customer_rut, order_number, status, subtotal, discount, shipping, tax, total,
+        coupon_id, coupon_code, shipping_address_id, payment_method, payment_status, notes, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        customerInfo.rut || '55555555-5',
+        orderNumber,
+        'pending',
+        totals.subtotal,
+        totals.discount,
+        totals.shipping || 0,
+        tax,
+        totals.total,
+        couponId || null,
+        couponCode || null,
+        shippingAddressId, // 🔥 IMPORTANTE: este campo debe estar incluido
+        'transbank',
+        'pending',
+        notes || null
+      ]
+    ) as any
+    
+    const orderId = orderResult.insertId
+    console.log('✅ Orden creada con ID:', orderId, 'y shipping_address_id:', shippingAddressId)
+
+    // Crear items de la orden
+    for (const item of items) {
+      await query(
+        `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          item.id,
+          item.name || 'Producto',
+          item.price || 0,
+          item.quantity || 1,
+          (item.price || 0) * (item.quantity || 1),
+          item.category || null
+        ]
+      )
+    }
+
+    // Guardar guest session si existe
+    if (guestSessionId) {
+      await query(
+        `INSERT INTO guest_orders (user_id, guest_session_id, order_number, order_id, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [userId, guestSessionId, orderNumber, orderId]
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      orderId,
+      orderNumber,
+      userId
+    })
 
   } catch (error: any) {
-    console.error('❌ Error creando orden:', error);
-    
-    if (error.message.includes('número de orden único')) {
-      return NextResponse.json(
-        { error: 'Error generando número de orden único. Por favor intenta nuevamente.' },
-        { status: 500 }
-      );
-    }
-    
+    console.error('Error creando orden:', error)
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor al crear la orden' },
+      { error: 'Error al crear la orden: ' + error.message },
       { status: 500 }
-    );
+    )
   }
 }

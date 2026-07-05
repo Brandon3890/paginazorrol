@@ -396,7 +396,7 @@ export async function POST(request: NextRequest) {
 
             // ENVIAR EMAIL DE CONFIRMACIÓN
             try {
-              const orderDetails = await query(
+              const orderDetailsResult = await query(
                 `SELECT 
                   o.*,
                   oi.product_name,
@@ -411,89 +411,117 @@ export async function POST(request: NextRequest) {
                   ua.street as shipping_street,
                   ua.commune_name as shipping_commune,
                   ua.region_name as shipping_region,
-                  ua.postal_code as shipping_postal_code
+                  ua.postal_code as shipping_postal_code,
+                  ua.department as shipping_department,
+                  ua.delivery_instructions as shipping_instructions
                 FROM orders o
                 LEFT JOIN order_items oi ON o.id = oi.order_id
                 LEFT JOIN users u ON o.user_id = u.id
                 LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
                 WHERE o.id = ?`,
                 [order.id]
-              ) as any[];
+              ) as any[]; // 👈 Casteo explícito a any[]
 
-              let customerEmail = null;
-              let customerName = 'Cliente';
-              
-              if (orderDetails.length > 0) {
-                customerEmail = orderDetails[0].customer_email;
-                customerName = (orderDetails[0].customer_first_name || '' + ' ' + orderDetails[0].customer_last_name || '').trim() || 'Cliente';
-              }
-
-              if (!customerEmail) {
-                const userInfo = await query(
-                  `SELECT email FROM users WHERE id = ?`,
-                  [order.user_id]
-                ) as any[];
-                if (userInfo.length > 0) {
-                  customerEmail = userInfo[0].email;
+              if (orderDetailsResult && orderDetailsResult.length > 0) {
+                const firstItem = orderDetailsResult[0];
+                
+                // Obtener email del cliente si no está en los detalles
+                let customerEmail = firstItem.customer_email;
+                if (!customerEmail) {
+                  const userResult = await query(
+                    `SELECT email FROM users WHERE id = ?`,
+                    [order.user_id]
+                  ) as any[];
+                  if (userResult && userResult.length > 0) {
+                    customerEmail = userResult[0].email;
+                  }
                 }
-              }
-
-              if (customerEmail && orderDetails.length > 0) {
-                const firstItem = orderDetails[0];
                 
-                const subtotalConIVA = parseFloat(firstItem.subtotal);
-                const subtotalNeto = Math.round(subtotalConIVA / 1.19);
-                const ivaIncluido = subtotalConIVA - subtotalNeto;
-                
-                const emailData = {
-                  orderNumber: firstItem.order_number,
-                  customerName: customerName,
-                  customerEmail: customerEmail,
-                  customerPhone: firstItem.customer_phone || 'No especificado',
-                  orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  }),
-                  paymentMethod: "Transbank Webpay",
-                  items: orderDetails.map((item: any) => ({
-                    product_name: item.product_name,
-                    product_price: parseFloat(item.product_price),
-                    quantity: item.quantity
-                  })),
-                  subtotal: subtotalConIVA,
-                  discount: parseFloat(firstItem.discount || 0),
-                  shipping: parseFloat(firstItem.shipping || 0),
-                  tax: ivaIncluido,
-                  total: parseFloat(firstItem.total),
-                  shippingAddress: {
+                if (customerEmail) {
+                  // Construir dirección de envío
+                  const shippingAddress = firstItem.shipping_street ? {
                     street: firstItem.shipping_street || 'No especificada',
                     commune_name: firstItem.shipping_commune || 'No especificada',
                     region_name: firstItem.shipping_region || 'No especificada',
-                    postal_code: firstItem.shipping_postal_code || '000000'
-                  },
-                  storeInfo: {
-                    name: "Zorro Ludico",
-                    rut: process.env.SIMPLEFACTURA_RUT_EMISOR || "78181331-1",
-                    giro: "Venta de juegos",
-                    direccion: "Calle 7 numero 3",
-                    comuna: "Santiago",
-                    ciudad: "Santiago"
+                    postal_code: firstItem.shipping_postal_code || '000000',
+                    department: firstItem.shipping_department || '',
+                    instructions: firstItem.shipping_instructions || ''
+                  } : null;
+                  
+                  // Calcular subtotales
+                  let subtotalConIVA = 0;
+                  for (const item of orderDetailsResult) {
+                    subtotalConIVA += parseFloat(item.subtotal) || 0;
                   }
-                };
+                  const subtotalNeto = Math.round(subtotalConIVA / 1.19);
+                  const ivaIncluido = subtotalConIVA - subtotalNeto;
+                  
+                  const emailData = {
+                    orderNumber: firstItem.order_number,
+                    customerName: (firstItem.customer_first_name || '' + ' ' + firstItem.customer_last_name || '').trim() || 'Cliente',
+                    customerEmail: customerEmail,
+                    customerPhone: firstItem.customer_phone || 'No especificado',
+                    orderDate: new Date(firstItem.created_at).toLocaleDateString('es-CL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    }),
+                    paymentMethod: "Transbank Webpay",
+                    items: orderDetailsResult.map((item: any) => ({
+                      product_name: item.product_name,
+                      product_price: parseFloat(item.product_price),
+                      quantity: item.quantity,
+                      subtotal: parseFloat(item.subtotal)
+                    })),
+                    subtotal: subtotalConIVA,
+                    discount: parseFloat(firstItem.discount || 0),
+                    shipping: parseFloat(firstItem.shipping || 0),
+                    tax: ivaIncluido,
+                    total: parseFloat(firstItem.total || 0),
+                    shippingAddress: shippingAddress ? {
+                      street: shippingAddress.street,
+                      commune_name: shippingAddress.commune_name,
+                      region_name: shippingAddress.region_name,
+                      postal_code: shippingAddress.postal_code,
+                      department: shippingAddress.department,
+                      instructions: shippingAddress.instructions
+                    } : {
+                      street: 'No especificada',
+                      commune_name: 'No especificada',
+                      region_name: 'No especificada',
+                      postal_code: '000000',
+                      department: '',
+                      instructions: ''
+                    },
+                    storeInfo: {
+                      name: "Zorro Ludico",
+                      rut: process.env.SIMPLEFACTURA_RUT_EMISOR || "78181331-1",
+                      giro: "Venta de juegos",
+                      direccion: "Calle 7 numero 3",
+                      comuna: "Santiago",
+                      ciudad: "Santiago"
+                    }
+                  };
 
-                if (pdfBuffer && folio) {
-                  await sendBoletaEmail(emailData, pdfBuffer, folio);
-                  console.log('Email con boleta PDF enviado a:', customerEmail);
+                  // Enviar email con boleta
+                  if (pdfBuffer && folio) {
+                    await sendBoletaEmail(emailData, pdfBuffer, folio);
+                    console.log('✅ Email con boleta PDF enviado a:', customerEmail);
+                    if (shippingAddress) {
+                      console.log('   📍 Dirección:', shippingAddress.street, shippingAddress.commune_name);
+                    }
+                  } else {
+                    console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
+                    await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
+                  }
                 } else {
-                  console.warn('No se pudo enviar boleta PDF, enviando solo confirmacion');
-                  await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
+                  console.warn('⚠️ No se encontró email del cliente');
                 }
               } else {
-                console.warn('No se pudo enviar email: no se encontró email del cliente');
+                console.warn('⚠️ No se encontraron detalles de la orden');
               }
             } catch (emailError) {
-              console.error('Error enviando email:', emailError);
+              console.error('❌ Error enviando email:', emailError);
             }
           }
 
