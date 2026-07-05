@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
 
-const RESERVATION_TIME = 10 * 60 * 1000
+const RESERVATION_TIME = 10 * 60 * 1000 // 10 minutos
 
 function getMySQLDateTime(date: Date = new Date()): string {
   return date.getFullYear() + '-' +
@@ -38,19 +38,19 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(now.getTime() + RESERVATION_TIME)
     const expiresAtFormatted = getMySQLDateTime(expiresAt)
 
-    console.log('Fechas:', {
+    console.log('📅 Fechas:', {
       ahora: getMySQLDateTime(now),
       expira: expiresAtFormatted,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     })
 
-    // Limpiar reservas expiradas
+    // Limpiar reservas expiradas (devolver stock)
     const expiredReservations = await query(
       `SELECT product_id, quantity FROM stock_reservations WHERE expires_at < NOW()`
     ) as any[]
 
     if (expiredReservations && expiredReservations.length > 0) {
-      console.log('Devolviendo stock de', expiredReservations.length, 'reservas expiradas...')
+      console.log('🔄 Devolviendo stock de', expiredReservations.length, 'reservas expiradas...')
       
       for (const res of expiredReservations) {
         await query(
@@ -60,14 +60,15 @@ export async function POST(request: NextRequest) {
            WHERE id = ?`,
           [res.quantity, res.product_id]
         )
+        console.log(`   📦 Producto ${res.product_id}: +${res.quantity} unidades`)
       }
       
       await query('DELETE FROM stock_reservations WHERE expires_at < NOW()')
-      console.log('Reservas expiradas eliminadas y stock devuelto')
+      console.log('✅ Reservas expiradas eliminadas y stock devuelto')
     }
 
     if (action === 'reserve') {
-      console.log('RESERVANDO STOCK para usuario:', userId)
+      console.log('🔒 RESERVANDO STOCK para usuario:', userId)
       
       const errors = []
       
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
 
         const availableStock = stockInfo.stock - stockInfo.reserved_by_others
 
-        console.log('Producto', stockInfo.name, ':', {
+        console.log(`📦 Producto ${stockInfo.name}:`, {
           stock_actual: stockInfo.stock,
           reservado_por_otros: stockInfo.reserved_by_others,
           disponible_real: availableStock,
@@ -115,8 +116,14 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // ⚠️ IMPORTANTE: NO DESCOTAR STOCK AQUÍ
-        // Solo crear la reserva, el stock se descontará al confirmar el pago
+        // 🔥 DESCONTAR STOCK (1era vez - RESERVA)
+        await query(
+          `UPDATE products 
+           SET stock = stock - ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND stock >= ?`,
+          [item.quantity, item.id, item.quantity]
+        )
 
         // Eliminar reserva anterior si existe
         await query(
@@ -131,10 +138,29 @@ export async function POST(request: NextRequest) {
           [userId, item.id, item.quantity, expiresAtFormatted]
         )
 
-        console.log('✅ Reserva CREADA (sin descontar stock): usuario', userId, 'producto', item.id, item.quantity, 'unidades hasta', expiresAtFormatted)
+        console.log(`✅ Stock DESCONTADO y reserva CREADA: usuario ${userId}, producto ${item.id}, -${item.quantity} unidades hasta ${expiresAtFormatted}`)
       }
 
       if (errors.length > 0) {
+        // Si hay errores, devolver el stock de los productos que sí se descontaron
+        console.log('⚠️ Errores en reserva, devolviendo stock...')
+        for (const item of items) {
+          if (!errors.find(e => e.id === item.id)) {
+            // Este producto se descontó, hay que devolverlo
+            await query(
+              `UPDATE products 
+               SET stock = stock + ?
+               WHERE id = ?`,
+              [item.quantity, item.id]
+            )
+            await query(
+              'DELETE FROM stock_reservations WHERE user_id = ? AND product_id = ?',
+              [userId, item.id]
+            )
+            console.log(`↩️ Stock devuelto para producto ${item.id}`)
+          }
+        }
+        
         return NextResponse.json({
           success: false,
           error: 'Stock insuficiente',
@@ -144,20 +170,20 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Stock reservado correctamente',
+        message: 'Stock reservado y descontado',
         expiresAt: expiresAtFormatted
       })
     }
 
     if (action === 'update') {
-      console.log('ACTUALIZANDO reserva para usuario:', userId)
+      console.log('🔄 ACTUALIZANDO reserva para usuario:', userId)
       
       const currentReservations = await query(
         `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
         [userId]
       ) as any[]
       
-      console.log('Reservas actuales:', currentReservations)
+      console.log('📋 Reservas actuales:', currentReservations)
       
       const newCartMap = new Map()
       for (const item of items) {
@@ -174,6 +200,8 @@ export async function POST(request: NextRequest) {
         const newQuantity = item.quantity
         
         if (newQuantity > currentQuantity) {
+          const difference = newQuantity - currentQuantity
+          
           // Verificar disponibilidad de stock
           const [stockInfo] = await query(
             `SELECT 
@@ -196,7 +224,7 @@ export async function POST(request: NextRequest) {
           
           const availableStock = stockInfo.stock - stockInfo.reserved_by_others
           
-          if (availableStock < (newQuantity - currentQuantity)) {
+          if (availableStock < difference) {
             return NextResponse.json({
               success: false,
               error: 'Stock insuficiente para ' + stockInfo.name,
@@ -204,10 +232,19 @@ export async function POST(request: NextRequest) {
                 id: item.id,
                 name: stockInfo.name,
                 disponible: availableStock,
-                solicitado: newQuantity - currentQuantity
+                solicitado: difference
               }]
             }, { status: 400 })
           }
+          
+          // Descontar el stock adicional
+          await query(
+            `UPDATE products 
+             SET stock = stock - ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND stock >= ?`,
+            [difference, item.id, difference]
+          )
           
           // Actualizar reserva
           if (currentQuantity > 0) {
@@ -225,9 +262,20 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          console.log('✅ Reserva actualizada para producto', item.id, 'cantidad:', newQuantity)
+          console.log(`📦 Producto ${item.id}: +${difference} unidades descontadas (total: ${newQuantity})`)
         } else if (newQuantity < currentQuantity) {
-          // Si se reduce la cantidad, actualizar reserva
+          const difference = currentQuantity - newQuantity
+          
+          // Devolver el stock que ya no se necesita
+          await query(
+            `UPDATE products 
+             SET stock = stock + ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [difference, item.id]
+          )
+          
+          // Actualizar reserva
           if (newQuantity > 0) {
             await query(
               `UPDATE stock_reservations 
@@ -243,7 +291,7 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          console.log('✅ Reserva reducida para producto', item.id, 'nueva cantidad:', newQuantity)
+          console.log(`📦 Producto ${item.id}: +${difference} unidades devueltas (total: ${newQuantity})`)
         } else {
           // Misma cantidad, solo actualizar expiración
           if (currentQuantity > 0) {
@@ -260,13 +308,22 @@ export async function POST(request: NextRequest) {
       // Eliminar reservas para productos ya no en el carrito
       for (const [productId, quantity] of currentReservationsMap) {
         if (!newCartMap.has(productId)) {
+          // Devolver el stock
+          await query(
+            `UPDATE products 
+             SET stock = stock + ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [quantity, productId]
+          )
+          
           await query(
             `DELETE FROM stock_reservations 
              WHERE user_id = ? AND product_id = ?`,
             [userId, productId]
           )
           
-          console.log('🗑️ Reserva eliminada para producto', productId, '(ya no está en el carrito)')
+          console.log(`🗑️ Producto ${productId} eliminado del carrito, stock devuelto: +${quantity}`)
         }
       }
       
@@ -278,15 +335,25 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'confirm') {
-      console.log('CONFIRMANDO compra para usuario:', userId)
+      console.log('✅ CONFIRMANDO compra para usuario:', userId)
       
-      // Solo eliminar las reservas (el stock ya se descontó en payment/response)
+      // ⚠️ IMPORTANTE: Aquí NO se devuelve ni descuenta stock
+      // Solo se eliminan las reservas (el stock ya se maneja en payment/response)
+      const reservations = await query(
+        `SELECT product_id, quantity 
+         FROM stock_reservations 
+         WHERE user_id = ? AND expires_at > NOW()`,
+        [userId]
+      ) as any[]
+
+      console.log('📋 Reservas a eliminar (stock ya descontado en reserva):', reservations)
+
       const deleteResult = await query(
         'DELETE FROM stock_reservations WHERE user_id = ?',
         [userId]
       ) as any
       
-      console.log('Reservas eliminadas para usuario', userId + ':', deleteResult?.affectedRows || 0, 'filas')
+      console.log(`🗑️ Reservas eliminadas para usuario ${userId}: ${deleteResult?.affectedRows || 0} filas`)
 
       return NextResponse.json({
         success: true,
@@ -295,7 +362,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'release') {
-      console.log('LIBERANDO reserva y devolviendo stock para usuario:', userId)
+      console.log('🔄 LIBERANDO reserva y devolviendo stock para usuario:', userId)
       
       const reservations = await query(
         `SELECT product_id, quantity 
@@ -305,7 +372,7 @@ export async function POST(request: NextRequest) {
       ) as any[]
 
       if (reservations && reservations.length > 0) {
-        console.log('Reservas a liberar (devolviendo stock):', reservations)
+        console.log('📋 Reservas a liberar (devolviendo stock):', reservations)
         
         for (const res of reservations) {
           await query(
@@ -315,16 +382,16 @@ export async function POST(request: NextRequest) {
              WHERE id = ?`,
             [res.quantity, res.product_id]
           )
-          console.log('Stock devuelto para producto', res.product_id, '+', res.quantity, 'unidades')
+          console.log(`📦 Producto ${res.product_id}: +${res.quantity} unidades devueltas`)
         }
         
         const deleteResult = await query(
           'DELETE FROM stock_reservations WHERE user_id = ?',
           [userId]
         ) as any
-        console.log('Reservas eliminadas para usuario', userId + ':', deleteResult?.affectedRows || 0, 'filas')
+        console.log(`🗑️ Reservas eliminadas para usuario ${userId}: ${deleteResult?.affectedRows || 0} filas`)
       } else {
-        console.log('No hay reservas activas para liberar')
+        console.log('ℹ️ No hay reservas activas para liberar')
       }
 
       return NextResponse.json({
@@ -334,7 +401,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'release_single') {
-      console.log('Liberando stock de producto individual para usuario:', userId)
+      console.log('🔄 Liberando stock de producto individual para usuario:', userId)
       
       for (const item of items) {
         const reservations = await query(
@@ -348,10 +415,19 @@ export async function POST(request: NextRequest) {
           const reservation = reservations[0]
           
           await query(
-            `DELETE FROM stock_reservations WHERE user_id = ? AND product_id = ?`,
+            `UPDATE products 
+             SET stock = stock + ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [reservation.quantity, item.id]
+          )
+          console.log(`📦 Producto ${item.id}: +${reservation.quantity} unidades devueltas`)
+          
+          await query(
+            'DELETE FROM stock_reservations WHERE user_id = ? AND product_id = ?',
             [userId, item.id]
           )
-          console.log('Reserva eliminada para producto', item.id)
+          console.log(`🗑️ Reserva eliminada para producto ${item.id}`)
         }
       }
 
@@ -367,7 +443,7 @@ export async function POST(request: NextRequest) {
     )
 
   } catch (error: any) {
-    console.error('Error en reserva de stock:', error)
+    console.error('❌ Error en reserva de stock:', error)
     return NextResponse.json(
       { error: 'Error interno: ' + error.message },
       { status: 500 }

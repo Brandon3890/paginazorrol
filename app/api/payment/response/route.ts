@@ -173,19 +173,66 @@ async function emitirBoleta(orderId: number) {
 
 async function descontarStock(orderId: number) {
   try {
-    console.log('🔄 Descontando stock para orden:', orderId);
+    console.log('🔄 PROCESANDO STOCK PARA ORDEN:', orderId);
+    console.log('📌 Flujo: Reserva → Pago exitoso → Devolver reserva → Descontar definitivo');
     
+    // Obtener items de la orden
     const orderItems = await query(
       `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
       [orderId]
     ) as any[];
 
     if (!orderItems || orderItems.length === 0) {
-      console.log('⚠️ No hay items en la orden, no se descuenta stock');
+      console.log('⚠️ No hay items en la orden, no se procesa stock');
       return true;
     }
 
-    console.log(`📦 Descontando stock de ${orderItems.length} productos...`);
+    console.log(`📦 Procesando ${orderItems.length} productos...`);
+
+    // Obtener el userId de la orden
+    const [orderInfo] = await query(
+      `SELECT user_id FROM orders WHERE id = ?`,
+      [orderId]
+    ) as any[];
+
+    const userId = orderInfo?.user_id;
+
+    // 1️⃣ DEVOLVER STOCK DE LA RESERVA (si existe)
+    if (userId) {
+      console.log(`🔄 Devolviendo stock de reserva para usuario: ${userId}`);
+      
+      const reservations = await query(
+        `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
+        [userId]
+      ) as any[];
+
+      if (reservations && reservations.length > 0) {
+        console.log(`📋 Encontradas ${reservations.length} reservas para liberar`);
+        
+        for (const res of reservations) {
+          await query(
+            `UPDATE products 
+             SET stock = stock + ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [res.quantity, res.product_id]
+          );
+          console.log(`↩️ Stock devuelto de reserva: Producto ${res.product_id} +${res.quantity}`);
+        }
+
+        // Eliminar reservas
+        await query(
+          'DELETE FROM stock_reservations WHERE user_id = ?',
+          [userId]
+        );
+        console.log(`🗑️ Reservas eliminadas para usuario ${userId}`);
+      } else {
+        console.log('ℹ️ No hay reservas activas para este usuario');
+      }
+    }
+
+    // 2️⃣ DESCONTAR STOCK DEFINITIVO (cantidad correcta de la orden)
+    console.log('🔽 Descontando stock definitivo de la orden...');
 
     for (const item of orderItems) {
       const [productCheck] = await query(
@@ -207,18 +254,22 @@ async function descontarStock(orderId: number) {
       }
 
       await query(
-        `UPDATE products SET stock = ?, in_stock = CASE WHEN ? > 0 THEN 1 ELSE 0 END WHERE id = ?`,
+        `UPDATE products 
+         SET stock = ?,
+             in_stock = CASE WHEN ? > 0 THEN 1 ELSE 0 END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
         [nuevaCantidad, nuevaCantidad, item.product_id]
       );
 
-      console.log(`✅ Stock actualizado: ${productCheck.name} (ID: ${item.product_id}) ${stockActual} → ${nuevaCantidad}`);
+      console.log(`✅ Stock definitivo: ${productCheck.name} (ID: ${item.product_id}) ${stockActual} → ${nuevaCantidad}`);
     }
 
-    console.log('✅ Stock descontado correctamente');
+    console.log('✅ Proceso de stock completado exitosamente');
     return true;
 
   } catch (error) {
-    console.error('❌ Error descontando stock:', error);
+    console.error('❌ Error procesando stock:', error);
     return false;
   }
 }
