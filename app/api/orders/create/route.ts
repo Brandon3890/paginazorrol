@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
         totals.total,
         couponId || null,
         couponCode || null,
-        shippingAddressId, // 🔥 IMPORTANTE: este campo debe estar incluido
+        shippingAddressId,
         'transbank',
         'pending',
         notes || null
@@ -139,22 +139,22 @@ export async function POST(request: NextRequest) {
     const orderId = orderResult.insertId
     console.log('✅ Orden creada con ID:', orderId, 'y shipping_address_id:', shippingAddressId)
 
-    // Crear items de la orden
+    // Crear items de la orden - SIN LA COLUMNA 'category'
     for (const item of items) {
       await query(
-        `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal, category)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           item.id,
           item.name || 'Producto',
           item.price || 0,
           item.quantity || 1,
-          (item.price || 0) * (item.quantity || 1),
-          item.category || null
+          (item.price || 0) * (item.quantity || 1)
         ]
       )
     }
+    console.log('✅ Items de la orden creados:', items.length)
 
     // Guardar guest session si existe
     if (guestSessionId) {
