@@ -52,7 +52,6 @@ export async function GET(
       [categoryId]
     ) as any[];
 
-    console.log(`📊 Categoría ${categories[0].name} (ID: ${categoryId}): ${subcategories.length} subcategorías encontradas`);
 
     await transaction.commit();
 

@@ -112,7 +112,6 @@ export const useCategoryStore = create<CategoryStore>()(
           
           // Log de cuántas subcategorías tiene cada categoría
           processedCategories.forEach((cat: Category) => {
-            console.log(`📊 Categoría "${cat.name}" (${cat.id}): ${cat.subcategories.length} subcategorías`)
           })
           
           console.log(`✅ ${processedCategories.length} categorías cargadas`)

@@ -34,7 +34,6 @@ export async function GET() {
           ORDER BY s.display_order ASC, s.id ASC
         `, [category.id]) as any[];
 
-        console.log(`📊 Categoría ${category.name} (ID: ${category.id}): ${subcategories.length} subcategorías encontradas`);
 
         return {
           ...category,
