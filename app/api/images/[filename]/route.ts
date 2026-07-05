@@ -19,8 +19,6 @@ export async function GET(
     // Buscar en la carpeta uploads/products
     let filePath = path.join(process.cwd(), 'public', 'uploads', 'products', cleanFilename);
     
-    console.log('📸 Buscando imagen:', filePath);
-    console.log('📸 Nombre original:', cleanFilename);
     
     // Si no existe, buscar con normalización (eliminar caracteres problemáticos)
     if (!fs.existsSync(filePath)) {
@@ -34,7 +32,6 @@ export async function GET(
         
         if (matchedFile) {
           filePath = path.join(dir, matchedFile);
-          console.log('✅ Encontrado por coincidencia:', filePath);
         }
       }
     }
@@ -55,7 +52,6 @@ export async function GET(
         
         if (similarFiles.length > 0) {
           filePath = path.join(dir, similarFiles[0]);
-          console.log('✅ Encontrado por normalización:', filePath);
         }
       }
     }
@@ -109,8 +105,6 @@ export async function GET(
       '.gif': 'image/gif',
       '.svg': 'image/svg+xml',
     }[ext] || 'application/octet-stream';
-
-    console.log('✅ Sirviendo imagen:', filePath, 'Tamaño:', stats.size, 'MIME:', mimeType);
 
     return new NextResponse(fileBuffer, {
       headers: {
