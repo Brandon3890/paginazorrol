@@ -1048,7 +1048,7 @@ export default function CheckoutPage() {
                             <span className="font-medium">Arcangel 1200</span>, Comuna de San Miguel
                           </div>
                           <div className="text-xs text-green-600 font-medium mt-1">
-                            🆓 Envío gratuito
+                            Envío gratuito
                           </div>
                         </div>
                         <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
@@ -1229,7 +1229,7 @@ export default function CheckoutPage() {
                     <p className="text-sm text-muted-foreground">
                       {selectedAddress.communeName}, {selectedAddress.regionName}
                     </p>
-                    <p className="text-sm text-muted-foreground">CP: {selectedAddress.postalCode}</p>
+                    <p className="text-sm text-muted-foreground"> {selectedAddress.postalCode}</p>
                     {selectedAddress.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
                     {selectedAddress.deliveryInstructions && (
                       <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
@@ -1421,11 +1421,8 @@ export default function CheckoutPage() {
                       <p className="text-sm text-muted-foreground">Comuna de San Miguel</p>
                       <p className="text-sm text-muted-foreground">Región Metropolitana</p>
                       <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
-                          🆓 Gratis
-                        </Badge>
                         <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                          Retiro en tienda
+                          Retiro en local
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-3">
@@ -1513,7 +1510,22 @@ export default function CheckoutPage() {
                 
                 <div className="flex justify-between">
                   <span>Envío</span>
-                  <span>{shipping === 0 ? "Gratis" : `$${formatCLP(shipping)}`}</span>
+                  <span>
+                    {deliveryMethod === 'pickup' ? (
+                      'Gratis'
+                    ) : isLoadingShipping ? (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Calculando...
+                      </span>
+                    ) : shippingError ? (
+                      <span className="text-red-500 text-sm">Error</span>
+                    ) : shipping === 0 ? (
+                      'Gratis'
+                    ) : (
+                      `$${formatCLP(shipping)}`
+                    )}
+                  </span>
                 </div>
                 
                 <Separator />

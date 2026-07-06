@@ -5,8 +5,6 @@ import pool from '@/lib/db'
 
 // Función para generar un RUT único basado en el ID del usuario
 function generateUniqueRut(userId: number): string {
-  // Usamos el ID del usuario para generar un RUT único
-  // Ejemplo: 66666666-6 + userId
   const baseRut = '66666666'
   const digit = '6'
   return `${baseRut}${userId}-${digit}`
@@ -47,7 +45,6 @@ export async function POST(request: NextRequest) {
     // Hash de la contraseña
     const passwordHash = await bcrypt.hash(password, 10)
 
-    // 🔥 Insertar sin RUT (el RUT puede ser NULL)
     const [result] = await pool.execute(
       `INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_active, email_verified) 
        VALUES (?, ?, ?, ?, ?, 'customer', 1, 1)`,
@@ -56,7 +53,6 @@ export async function POST(request: NextRequest) {
 
     const userId = result.insertId
 
-    // 🔥 Generar RUT único basado en el ID del usuario
     const uniqueRut = generateUniqueRut(userId)
     console.log(`🔑 RUT generado para usuario ${userId}: ${uniqueRut}`)
 
