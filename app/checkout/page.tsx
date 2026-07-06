@@ -1133,7 +1133,24 @@ export default function CheckoutPage() {
                           name="regionIso"
                           required
                           value={manualAddress.regionIso}
-                          onChange={handleManualAddressChange}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const selectedRegion = regions.find(r => r.region_iso_3166_2 === value);
+                            setManualAddress(prev => ({
+                              ...prev,
+                              regionIso: value,
+                              regionName: selectedRegion?.name || '',
+                              communeName: '',
+                              postalCode: ''
+                            }));
+                            if (manualAddressErrors.regionIso) {
+                              setManualAddressErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors.regionIso;
+                                return newErrors;
+                              });
+                            }
+                          }}
                           className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
                           disabled={loadingRegions}
                         >
@@ -1157,16 +1174,31 @@ export default function CheckoutPage() {
                           name="communeName"
                           required
                           value={manualAddress.communeName}
-                          onChange={handleManualAddressChange}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setManualAddress(prev => ({
+                              ...prev,
+                              communeName: value
+                            }));
+                            if (manualAddressErrors.communeName) {
+                              setManualAddressErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors.communeName;
+                                return newErrors;
+                              });
+                            }
+                          }}
                           disabled={!manualAddress.regionIso || loadingRegions}
                           className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
                         >
                           <option value="">Selecciona una comuna</option>
-                          {selectedRegion?.communes.map(commune => (
-                            <option key={commune.name} value={commune.name}>
-                              {commune.name}
-                            </option>
-                          ))}
+                          {regions
+                            .find(r => r.region_iso_3166_2 === manualAddress.regionIso)
+                            ?.communes.map(commune => (
+                              <option key={commune.name} value={commune.name}>
+                                {commune.name}
+                              </option>
+                            ))}
                         </select>
                         {manualAddressErrors.communeName && (
                           <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
@@ -1229,7 +1261,7 @@ export default function CheckoutPage() {
                     <p className="text-sm text-muted-foreground">
                       {selectedAddress.communeName}, {selectedAddress.regionName}
                     </p>
-                    <p className="text-sm text-muted-foreground"> {selectedAddress.postalCode}</p>
+                    <p className="text-sm text-muted-foreground">CP: {selectedAddress.postalCode}</p>
                     {selectedAddress.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
                     {selectedAddress.deliveryInstructions && (
                       <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
@@ -1239,7 +1271,18 @@ export default function CheckoutPage() {
                         variant="ghost" 
                         size="sm" 
                         className="mt-2"
-                        onClick={() => setSelectedAddress(null)}
+                        onClick={() => {
+                          setSelectedAddress(null);
+                          setManualAddress({
+                            street: '',
+                            regionIso: '',
+                            regionName: '',
+                            communeName: '',
+                            postalCode: '',
+                            department: '',
+                            deliveryInstructions: ''
+                          });
+                        }}
                       >
                         Cambiar dirección
                       </Button>
