@@ -1,4 +1,4 @@
-// app/register/page.tsx - VERSIÓN COMPLETA CON RUT
+// app/register/page.tsx - VERSIÓN COMPLETA SIN RUT
 "use client"
 
 import type React from "react"
@@ -14,7 +14,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { motion, AnimatePresence } from "framer-motion"
-import { validateRutInput } from "@/lib/rut-utils"
 
 export default function RegisterPage() {
   const { register } = useAuthStore()
@@ -28,11 +27,6 @@ export default function RegisterPage() {
     firstName: "",
     lastName: "",
     phone: "",
-  })
-  const [rut, setRut] = useState("")
-  const [rutValidation, setRutValidation] = useState<{ isValid: boolean; formatted: string; message?: string }>({
-    isValid: false,
-    formatted: ""
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -59,24 +53,10 @@ export default function RegisterPage() {
     setError("")
   }
 
-  const handleRutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setRut(value)
-    setRutValidation(validateRutInput(value))
-    setError("")
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
-
-    // Validar RUT
-    if (!rutValidation.isValid) {
-      setError(rutValidation.message || "RUT inválido")
-      setIsLoading(false)
-      return
-    }
 
     // Validaciones existentes
     if (formData.password !== formData.confirmPassword) {
@@ -99,9 +79,13 @@ export default function RegisterPage() {
 
     try {
       const { confirmPassword, ...userData } = formData
+      // ✅ El RUT es opcional, el backend lo generará automáticamente
       const success = await register({
-        ...userData,
-        rut: rutValidation.formatted
+        email: userData.email,
+        password: userData.password,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phone: userData.phone || '',
       })
 
       if (success) {
@@ -112,7 +96,7 @@ export default function RegisterPage() {
         })
         router.push("/")
       } else {
-        setError("Ya existe una cuenta con este email o RUT")
+        setError("Ya existe una cuenta con este email")
       }
     } catch (err: any) {
       setError(err.message || "Error al crear la cuenta. Inténtalo de nuevo.")
@@ -299,54 +283,6 @@ export default function RegisterPage() {
                   className="space-y-2"
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.35 }}
-                  onFocus={() => setFocusedField('rut')}
-                  onBlur={() => setFocusedField(null)}
-                >
-                  <Label htmlFor="rut">RUT *</Label>
-                  <Input
-                    id="rut"
-                    name="rut"
-                    value={rut}
-                    onChange={handleRutChange}
-                    placeholder="12.345.678-9"
-                    disabled={isLoading}
-                    className={`transition-all focus:scale-[1.01] ${
-                      rut && (rutValidation.isValid ? "border-green-500" : "border-red-500")
-                    }`}
-                  />
-                  
-                  {/* Indicador de validación de RUT */}
-                  <AnimatePresence>
-                    {rut && (
-                      <motion.div 
-                        className={`flex items-center gap-1 text-xs mt-1 ${
-                          rutValidation.isValid ? "text-green-600" : "text-red-500"
-                        }`}
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -5 }}
-                      >
-                        {rutValidation.isValid ? (
-                          <>
-                            <CheckCircle className="w-3 h-3" />
-                            <span>{rutValidation.message || "RUT válido"}</span>
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="w-3 h-3" />
-                            <span>{rutValidation.message || "RUT inválido"}</span>
-                          </>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-
-                <motion.div 
-                  className="space-y-2"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 }}
                 >
                   <Label htmlFor="password">Contraseña *</Label>
@@ -372,7 +308,6 @@ export default function RegisterPage() {
                     </button>
                   </div>
 
-                  {/* Indicadores de validación de contraseña */}
                   <AnimatePresence>
                     {formData.password && (
                       <motion.div 
@@ -460,7 +395,6 @@ export default function RegisterPage() {
                     </button>
                   </div>
                   
-                  {/* Indicador de coincidencia */}
                   <AnimatePresence>
                     {formData.confirmPassword && (
                       <motion.div 

@@ -1,3 +1,5 @@
+// lib/auth-store.ts - ACTUALIZADO (RUT OPCIONAL)
+
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -39,7 +41,7 @@ interface User {
   firstName: string
   lastName: string
   phone: string
-  rut?: string
+  rut?: string // ✅ AHORA ES OPCIONAL
   role: 'user' | 'admin'
   addresses?: UserAddress[]
   createdAt: string
@@ -52,7 +54,7 @@ interface RegisterData {
   firstName: string
   lastName: string
   phone?: string
-  rut: string
+  rut?: string // ✅ AHORA ES OPCIONAL
 }
 
 interface AuthState {
@@ -143,17 +145,28 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true })
           
+          // 🔥 Preparar datos para el backend - RUT es opcional
+          const registerPayload = {
+            email: userData.email,
+            password: userData.password,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            phone: userData.phone || '',
+            // ❌ NO ENVIAR RUT - El backend lo generará automáticamente
+          }
+          
           const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(userData),
+            body: JSON.stringify(registerPayload),
           })
 
           const data = await response.json()
           
           if (data.success && data.user) {
+            // Iniciar sesión automáticamente
             const loginResponse = await fetch('/api/auth/login', {
               method: 'POST',
               headers: {

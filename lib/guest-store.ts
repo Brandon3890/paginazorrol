@@ -39,6 +39,7 @@ export const useGuestStore = create<GuestStore>()(
         
         const guest: GuestInfo = {
           ...data,
+          rut: data.rut || '66666666-6',
           sessionId,
           createdAt: now.toISOString(),
           expiresAt: expiresAt.toISOString()

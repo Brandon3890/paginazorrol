@@ -10,6 +10,12 @@ function generateOrderNumber(): string {
   return `ORD-${year}${month}${day}-${random}`
 }
 
+function generateGuestRut(userId: number): string {
+  const baseRut = '66666666'
+  const digit = '6'
+  return `${baseRut}${userId}-${digit}`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -54,28 +60,30 @@ export async function POST(request: NextRequest) {
     let userId = null
     
     if (existingUser.length > 0) {
-      if (existingUser[0].is_guest === 0 || existingUser[0].is_guest === null) {
-        userId = existingUser[0].id
-      } else {
-        userId = existingUser[0].id
-      }
+      userId = existingUser[0].id
     } else {
       const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
       
       const insertResult = await query(
-        `INSERT INTO users (email, password_hash, first_name, last_name, phone, rut, role, is_active, email_verified, is_guest)
-         VALUES (?, ?, ?, ?, ?, ?, 'customer', 1, 1, 1)`,
+        `INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_active, email_verified, is_guest)
+         VALUES (?, ?, ?, ?, ?, 'customer', 1, 1, 1)`,
         [
           customerInfo.email,
           fakePasswordHash,
           customerInfo.firstName,
           customerInfo.lastName,
-          customerInfo.phone || null,
-          customerInfo.rut || '55555555-5'
+          customerInfo.phone || null
         ]
       ) as any
       
       userId = insertResult.insertId
+      
+      const guestRut = generateGuestRut(userId)
+      await query(
+        'UPDATE users SET rut = ? WHERE id = ?',
+        [guestRut, userId]
+      )
+      console.log(`👤 Usuario invitado creado con RUT: ${guestRut}`)
     }
 
     const orderNumber = generateOrderNumber()
@@ -117,7 +125,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         userId,
-        customerInfo.rut || '55555555-5',
+        '66666666-6',
         orderNumber,
         'pending',
         totals.subtotal,
