@@ -1515,8 +1515,7 @@ export default function CheckoutPage() {
                       'Gratis'
                     ) : !selectedAddress ? (
                       <span className="flex items-center gap-1 text-orange-600">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Calculando...
+                        Calculando
                       </span>
                     ) : isLoadingShipping ? (
                       <span className="flex items-center gap-1 text-orange-600">
