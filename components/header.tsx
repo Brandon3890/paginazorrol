@@ -73,9 +73,9 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
-  // Obtener categorías ACTIVAS para el header
+  // ✅ SOLO categorías ACTIVAS (is_active === true)
   const headerCategories = categories
-    .filter(category => category.is_active === true || category.is_active === 1 || category.is_active !== 0)
+    .filter(category => category.is_active === true)
     .map(category => ({
       name: category.name,
       href: `/filtro/${category.slug}`,

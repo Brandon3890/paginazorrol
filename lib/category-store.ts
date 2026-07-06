@@ -6,7 +6,7 @@ interface Subcategory {
   name: string
   slug: string
   category_id: number
-  is_active: boolean | number
+  is_active: boolean
   display_order: number 
   created_at: string
   updated_at: string
@@ -21,7 +21,7 @@ interface Category {
   name: string
   slug: string
   description?: string
-  is_active: boolean | number
+  is_active: boolean
   created_at: string
   updated_at: string
   subcategories: Subcategory[]
@@ -123,6 +123,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           const categories = await response.json()
           
+          // ✅ CORRECCIÓN: Convertir is_active correctamente a boolean
           const processedCategories = categories.map((cat: any) => ({
             ...cat,
             is_active: cat.is_active === 1 || cat.is_active === true,
@@ -134,7 +135,11 @@ export const useCategoryStore = create<CategoryStore>()(
               : []
           }))
           
-          console.log(`✅ ${processedCategories.length} categorías cargadas (timestamp: ${timestamp})`)
+          console.log(`✅ ${processedCategories.length} categorías cargadas`)
+          console.log('📊 Categorías:', processedCategories.map((c: any) => ({ 
+            name: c.name, 
+            is_active: c.is_active 
+          })))
           
           set({ 
             categories: processedCategories, 

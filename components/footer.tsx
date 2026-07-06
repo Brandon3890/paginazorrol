@@ -44,9 +44,9 @@ export function Footer() {
     }
   }, [fetchCategories, categoriesLoaded])
 
-  // Obtener SOLO las primeras 4 categorías ACTIVAS
+  // ✅ SOLO categorías ACTIVAS (is_active === true)
   const activeCategories = categories
-    .filter(category => category.is_active === true || category.is_active === 1 || category.is_active !== 0)
+    .filter(category => category.is_active === true)
     .slice(0, 4)
     .map(category => ({
       name: category.name,
