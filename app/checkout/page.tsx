@@ -1031,7 +1031,7 @@ export default function CheckoutPage() {
                   <div
                     className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-all ${
                       deliveryMethod === 'pickup' 
-                        ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200' 
+                        ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
                         : 'hover:bg-muted/50'
                     }`}
                     onClick={() => setDeliveryMethod('pickup')}
@@ -1513,6 +1513,11 @@ export default function CheckoutPage() {
                   <span className="text-orange-600 font-medium">
                     {deliveryMethod === 'pickup' ? (
                       'Gratis'
+                    ) : !selectedAddress ? (
+                      <span className="flex items-center gap-1 text-orange-600">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Calculando...
+                      </span>
                     ) : isLoadingShipping ? (
                       <span className="flex items-center gap-1 text-orange-600">
                         <Loader2 className="w-3 h-3 animate-spin" />
