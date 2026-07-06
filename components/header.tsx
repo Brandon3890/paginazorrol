@@ -18,7 +18,7 @@ import { useAuthStore } from "@/lib/auth-store"
 import { useProductStore } from "@/lib/product-store"
 import { CartDrawer } from "@/components/cart-drawer"
 import Link from "next/link"
-import { useCategoryStore, emitCategoryUpdate } from "@/lib/category-store"
+import { useCategoryStore } from "@/lib/category-store"
 import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 
@@ -27,13 +27,14 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(Date.now())
 
   const router = useRouter()
   const pathname = usePathname()
 
   const { getTotalItems, toggleCart } = useCartStore()
   const { user, isAuthenticated, logout } = useAuthStore()
-  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded, forceRefresh } = useCategoryStore()
   const { globalSearchQuery, setGlobalSearchQuery } = useProductStore()
 
   useEffect(() => {
@@ -45,15 +46,33 @@ export function Header() {
     }
     
     // Escuchar eventos de actualización de categorías
-    const handleCategoriesUpdate = () => {
-      console.log('🔄 Header: Categorías actualizadas, recargando...')
+    const handleCategoriesUpdate = (event: CustomEvent) => {
+      console.log('🔄 Header: Categorías actualizadas, recargando...', event.detail)
+      setRefreshKey(Date.now())
       fetchCategories(true)
     }
     
-    window.addEventListener('categories-updated', handleCategoriesUpdate)
+    window.addEventListener('categories-updated', handleCategoriesUpdate as EventListener)
+    
+    // Recargar cuando la página se vuelve visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👁️ Header: Página visible, verificando categorías...')
+        const lastFetch = localStorage.getItem('category_last_fetch')
+        if (lastFetch) {
+          const elapsed = Date.now() - parseInt(lastFetch)
+          if (elapsed > 30000) {
+            fetchCategories(true)
+          }
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     
     return () => {
-      window.removeEventListener('categories-updated', handleCategoriesUpdate)
+      window.removeEventListener('categories-updated', handleCategoriesUpdate as EventListener)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [fetchCategories, categoriesLoaded])
 
@@ -67,7 +86,7 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
-  // Obtener categorías activas para el header (todas las activas, no solo 4)
+  // Obtener categorías activas para el header (todas las activas)
   const headerCategories = categories
     .filter(category => category.is_active)
     .map(category => ({
@@ -88,7 +107,7 @@ export function Header() {
     ? headerCategories 
     : defaultHeaderCategories
 
-  // Manejador de búsqueda instantánea - SOLO actualiza el store, NO redirige
+  // Manejador de búsqueda instantánea
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
@@ -120,7 +139,7 @@ export function Header() {
 
   return (
     <div className="sticky top-0 z-50">
-      {/* BANNER DE PÁGINA EN CONSTRUCCIÓN - ROJO - SIN ESPACIO */}
+      {/* BANNER DE PÁGINA EN CONSTRUCCIÓN */}
       <div className="bg-red-600 text-white py-3 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-3">
           <motion.div
@@ -141,12 +160,12 @@ export function Header() {
         </div>
       </div>
 
-      {/* HEADER - SIN BORDE SUPERIOR, PEGADO AL BANNER */}
+      {/* HEADER */}
       <header className="bg-white text-black border-b border-gray-300">
         <div className="max-w-7xl mx-auto px-8 py-6">
           {/* TOP */}
           <div className="flex items-center justify-between gap-6">
-            {/* LOGO - Imagen SVG en lugar de texto */}
+            {/* LOGO */}
             <Link
               href="/"
               onClick={() => setGlobalSearchQuery("")}
@@ -163,7 +182,7 @@ export function Header() {
               </div>
             </Link>
 
-            {/* BUSCADOR DESKTOP - BÚSQUEDA INSTANTÁNEA SIN REDIRECCIÓN */}
+            {/* BUSCADOR DESKTOP */}
             <div className="hidden md:flex flex-1 justify-center">
               <div className="relative w-full max-w-xl">
                 <input
@@ -173,11 +192,7 @@ export function Header() {
                   onChange={handleSearchChange}
                   className="w-full bg-transparent border border-gray-400 rounded-full py-3 pl-6 pr-14 text-sm focus:outline-none focus:border-[#E4572E] transition-colors"
                 />
-
-                {/* Línea */}
                 <div className="absolute right-12 top-1/2 -translate-y-1/2 h-6 w-px bg-gray-400"></div>
-
-                {/* Icono de búsqueda (solo decorativo) */}
                 <div className="absolute right-4 top-1/2 -translate-y-1/2">
                   <Search className="w-5 h-5 text-gray-700" />
                 </div>
@@ -222,7 +237,7 @@ export function Header() {
                 )}
               </Button>
 
-              {/* USER - Versión mejorada con indicador visual de sesión */}
+              {/* USER */}
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -231,15 +246,12 @@ export function Header() {
                       size="icon" 
                       className="relative group"
                     >
-                      {/* Anillo de estado - indicador de sesión activa */}
                       <div className="absolute -top-1 -right-1">
                         <div className="relative">
                           <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                           <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full animate-ping opacity-75"></div>
                         </div>
                       </div>
-                      
-                      {/* Avatar con iniciales */}
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-sm font-bold">
                         {getUserInitials()}
                       </div>
@@ -248,7 +260,6 @@ export function Header() {
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="px-3 py-2 bg-gradient-to-r from-[#E4572E]/10 to-transparent">
                       <div className="flex items-center gap-3">
-                        {/* Avatar grande en el dropdown */}
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E4572E] to-[#FF6B4A] flex items-center justify-center text-white text-md font-bold">
                           {getUserInitials()}
                         </div>
@@ -357,7 +368,7 @@ export function Header() {
                         {item.name}
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
+                    <DropdownMenuContent key={refreshKey}>
                       {displayHeaderCategories.map((cat) => (
                         <DropdownMenuItem key={cat.name} asChild>
                           <Link href={cat.href}>{cat.name}</Link>
@@ -386,7 +397,6 @@ export function Header() {
         <SheetContent side="left" className="w-80">
           <SheetTitle>Menú</SheetTitle>
           
-          {/* Mostrar información de usuario en mobile si está autenticado */}
           {isAuthenticated && (
             <div className="mt-4 p-3 bg-gradient-to-r from-[#E4572E]/10 to-transparent rounded-lg">
               <div className="flex items-center gap-3">
@@ -406,7 +416,6 @@ export function Header() {
           )}
           
           <div className="mt-4 flex flex-col gap-4">
-            {/* PRODUCTOS con submenú */}
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setMobileProductsOpen(!mobileProductsOpen)}
@@ -438,7 +447,7 @@ export function Header() {
                 </div>
               )}
             </div>
-            {/* QUIÉNES SOMOS */}
+            
             <Link 
               href="/quienes-somos" 
               onClick={() => setMobileMenuOpen(false)}
@@ -447,7 +456,6 @@ export function Header() {
               QUIÉNES SOMOS
             </Link>
 
-            {/* CONTACTO */}
             <Link 
               href="/contacto" 
               onClick={() => setMobileMenuOpen(false)}
@@ -456,7 +464,6 @@ export function Header() {
               CONTACTO
             </Link>
 
-            {/* Opciones de usuario en mobile si está autenticado */}
             {isAuthenticated && (
               <>
                 <div className="border-t border-gray-200 my-2"></div>

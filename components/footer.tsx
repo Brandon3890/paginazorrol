@@ -4,11 +4,12 @@ import Image from "next/image"
 import { FaInstagram, FaYoutube, FaFacebook } from "react-icons/fa"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { useCategoryStore, emitCategoryUpdate } from "@/lib/category-store"
+import { useCategoryStore } from "@/lib/category-store"
 
 export function Footer() {
-  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded, forceRefresh } = useCategoryStore()
   const [isMounted, setIsMounted] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(Date.now())
 
   useEffect(() => {
     setIsMounted(true)
@@ -19,16 +20,17 @@ export function Footer() {
     }
     
     // Escuchar eventos de actualización de categorías
-    const handleCategoriesUpdate = () => {
-      console.log('🔄 Footer: Categorías actualizadas, recargando...')
+    const handleCategoriesUpdate = (event: CustomEvent) => {
+      console.log('🔄 Footer: Categorías actualizadas, recargando...', event.detail)
+      // Forzar recarga con timestamp único
+      setRefreshKey(Date.now())
       fetchCategories(true)
     }
     
-    window.addEventListener('categories-updated', handleCategoriesUpdate)
+    window.addEventListener('categories-updated', handleCategoriesUpdate as EventListener)
     
-    // También escuchar el evento de productos actualizados (por si acaso)
+    // También escuchar el evento de productos actualizados
     const handleProductUpdate = () => {
-      // Solo recargar si las categorías no están cargadas
       if (!categoriesLoaded) {
         fetchCategories()
       }
@@ -36,9 +38,27 @@ export function Footer() {
     
     window.addEventListener('product-updated', handleProductUpdate)
     
+    // Recargar cuando la página se vuelve visible (por si el usuario vuelve de otra pestaña)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('👁️ Footer: Página visible, verificando categorías...')
+        // Solo recargar si han pasado más de 30 segundos desde la última carga
+        const lastFetch = localStorage.getItem('category_last_fetch')
+        if (lastFetch) {
+          const elapsed = Date.now() - parseInt(lastFetch)
+          if (elapsed > 30000) {
+            fetchCategories(true)
+          }
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
     return () => {
-      window.removeEventListener('categories-updated', handleCategoriesUpdate)
+      window.removeEventListener('categories-updated', handleCategoriesUpdate as EventListener)
       window.removeEventListener('product-updated', handleProductUpdate)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [fetchCategories, categoriesLoaded])
 

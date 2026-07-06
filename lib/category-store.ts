@@ -32,6 +32,7 @@ interface CategoryStore {
   loading: boolean
   error: string | null
   categoriesLoaded: boolean
+  lastFetchTimestamp: number
   
   fetchCategories: (force?: boolean) => Promise<void>
   addCategory: (category: Omit<Category, 'id' | 'created_at' | 'updated_at' | 'subcategories'>) => Promise<void>
@@ -50,6 +51,7 @@ interface CategoryStore {
   reorderSubcategories: (categoryId: number, orderedIds: number[]) => Promise<void>
   clearError: () => void
   resetStore: () => void
+  forceRefresh: () => Promise<void>
 }
 
 // Función para emitir evento de actualización de categorías
@@ -70,6 +72,7 @@ export const useCategoryStore = create<CategoryStore>()(
       loading: false,
       error: null,
       categoriesLoaded: false,
+      lastFetchTimestamp: 0,
 
       resetStore: () => {
         console.log('🔄 Reseteando store de categorías...')
@@ -77,11 +80,18 @@ export const useCategoryStore = create<CategoryStore>()(
           categories: [], 
           categoriesLoaded: false,
           loading: false,
-          error: null
+          error: null,
+          lastFetchTimestamp: 0
         })
         if (typeof window !== 'undefined') {
           localStorage.removeItem('category-storage')
         }
+      },
+
+      forceRefresh: async () => {
+        console.log('🔄 Forzando refresco de categorías...')
+        set({ categoriesLoaded: false, lastFetchTimestamp: 0 })
+        await get().fetchCategories(true)
       },
 
       fetchCategories: async (force = false) => {
@@ -89,6 +99,7 @@ export const useCategoryStore = create<CategoryStore>()(
           get().resetStore()
         }
 
+        // Si ya están cargadas y no se fuerza, omitir
         if (get().categoriesLoaded && !force) {
           console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
@@ -96,8 +107,9 @@ export const useCategoryStore = create<CategoryStore>()(
 
         set({ loading: true, error: null })
         try {
-          console.log('🔄 Fetching categories...')
           const timestamp = Date.now()
+          console.log(`🔄 Fetching categories con timestamp: ${timestamp}`)
+          
           const response = await fetch(`/api/categories?_=${timestamp}`, {
             cache: 'no-store',
             headers: {
@@ -118,12 +130,13 @@ export const useCategoryStore = create<CategoryStore>()(
             subcategories: Array.isArray(cat.subcategories) ? cat.subcategories : []
           }))
           
-          console.log(`✅ ${processedCategories.length} categorías cargadas`)
+          console.log(`✅ ${processedCategories.length} categorías cargadas (timestamp: ${timestamp})`)
           
           set({ 
             categories: processedCategories, 
             loading: false, 
-            categoriesLoaded: true 
+            categoriesLoaded: true,
+            lastFetchTimestamp: timestamp
           })
         } catch (error) {
           console.error('❌ Error fetching categories:', error)
@@ -159,7 +172,6 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
         } catch (error) {
           console.error('Error updating subcategory order:', error)
@@ -197,7 +209,6 @@ export const useCategoryStore = create<CategoryStore>()(
             })
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Subcategorías reordenadas para categoría ${categoryId}`)
         } catch (error) {
@@ -230,8 +241,6 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log('✅ Categoría creada exitosamente')
         } catch (error) {
@@ -255,8 +264,6 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Categoría ${id} actualizada`)
         } catch (error) {
@@ -283,7 +290,6 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Categoría ${id} desactivada`)
         } catch (error) {
@@ -310,7 +316,6 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Categoría ${id} activada`)
         } catch (error) {
@@ -335,7 +340,6 @@ export const useCategoryStore = create<CategoryStore>()(
             categories: state.categories.filter(cat => cat.id !== id)
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Categoría ${id} eliminada permanentemente`)
         } catch (error) {
@@ -359,8 +363,6 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log('✅ Subcategoría creada exitosamente')
         } catch (error) {
@@ -384,8 +386,6 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Subcategoría ${id} actualizada`)
         } catch (error) {
@@ -415,7 +415,6 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Subcategoría ${id} desactivada`)
         } catch (error) {
@@ -445,7 +444,6 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Subcategoría ${id} activada`)
         } catch (error) {
@@ -473,7 +471,6 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          // Emitir evento de actualización
           emitCategoryUpdate()
           console.log(`✅ Subcategoría ${id} eliminada permanentemente`)
         } catch (error) {
@@ -491,7 +488,8 @@ export const useCategoryStore = create<CategoryStore>()(
       name: 'category-storage',
       partialize: (state) => ({ 
         categories: state.categories,
-        categoriesLoaded: state.categoriesLoaded 
+        categoriesLoaded: state.categoriesLoaded,
+        lastFetchTimestamp: state.lastFetchTimestamp
       }),
     }
   )
