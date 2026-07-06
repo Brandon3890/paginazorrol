@@ -1031,7 +1031,7 @@ export default function CheckoutPage() {
                   <div
                     className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-all ${
                       deliveryMethod === 'pickup' 
-                        ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
+                        ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200' 
                         : 'hover:bg-muted/50'
                     }`}
                     onClick={() => setDeliveryMethod('pickup')}
@@ -1510,11 +1510,11 @@ export default function CheckoutPage() {
                 
                 <div className="flex justify-between">
                   <span>Envío</span>
-                  <span>
+                  <span className="text-orange-600 font-medium">
                     {deliveryMethod === 'pickup' ? (
                       'Gratis'
                     ) : isLoadingShipping ? (
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 text-orange-600">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         Calculando...
                       </span>
@@ -1536,8 +1536,8 @@ export default function CheckoutPage() {
                 </div>
                 
                 {deliveryMethod === 'pickup' && (
-                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-xs text-green-700 flex items-center gap-2">
+                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-xs text-orange-700 flex items-center gap-2">
                       <Store className="w-3 h-3" />
                       <span>Retirarás tu pedido en: <strong>Arcangel 1200, San Miguel</strong></span>
                     </p>
