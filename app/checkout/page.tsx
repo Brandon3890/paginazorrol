@@ -1047,9 +1047,6 @@ export default function CheckoutPage() {
                           <div className="text-sm text-muted-foreground mt-1">
                             <span className="font-medium">Arcangel 1200</span>, Comuna de San Miguel
                           </div>
-                          <div className="text-xs text-green-600 font-medium mt-1">
-                            Envío gratuito
-                          </div>
                         </div>
                         <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
                           Gratis
