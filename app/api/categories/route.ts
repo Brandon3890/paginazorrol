@@ -7,7 +7,6 @@ export async function GET() {
   try {
     await transaction.begin();
     
-    // Primero obtener todas las categorías
     const categories = await transaction.query(`
       SELECT 
         c.*
@@ -15,10 +14,8 @@ export async function GET() {
       ORDER BY c.is_active DESC, c.name
     `) as any[];
 
-    // Para cada categoría, obtener sus subcategorías por separado
     const categoriesWithSubcategories = await Promise.all(
       categories.map(async (category) => {
-        // Obtener TODAS las subcategorías, incluso las inactivas
         const subcategories = await transaction.query(`
           SELECT 
             s.id,
@@ -33,7 +30,6 @@ export async function GET() {
           WHERE s.category_id = ?
           ORDER BY s.display_order ASC, s.id ASC
         `, [category.id]) as any[];
-
 
         return {
           ...category,
@@ -51,7 +47,8 @@ export async function GET() {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache, no-store, must-revalidate, private',
         'Pragma': 'no-cache',
-        'Expires': '0'
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
       }
     });
     
@@ -83,7 +80,6 @@ export async function POST(request: Request) {
 
     await transaction.begin();
 
-    // Verificar si ya existe una categoría con el mismo slug
     const existing = await transaction.query(
       'SELECT id FROM categories WHERE slug = ?',
       [slug]

@@ -7,71 +7,52 @@ import { useEffect, useState } from "react"
 import { useCategoryStore } from "@/lib/category-store"
 
 export function Footer() {
-  const { categories, fetchCategories, categoriesLoaded, forceRefresh } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
   const [isMounted, setIsMounted] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(Date.now())
 
   useEffect(() => {
     setIsMounted(true)
     
-    // Cargar categorías si no están cargadas
-    if (!categoriesLoaded) {
-      fetchCategories()
+    const loadCategories = async () => {
+      try {
+        await fetchCategories(true)
+      } catch (error) {
+        console.error('Error loading categories in footer:', error)
+      }
     }
     
-    // Escuchar eventos de actualización de categorías
-    const handleCategoriesUpdate = (event: CustomEvent) => {
-      console.log('🔄 Footer: Categorías actualizadas, recargando...', event.detail)
-      // Forzar recarga con timestamp único
-      setRefreshKey(Date.now())
+    if (!categoriesLoaded) {
+      loadCategories()
+    }
+    
+    const handleCategoriesUpdate = () => {
+      console.log('🔄 Footer: Categorías actualizadas, recargando...')
       fetchCategories(true)
     }
     
-    window.addEventListener('categories-updated', handleCategoriesUpdate as EventListener)
+    window.addEventListener('categories-updated', handleCategoriesUpdate)
     
-    // También escuchar el evento de productos actualizados
     const handleProductUpdate = () => {
-      if (!categoriesLoaded) {
-        fetchCategories()
-      }
+      fetchCategories(true)
     }
     
     window.addEventListener('product-updated', handleProductUpdate)
     
-    // Recargar cuando la página se vuelve visible (por si el usuario vuelve de otra pestaña)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('👁️ Footer: Página visible, verificando categorías...')
-        // Solo recargar si han pasado más de 30 segundos desde la última carga
-        const lastFetch = localStorage.getItem('category_last_fetch')
-        if (lastFetch) {
-          const elapsed = Date.now() - parseInt(lastFetch)
-          if (elapsed > 30000) {
-            fetchCategories(true)
-          }
-        }
-      }
-    }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    
     return () => {
-      window.removeEventListener('categories-updated', handleCategoriesUpdate as EventListener)
+      window.removeEventListener('categories-updated', handleCategoriesUpdate)
       window.removeEventListener('product-updated', handleProductUpdate)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [fetchCategories, categoriesLoaded])
 
-  // Obtener SOLO las primeras 4 categorías activas
+  // Obtener SOLO las primeras 4 categorías ACTIVAS
   const activeCategories = categories
-    .filter(category => category.is_active)
+    .filter(category => category.is_active === true || category.is_active === 1 || category.is_active !== 0)
     .slice(0, 4)
     .map(category => ({
       name: category.name,
       slug: category.slug,
     }))
 
-  // Categorías por defecto en caso de que no haya categorías en la BD
   const defaultCategories = [
     { name: "Juegos de Mesa", slug: "juegos-mesa" },
     { name: "TCG", slug: "tcg" },
@@ -79,7 +60,6 @@ export function Footer() {
     { name: "Rol", slug: "rol" }
   ]
 
-  // Usar categorías de la BD si hay, si no usar las default
   const displayCategories = isMounted && activeCategories.length > 0 
     ? activeCategories 
     : defaultCategories
@@ -88,7 +68,6 @@ export function Footer() {
     <footer className="bg-black text-white mt-20">
       <div className="max-w-7xl mx-auto px-6 py-16">
 
-        {/* Logo centrado */}
         <div className="text-center mb-10">
           <Link href="/"> 
             <h2
@@ -100,13 +79,10 @@ export function Footer() {
           </Link>
         </div>
 
-        {/* Línea */}
         <div className="border-t border-gray-700 mb-10"></div>
 
-        {/* Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
 
-          {/* Productos - Categorías desde BD (solo 4) */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Productos</h3>
             <ul className="space-y-2 text-gray-300 text-sm">
@@ -123,7 +99,6 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Información - ENLACES CLICKEABLES */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Información</h3>
             <ul className="space-y-2 text-gray-300 text-sm">
@@ -146,7 +121,6 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Contacto + Redes */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Contáctanos</h3>
             <p className="text-gray-300 text-sm">+56 9 5877 3629</p>
@@ -155,7 +129,6 @@ export function Footer() {
             </p>
           </div>
 
-          {/* Métodos de Pago */}
           <div>
             <h3 className="font-semibold mb-3 text-lg">Métodos de Pago</h3>
             <div className="bg-white p-2 inline-block rounded">

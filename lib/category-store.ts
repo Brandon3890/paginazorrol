@@ -6,7 +6,7 @@ interface Subcategory {
   name: string
   slug: string
   category_id: number
-  is_active: boolean
+  is_active: boolean | number
   display_order: number 
   created_at: string
   updated_at: string
@@ -21,7 +21,7 @@ interface Category {
   name: string
   slug: string
   description?: string
-  is_active: boolean
+  is_active: boolean | number
   created_at: string
   updated_at: string
   subcategories: Subcategory[]
@@ -54,7 +54,6 @@ interface CategoryStore {
   forceRefresh: () => Promise<void>
 }
 
-// Función para emitir evento de actualización de categorías
 export const emitCategoryUpdate = () => {
   if (typeof window !== 'undefined') {
     const event = new CustomEvent('categories-updated', {
@@ -99,7 +98,6 @@ export const useCategoryStore = create<CategoryStore>()(
           get().resetStore()
         }
 
-        // Si ya están cargadas y no se fuerza, omitir
         if (get().categoriesLoaded && !force) {
           console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
@@ -127,7 +125,13 @@ export const useCategoryStore = create<CategoryStore>()(
           
           const processedCategories = categories.map((cat: any) => ({
             ...cat,
-            subcategories: Array.isArray(cat.subcategories) ? cat.subcategories : []
+            is_active: cat.is_active === 1 || cat.is_active === true,
+            subcategories: Array.isArray(cat.subcategories) 
+              ? cat.subcategories.map((sub: any) => ({
+                  ...sub,
+                  is_active: sub.is_active === 1 || sub.is_active === true
+                }))
+              : []
           }))
           
           console.log(`✅ ${processedCategories.length} categorías cargadas (timestamp: ${timestamp})`)

@@ -27,52 +27,39 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(Date.now())
 
   const router = useRouter()
   const pathname = usePathname()
 
   const { getTotalItems, toggleCart } = useCartStore()
   const { user, isAuthenticated, logout } = useAuthStore()
-  const { categories, fetchCategories, categoriesLoaded, forceRefresh } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
   const { globalSearchQuery, setGlobalSearchQuery } = useProductStore()
 
   useEffect(() => {
     setIsMounted(true)
     
-    // Cargar categorías si no están cargadas
-    if (!categoriesLoaded) {
-      fetchCategories()
-    }
-    
-    // Escuchar eventos de actualización de categorías
-    const handleCategoriesUpdate = (event: CustomEvent) => {
-      console.log('🔄 Header: Categorías actualizadas, recargando...', event.detail)
-      setRefreshKey(Date.now())
-      fetchCategories(true)
-    }
-    
-    window.addEventListener('categories-updated', handleCategoriesUpdate as EventListener)
-    
-    // Recargar cuando la página se vuelve visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('👁️ Header: Página visible, verificando categorías...')
-        const lastFetch = localStorage.getItem('category_last_fetch')
-        if (lastFetch) {
-          const elapsed = Date.now() - parseInt(lastFetch)
-          if (elapsed > 30000) {
-            fetchCategories(true)
-          }
+    const loadCategories = async () => {
+      try {
+        if (!categoriesLoaded) {
+          await fetchCategories(true)
         }
+      } catch (error) {
+        console.error('Error loading categories in header:', error)
       }
     }
     
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    loadCategories()
+    
+    const handleCategoriesUpdate = () => {
+      console.log('🔄 Header: Categorías actualizadas, recargando...')
+      fetchCategories(true)
+    }
+    
+    window.addEventListener('categories-updated', handleCategoriesUpdate)
     
     return () => {
-      window.removeEventListener('categories-updated', handleCategoriesUpdate as EventListener)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('categories-updated', handleCategoriesUpdate)
     }
   }, [fetchCategories, categoriesLoaded])
 
@@ -86,15 +73,14 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
-  // Obtener categorías activas para el header (todas las activas)
+  // Obtener categorías ACTIVAS para el header
   const headerCategories = categories
-    .filter(category => category.is_active)
+    .filter(category => category.is_active === true || category.is_active === 1 || category.is_active !== 0)
     .map(category => ({
       name: category.name,
       href: `/filtro/${category.slug}`,
     }))
 
-  // Categorías por defecto si no hay categorías en la BD
   const defaultHeaderCategories = [
     { name: "Juegos de Mesa", href: "/filtro/juegos-mesa" },
     { name: "TCG", href: "/filtro/tcg" },
@@ -102,19 +88,16 @@ export function Header() {
     { name: "Rol", href: "/filtro/rol" }
   ]
 
-  // Usar categorías de la BD si hay, si no usar las default
   const displayHeaderCategories = isMounted && headerCategories.length > 0 
     ? headerCategories 
     : defaultHeaderCategories
 
-  // Manejador de búsqueda instantánea
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
     setGlobalSearchQuery(value)
   }
 
-  // Limpiar búsqueda
   const clearSearch = () => {
     setSearchQuery("")
     setGlobalSearchQuery("")
@@ -126,7 +109,6 @@ export function Header() {
     router.push("/")
   }
 
-  // Obtener iniciales del usuario para el avatar
   const getUserInitials = () => {
     if (!user) return "U"
     const firstName = user.firstName || ""
@@ -139,7 +121,6 @@ export function Header() {
 
   return (
     <div className="sticky top-0 z-50">
-      {/* BANNER DE PÁGINA EN CONSTRUCCIÓN */}
       <div className="bg-red-600 text-white py-3 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-3">
           <motion.div
@@ -160,12 +141,9 @@ export function Header() {
         </div>
       </div>
 
-      {/* HEADER */}
       <header className="bg-white text-black border-b border-gray-300">
         <div className="max-w-7xl mx-auto px-8 py-6">
-          {/* TOP */}
           <div className="flex items-center justify-between gap-6">
-            {/* LOGO */}
             <Link
               href="/"
               onClick={() => setGlobalSearchQuery("")}
@@ -182,7 +160,6 @@ export function Header() {
               </div>
             </Link>
 
-            {/* BUSCADOR DESKTOP */}
             <div className="hidden md:flex flex-1 justify-center">
               <div className="relative w-full max-w-xl">
                 <input
@@ -199,9 +176,7 @@ export function Header() {
               </div>
             </div>
 
-            {/* ICONOS */}
             <div className="flex items-center gap-4">
-              {/* Mobile search */}
               <div className="md:hidden">
                 {searchExpanded ? (
                   <div className="fixed inset-x-0 top-0 bg-white z-50 p-4 flex gap-2 shadow-md">
@@ -227,7 +202,6 @@ export function Header() {
                 )}
               </div>
 
-              {/* CART */}
               <Button variant="ghost" size="icon" className="text-black relative" onClick={toggleCart}>
                 <ShoppingCart className="w-6 h-6" />
                 {totalItems > 0 && (
@@ -237,7 +211,6 @@ export function Header() {
                 )}
               </Button>
 
-              {/* USER */}
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -345,7 +318,6 @@ export function Header() {
                 </DropdownMenu>
               )}
 
-              {/* MOBILE MENU */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -357,7 +329,6 @@ export function Header() {
             </div>
           </div>
 
-          {/* NAV */}
           <nav className="hidden lg:flex flex items-center justify-between mt-6 gap-6 text-sm font-semibold tracking-wide">
             {navItems.map((item) => {
               if (item.hasDropdown) {
@@ -368,7 +339,7 @@ export function Header() {
                         {item.name}
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent key={refreshKey}>
+                    <DropdownMenuContent>
                       {displayHeaderCategories.map((cat) => (
                         <DropdownMenuItem key={cat.name} asChild>
                           <Link href={cat.href}>{cat.name}</Link>
@@ -392,7 +363,6 @@ export function Header() {
         </div>
       </header>
 
-      {/* MOBILE MENU */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-80">
           <SheetTitle>Menú</SheetTitle>
