@@ -4,16 +4,43 @@ import Image from "next/image"
 import { FaInstagram, FaYoutube, FaFacebook } from "react-icons/fa"
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { useCategoryStore } from "@/lib/category-store"
+import { useCategoryStore, emitCategoryUpdate } from "@/lib/category-store"
 
 export function Footer() {
-  const { categories, fetchCategories } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
-    fetchCategories()
-  }, [fetchCategories])
+    
+    // Cargar categorías si no están cargadas
+    if (!categoriesLoaded) {
+      fetchCategories()
+    }
+    
+    // Escuchar eventos de actualización de categorías
+    const handleCategoriesUpdate = () => {
+      console.log('🔄 Footer: Categorías actualizadas, recargando...')
+      fetchCategories(true)
+    }
+    
+    window.addEventListener('categories-updated', handleCategoriesUpdate)
+    
+    // También escuchar el evento de productos actualizados (por si acaso)
+    const handleProductUpdate = () => {
+      // Solo recargar si las categorías no están cargadas
+      if (!categoriesLoaded) {
+        fetchCategories()
+      }
+    }
+    
+    window.addEventListener('product-updated', handleProductUpdate)
+    
+    return () => {
+      window.removeEventListener('categories-updated', handleCategoriesUpdate)
+      window.removeEventListener('product-updated', handleProductUpdate)
+    }
+  }, [fetchCategories, categoriesLoaded])
 
   // Obtener SOLO las primeras 4 categorías activas
   const activeCategories = categories

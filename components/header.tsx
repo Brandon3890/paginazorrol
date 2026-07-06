@@ -18,7 +18,7 @@ import { useAuthStore } from "@/lib/auth-store"
 import { useProductStore } from "@/lib/product-store"
 import { CartDrawer } from "@/components/cart-drawer"
 import Link from "next/link"
-import { useCategoryStore } from "@/lib/category-store"
+import { useCategoryStore, emitCategoryUpdate } from "@/lib/category-store"
 import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 
@@ -33,13 +33,29 @@ export function Header() {
 
   const { getTotalItems, toggleCart } = useCartStore()
   const { user, isAuthenticated, logout } = useAuthStore()
-  const { categories, fetchCategories } = useCategoryStore()
+  const { categories, fetchCategories, categoriesLoaded } = useCategoryStore()
   const { globalSearchQuery, setGlobalSearchQuery } = useProductStore()
 
   useEffect(() => {
     setIsMounted(true)
-    fetchCategories()
-  }, [fetchCategories])
+    
+    // Cargar categorías si no están cargadas
+    if (!categoriesLoaded) {
+      fetchCategories()
+    }
+    
+    // Escuchar eventos de actualización de categorías
+    const handleCategoriesUpdate = () => {
+      console.log('🔄 Header: Categorías actualizadas, recargando...')
+      fetchCategories(true)
+    }
+    
+    window.addEventListener('categories-updated', handleCategoriesUpdate)
+    
+    return () => {
+      window.removeEventListener('categories-updated', handleCategoriesUpdate)
+    }
+  }, [fetchCategories, categoriesLoaded])
 
   const totalItems = isMounted ? getTotalItems() : 0
 
@@ -51,6 +67,7 @@ export function Header() {
     { name: "CONTACTO", href: "/contacto", hasDropdown: false },
   ]
 
+  // Obtener categorías activas para el header (todas las activas, no solo 4)
   const headerCategories = categories
     .filter(category => category.is_active)
     .map(category => ({
@@ -58,11 +75,24 @@ export function Header() {
       href: `/filtro/${category.slug}`,
     }))
 
+  // Categorías por defecto si no hay categorías en la BD
+  const defaultHeaderCategories = [
+    { name: "Juegos de Mesa", href: "/filtro/juegos-mesa" },
+    { name: "TCG", href: "/filtro/tcg" },
+    { name: "Puzzles", href: "/filtro/puzzles" },
+    { name: "Rol", href: "/filtro/rol" }
+  ]
+
+  // Usar categorías de la BD si hay, si no usar las default
+  const displayHeaderCategories = isMounted && headerCategories.length > 0 
+    ? headerCategories 
+    : defaultHeaderCategories
+
   // Manejador de búsqueda instantánea - SOLO actualiza el store, NO redirige
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
-    setGlobalSearchQuery(value) // Solo actualiza el store, sin redirigir
+    setGlobalSearchQuery(value)
   }
 
   // Limpiar búsqueda
@@ -279,7 +309,6 @@ export function Header() {
                     <Button 
                       variant="ghost" 
                       className="text-black hover:bg-[#E4572E] hover:text-white transition-colors"
-                      
                     >
                       <User className="w-6 h-6" />
                     </Button>
@@ -329,7 +358,7 @@ export function Header() {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      {headerCategories.map((cat) => (
+                      {displayHeaderCategories.map((cat) => (
                         <DropdownMenuItem key={cat.name} asChild>
                           <Link href={cat.href}>{cat.name}</Link>
                         </DropdownMenuItem>
@@ -393,7 +422,7 @@ export function Header() {
               
               {mobileProductsOpen && (
                 <div className="ml-4 flex flex-col gap-2">
-                  {headerCategories.map((cat) => (
+                  {displayHeaderCategories.map((cat) => (
                     <Link
                       key={cat.name}
                       href={cat.href}
