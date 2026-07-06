@@ -43,10 +43,10 @@ interface ProductCardProps {
   index?: number
 }
 
-// 🔥 CACHE DE IMÁGENES
+// CACHE DE IMÁGENES
 const imageCache = new Map<string, string>()
 
-// 🔥 FUNCIÓN OPTIMIZADA PARA OBTENER URL
+// FUNCIÓN PARA OBTENER URL
 const getImageUrl = (url: string): string => {
   if (!url) return '/api/images/diverse-products-still-life.png'
   
@@ -83,7 +83,7 @@ const getImageUrl = (url: string): string => {
   return result
 }
 
-// 🔥 PRECARGA DE IMÁGENES (sin bloquear el renderizado)
+// PRECARGA DE IMÁGENES (sin bloquear el renderizado)
 const preloadImage = (src: string) => {
   if (!src || src.startsWith('blob:')) return
   if (typeof window !== 'undefined') {
@@ -178,7 +178,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   
-  // 🔥 MEMOIZAR URLs DE IMÁGENES - solo recalcula cuando cambia el producto
+  // MEMOIZAR URLs DE IMÁGENES - solo recalcula cuando cambia el producto
   const imageUrls = useMemo(() => {
     const urls = [
       getImageUrl(product.image),
@@ -188,7 +188,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
     return urls.length > 0 ? urls : ['/api/images/diverse-products-still-life.png']
   }, [product.image, product.additionalImages])
 
-  // 🔥 PRECARGAR IMÁGENES en segundo plano (excepto la primera que ya carga)
+  // PRECARGAR IMÁGENES en segundo plano (excepto la primera que ya carga)
   useEffect(() => {
     imageUrls.forEach((url, index) => {
       if (index > 0) {
@@ -239,7 +239,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
         >
           <CardContent className="p-4 flex-1 flex flex-col relative z-10">
             <motion.div 
-              className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-muted"
+              className="relative aspect-square mb-4 overflow-hidden rounded-lg bg-white"
               animate={{ scale: isHovered ? 1.02 : 1 }}
               transition={{ duration: 0.3 }}
             >

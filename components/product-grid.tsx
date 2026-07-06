@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 interface CompatibleProduct {
   id: number
   name: string
-  slug: string  // <--- AHORA ES OBLIGATORIO
+  slug: string  
   price: number
   originalPrice?: number
   image: string
@@ -152,7 +152,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     return activeProducts.map(product => ({
       id: product.id,
       name: product.name,
-      slug: product.slug || '',  // <--- Asegurar que slug siempre tenga valor
+      slug: product.slug || '',  
       price: product.price,
       originalPrice: product.originalPrice,
       image: product.image,
