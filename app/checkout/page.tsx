@@ -1042,7 +1042,7 @@ export default function CheckoutPage() {
                         <div className="flex-1">
                           <div className="font-medium flex items-center gap-2">
                             <Store className="w-4 h-4 text-green-500" />
-                            Retirar en local
+                            Retiro presencial
                           </div>
                           <div className="text-sm text-muted-foreground mt-1">
                             <span className="font-medium">Arcangel 1200</span>, Comuna de San Miguel
