@@ -580,7 +580,7 @@ export default function CheckoutPage() {
         shippingAddress = pickupAddress
         shippingAddressForOrder = {
           ...pickupAddress,
-          title: 'Retiro en local - Arcangel 1200'
+          title: 'Retiro presencial - Arcangel 1200'
         }
       } else {
         const homeAddress = {
@@ -628,7 +628,7 @@ export default function CheckoutPage() {
         shippingMethod: deliveryMethod === 'pickup' ? 'pickup' : shippingMethod,
         deliveryMethod: deliveryMethod,
         shippingDetails: deliveryMethod === 'pickup' ? {
-          carrier: "Retiro en local",
+          carrier: "Retiro presencial",
           serviceName: "Retiro en tienda",
           serviceCode: 0,
           finalWeight: 0,
@@ -1027,7 +1027,7 @@ export default function CheckoutPage() {
                     </Label>
                   </div>
 
-                  {/* Opción: Retiro en local */}
+                  {/* Opción: Retiro presencial */}
                   <div
                     className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-all ${
                       deliveryMethod === 'pickup' 
@@ -1443,13 +1443,13 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {/* Información de retiro en local - Solo si eligió retiro en local */}
+          {/* Información de Retiro presencial - Solo si eligió Retiro presencial */}
           {deliveryMethod === 'pickup' && (isAuthenticated || isGuestMode) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Store className="w-5 h-5 text-green-500" />
-                  Retiro en Local
+                  Retiro presencial
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1462,7 +1462,7 @@ export default function CheckoutPage() {
                       <p className="text-sm text-muted-foreground">Región Metropolitana</p>
                       <div className="mt-2 flex items-center gap-2">
                         <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                          Retiro en local
+                          Retiro presencial
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-3">
