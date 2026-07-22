@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
 
     // VERIFICACIÓN DIRECTA - Para desarrollo
     const developmentPasswords: Record<string, string> = {
+      'demo@example.com': 'demo123',
+      'admin@ludicagames.com': 'admin123'
     }
 
     const expectedPassword = developmentPasswords[email]
