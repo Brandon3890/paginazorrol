@@ -82,11 +82,11 @@ export async function DELETE(
             const filePath = path.join(process.cwd(), 'public', 'uploads', 'products', fileName);
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
-              console.log(`✅ Eliminado archivo: ${filePath}`);
+              console.log(`Eliminado archivo: ${filePath}`);
             }
           }
         } catch (error) {
-          console.warn(`⚠️ No se pudo eliminar la imagen: ${imagePath}`);
+          console.warn(`No se pudo eliminar la imagen: ${imagePath}`);
         }
       }
     }
@@ -94,7 +94,7 @@ export async function DELETE(
     // ============================================
     // Eliminar registros relacionados (EN ORDEN CORRECTO)
     // ============================================
-    console.log('🗑️ Eliminando registros relacionados...');
+    console.log('Eliminando registros relacionados');
     
     // 1. Eliminar relaciones con cupones
     await queryExecute('DELETE FROM coupon_products WHERE product_id = ?', [productId]);
@@ -122,7 +122,7 @@ export async function DELETE(
     // ============================================
     await queryExecute('DELETE FROM products WHERE id = ?', [productId]);
     
-    console.log(`✅ Producto ${productId} eliminado permanentemente`);
+    console.log(`Producto ${productId} eliminado permanentemente`);
 
     return NextResponse.json({ 
       message: 'Producto eliminado permanentemente',
@@ -131,7 +131,7 @@ export async function DELETE(
     });
 
   } catch (error) {
-    console.error('❌ Error permanently deleting product:', error);
+    console.error('Error permanently deleting product:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     

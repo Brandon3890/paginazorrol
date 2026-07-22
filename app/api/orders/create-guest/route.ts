@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         'UPDATE users SET rut = ? WHERE id = ?',
         [guestRut, userId]
       )
-      console.log(`👤 Usuario invitado creado con RUT: ${guestRut}`)
+      console.log(`Usuario invitado creado con RUT: ${guestRut}`)
     }
 
     const orderNumber = generateOrderNumber()

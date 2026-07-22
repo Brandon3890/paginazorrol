@@ -65,7 +65,7 @@ export default function MySQLOrderDetailPage() {
     }
 
     if (!isAuthenticated) {
-      console.log('🔐 Usuario no autenticado, redirigiendo a login')
+      console.log('Usuario no autenticado, redirigiendo a login')
       router.push('/login?from=' + encodeURIComponent(`/orders/mysql/${orderId}`))
       return
     }
@@ -78,12 +78,12 @@ export default function MySQLOrderDetailPage() {
       setLoading(true)
       setError(null)
       
-      console.log('📦 Fetching order from MySQL:', orderId)
+      console.log('Fetching order from MySQL:', orderId)
       const response = await fetch(`/api/orders/${orderId}`)
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('✅ Order data received:', orderData)
+        console.log('Order data received:', orderData)
         setOrder(orderData)
       } else if (response.status === 404) {
         setError('Orden no encontrada')
@@ -98,7 +98,7 @@ export default function MySQLOrderDetailPage() {
         setError(errorData.error || 'Error al cargar la orden')
       }
     } catch (error) {
-      console.error('❌ Error fetching order:', error)
+      console.error('Error fetching order:', error)
       setError('No se pudo cargar la información del pedido. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)

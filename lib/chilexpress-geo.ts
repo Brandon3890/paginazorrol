@@ -42,7 +42,6 @@ export async function getRegions(): Promise<Region[]> {
   }
 
   const url = buildUrl('/regions');
-  console.log("📡 Fetching regions:", url);
   
   const response = await fetch(url, { headers: getHeaders() });
   
@@ -88,7 +87,6 @@ export async function getCoverageAreas(regionCode: string, type: number = 1): Pr
   };
   
   const url = buildUrl('/coverage-areas', params);
-  console.log("📡 Fetching coverage areas for region:", regionCode, url);
   
   const response = await fetch(url, { headers: getHeaders() });
   
@@ -125,7 +123,6 @@ export async function searchStreets(
   }
 
   const url = buildUrl('/streets/search', { limit });
-  console.log("📡 Searching streets:", url);
   
   const response = await fetch(url, {
     method: "POST",
@@ -168,7 +165,6 @@ export async function getStreetNumbers(
 
   const params = streetNumber ? { streetNumber } : undefined;
   const url = buildUrl(`/streets/${streetNameId}/numbers`, params);
-  console.log("📡 Getting street numbers:", url);
   
   const response = await fetch(url, { headers: getHeaders() });
 
@@ -200,7 +196,6 @@ export async function georeferenceAddress(
   }
 
   const url = buildUrl('/addresses/georeference');
-  console.log("📡 Georeferencing address:", url);
   
   const response = await fetch(url, {
     method: "POST",
@@ -260,7 +255,6 @@ export async function getOfficesByCounty(
   }
   
   const url = buildUrl('/offices', params);
-  console.log("📡 Getting offices by county:", url);
   
   const response = await fetch(url, { headers: getHeaders() });
 
@@ -299,7 +293,7 @@ export async function getNearbyOffices(
   if (radius !== undefined) params.radius = radius;
   
   const url = buildUrl(`/nearby-offices/${addressId}`, params);
-  console.log("📡 Getting nearby offices:", url);
+
   
   const response = await fetch(url, { headers: getHeaders() });
 
@@ -324,7 +318,6 @@ export async function getCountyCode(communeName: string, regionName?: string): P
   // Primero obtener todas las regiones
   if (!regionsCache) {
     regionsCache = await getRegions();
-    console.log(`✅ Regiones cargadas: ${regionsCache.length}`);
   }
   
   // Determinar el código de región
@@ -338,14 +331,12 @@ export async function getCountyCode(communeName: string, regionName?: string): P
     );
     if (matchedRegion) {
       targetRegionCode = matchedRegion.regionId;
-      console.log(`📍 Región encontrada: ${targetRegionCode} para "${regionName}"`);
     }
   }
   
   // Si no se encontró por nombre, buscar en todas las regiones
   if (!targetRegionCode) {
-    console.log("🔍 Buscando comuna en todas las regiones...");
-    
+
     for (const region of regionsCache) {
       try {
         const coverages = await getCoverageAreas(region.regionId, 1);
@@ -366,11 +357,10 @@ export async function getCountyCode(communeName: string, regionName?: string): P
         
         if (cache.has(normalizedInput) || cache.has(noAccentInput)) {
           targetRegionCode = region.regionId;
-          console.log(`✅ Comuna "${communeName}" encontrada en región ${targetRegionCode}`);
           break;
         }
       } catch (error) {
-        console.warn(`⚠️ Error obteniendo coberturas para región ${region.regionId}:`, error);
+        console.warn(`Error obteniendo coberturas para región ${region.regionId}:`, error);
       }
     }
   }
@@ -416,12 +406,11 @@ export async function getAllCoverageAreas(): Promise<CoverageArea[]> {
     try {
       const coverages = await getCoverageAreas(region.regionId, 1);
       allCoverages.push(...coverages);
-      console.log(`📋 Región ${region.regionId}: ${coverages.length} comunas`);
+      console.log(`Región ${region.regionId}: ${coverages.length} comunas`);
     } catch (error) {
       console.error(`Error obteniendo coberturas para ${region.regionId}:`, error);
     }
   }
   
-  console.log(`✅ Total comunas cargadas: ${allCoverages.length}`);
   return allCoverages;
 }

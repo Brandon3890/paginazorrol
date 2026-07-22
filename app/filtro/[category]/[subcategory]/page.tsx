@@ -4,7 +4,7 @@ import { ProductGrid } from "@/components/product-grid"
 import { Footer } from "@/components/footer"
 import { notFound } from "next/navigation"
 
-// ✅ Forzar modo dinámico
+// Forzar modo dinámico
 export const dynamic = 'force-dynamic'
 export const dynamicParams = true
 

@@ -54,14 +54,13 @@ export async function POST(request: NextRequest) {
       length: Math.max(maxLength, 1),
     };
 
-    console.log("📍 Calculando envío a:", communeName);
-    console.log("📦 Paquete:", packageData);
+    console.log("Calculando envío a:", communeName);
 
     // Obtener código de la comuna desde la API de Chilexpress
     let destinationCountyCode: string;
     try {
       destinationCountyCode = await getCountyCode(communeName);
-      console.log(`✅ Código encontrado: ${destinationCountyCode} para ${communeName}`);
+      console.log(` Código encontrado: ${destinationCountyCode} para ${communeName}`);
     } catch (error) {
       return NextResponse.json({
         success: false,
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
         parseInt(prev.serviceValue) < parseInt(curr.serviceValue) ? prev : curr
       );
 
-      console.log(`💰 Opción más barata: ${cheapestOption.serviceDescription} - $${cheapestOption.serviceValue}`);
+      console.log(`Opción más barata: ${cheapestOption.serviceDescription} - $${cheapestOption.serviceValue}`);
       
     } catch (error) {
       console.error("Error al cotizar:", error);
@@ -134,7 +133,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("❌ Error:", error);
+    console.error("Error:", error);
     return NextResponse.json(
       { 
         success: false, 

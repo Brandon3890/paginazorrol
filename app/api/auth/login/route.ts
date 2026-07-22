@@ -21,8 +21,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🔐 Intentando login para:', email)
-
     // Buscar usuario
     const users = await query(
       'SELECT * FROM users WHERE email = ? AND is_active = 1',
@@ -30,7 +28,6 @@ export async function POST(request: NextRequest) {
     ) as any[]
 
     if (!users || users.length === 0) {
-      console.log('❌ Usuario no encontrado:', email)
       return NextResponse.json(
         { success: false, message: 'Credenciales inválidas' },
         { status: 401 }
@@ -38,13 +35,9 @@ export async function POST(request: NextRequest) {
     }
 
     const user = users[0]
-    console.log('✅ Usuario encontrado:', user.email)
 
     // VERIFICACIÓN DIRECTA - Para desarrollo
-    // Las contraseñas en tu BD son: demo123 y admin123
     const developmentPasswords: Record<string, string> = {
-      'demo@example.com': 'demo123',
-      'admin@ludicagames.com': 'admin123'
     }
 
     const expectedPassword = developmentPasswords[email]
@@ -53,7 +46,7 @@ export async function POST(request: NextRequest) {
     if (expectedPassword) {
       // Verificación directa para desarrollo
       isPasswordValid = password === expectedPassword
-      console.log('🔑 Verificación directa:', isPasswordValid)
+      console.log('Verificación directa:', isPasswordValid)
     }
 
     // Si la verificación directa falla, intenta con bcrypt
@@ -66,9 +59,9 @@ export async function POST(request: NextRequest) {
         }
         
         isPasswordValid = await bcrypt.compare(password, normalizedHash)
-        console.log('🔑 Resultado bcrypt:', isPasswordValid)
+        console.log(' Resultado bcrypt:', isPasswordValid)
       } catch (bcryptError) {
-        console.error('❌ Error bcrypt:', bcryptError)
+        console.error('Error bcrypt:', bcryptError)
       }
     }
 
@@ -121,11 +114,11 @@ export async function POST(request: NextRequest) {
     })
 
     response.headers.set('Set-Cookie', cookie)
-    console.log('✅ Login exitoso para:', user.email)
+    console.log('Login exitoso')
     return response
 
   } catch (error) {
-    console.error('❌ Login error:', error)
+    console.error('Login error:', error)
     return NextResponse.json(
       { success: false, message: 'Error interno del servidor' },
       { status: 500 }

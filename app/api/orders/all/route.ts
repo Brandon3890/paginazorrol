@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
        ORDER BY o.created_at DESC`
     ) as any[]
 
-    console.log(`📦 Found ${orders.length} total orders`)
+    console.log(`Found ${orders.length} total orders`)
 
     // Para cada orden, obtener los items
     const ordersWithItems = await Promise.all(

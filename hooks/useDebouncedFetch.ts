@@ -10,7 +10,7 @@ export function useDebouncedFetch<T>(
 
   const debouncedFetch = useCallback(() => {
     if (isPendingRef.current) {
-      console.log('⏳ Solicitud ya en progreso, ignorando...');
+      console.log('Solicitud ya en progreso, ignorando...');
       return;
     }
 

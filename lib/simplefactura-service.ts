@@ -81,8 +81,6 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
     const postData = JSON.stringify(datosBoleta);
     const path = `/invoiceV2/${sucursalEncoded}`;
     
-    console.log('📡 Enviando a SimpleFactura:', `https://api.simplefactura.cl${path}`);
-    console.log('📦 Datos:', JSON.stringify(datosBoleta, null, 2).substring(0, 500));
     
     const options = {
       method: 'POST',
@@ -98,10 +96,7 @@ export async function emitirBoletaSimpleFactura(productos: any[], receptor: any,
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        console.log('📊 Status:', res.statusCode);
-        console.log('📄 Respuesta:', data.substring(0, 500));
-        
+      res.on('end', () => {        
         try {
           const response = JSON.parse(data);
           if (response.status === 200) {
@@ -150,9 +145,6 @@ export async function obtenerPDFSimpleFactura(folio: string | number): Promise<U
         'Content-Length': Buffer.byteLength(postData)
       }
     };
-
-    console.log(`📄 Descargando PDF para folio: ${folio}`);
-    console.log(`   Sucursal: ${config.sucursal}`);
 
     const req = https.request(options, (res) => {
       const chunks: Uint8Array[] = [];

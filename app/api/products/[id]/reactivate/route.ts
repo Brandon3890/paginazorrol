@@ -43,7 +43,7 @@ export async function PUT(
       productId: productId
     });
   } catch (error) {
-    console.error(`❌ Error reactivating product:`, error);
+    console.error(` Error reactivating product:`, error);
     return NextResponse.json(
       { error: 'Error al reactivar el producto' },
       { status: 500 }

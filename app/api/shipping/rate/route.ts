@@ -4,7 +4,6 @@ import { getShippingRates, getDeliveryDescription } from "@/lib/chilexpress-api"
 import { getOfficesByCounty, getCountyCode } from "@/lib/chilexpress-geo";
 
 export async function POST(request: NextRequest) {
-  console.log("🚀 Cotizando con API de Chilexpress...");
   
   try {
     const body = await request.json();
@@ -58,15 +57,12 @@ export async function POST(request: NextRequest) {
       length: Math.max(maxLength, 1),
     };
 
-    console.log("Package:", packageData);
-    console.log("Origen:", originCountyCode);
-    console.log("Destino comuna:", communeName);
 
     // Obtener código de la comuna
     let destinationCountyCode: string;
     try {
       destinationCountyCode = await getCountyCode(communeName, regionName);
-      console.log(`✅ Código destino: ${destinationCountyCode}`);
+      console.log(`Código destino: ${destinationCountyCode}`);
     } catch (error) {
       return NextResponse.json({
         success: false,
@@ -79,7 +75,7 @@ export async function POST(request: NextRequest) {
     // =============================================
     // 1. COTIZAR ENVÍO A DOMICILIO
     // =============================================
-    console.log("Cotizando envío a domicilio...");
+    console.log("Cotizando envío a domicilio");
     
     const rateRequest = {
       originCountyCode,
@@ -156,12 +152,12 @@ export async function POST(request: NextRequest) {
     // 2. RETIRO EN SUCURSAL (SOLO si NO hay envío a domicilio)
     // =============================================
     if (!hasHomeDelivery) {
-      console.log("🏢 No hay envío a domicilio, buscando sucursales como alternativa...");
+      console.log("No hay envío a domicilio, buscando sucursales como alternativa...");
       
       try {
         const offices = await getOfficesByCounty(communeName, 0);
         
-        console.log(`🏢 Sucursales encontradas: ${offices.length}`);
+        console.log(`Sucursales encontradas: ${offices.length}`);
         
         if (offices.length > 0) {
           // Precio base fijo para envío a sucursal (calculado con la API)
@@ -207,12 +203,12 @@ export async function POST(request: NextRequest) {
             branches: branchesList,
           });
           
-          console.log(`✅ Opción de retiro en sucursal agregada (${offices.length} sucursales)`);
+          console.log(`Opción de retiro en sucursal agregada (${offices.length} sucursales)`);
         } else {
           shippingOptions.push({
             id: "contact",
             type: "contact",
-            name: "📞 Contactar para envío",
+            name: "Contactar para envío",
             price: 0,
             deliveryDescription: `No hay opciones de envío disponibles para ${communeName}`,
             conditions: "Contáctanos para coordinar una solución alternativa",
@@ -246,7 +242,7 @@ export async function POST(request: NextRequest) {
 
     const cheapestHomeDelivery = shippingOptions.find(opt => opt.type === "home_delivery");
 
-    console.log(`✅ Total opciones: ${shippingOptions.length}`);
+    console.log(`Total opciones: ${shippingOptions.length}`);
 
     return NextResponse.json({
       success: true,
@@ -268,7 +264,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("❌ Error general:", error);
+    console.error("Error general:", error);
     
     return NextResponse.json(
       { 

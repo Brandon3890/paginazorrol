@@ -57,7 +57,7 @@ export async function GET(
     }
     
     if (!fs.existsSync(filePath)) {
-      console.error('❌ Imagen no encontrada:', filePath);
+      console.error('Imagen no encontrada:', filePath);
       
       // Si no se encuentra, devolver imagen por defecto
       const defaultPath = path.join(process.cwd(), 'public', 'uploads', 'products', 'diverse-products-still-life.png');
@@ -79,7 +79,7 @@ export async function GET(
     // Verificar que el archivo no está vacío
     const stats = fs.statSync(filePath);
     if (stats.size === 0) {
-      console.error('❌ Archivo vacío:', filePath);
+      console.error('Archivo vacío:', filePath);
       const defaultPath = path.join(process.cwd(), 'public', 'uploads', 'products', 'diverse-products-still-life.png');
       if (fs.existsSync(defaultPath)) {
         const fileBuffer = fs.readFileSync(defaultPath);
@@ -116,7 +116,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('❌ Error sirviendo imagen:', error);
+    console.error('Error sirviendo imagen:', error);
     
     // Devolver imagen por defecto en caso de error
     try {

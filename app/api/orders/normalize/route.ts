@@ -14,7 +14,7 @@ export async function POST() {
           OR order_number LIKE 'TBK%'`
     ) as any[]
 
-    console.log(`🔄 Normalizando ${orders.length} órdenes...`)
+    console.log(`Normalizando ${orders.length} órdenes...`)
 
     let updatedCount = 0
 
@@ -40,7 +40,7 @@ export async function POST() {
           [newOrderNumber, newTransbankBuyOrder, order.id]
         )
         
-        console.log(`✅ Orden ${order.id} normalizada:`, {
+        console.log(` Orden normalizada:`, {
           old: order.order_number,
           new: newOrderNumber,
           transbank: newTransbankBuyOrder

@@ -107,7 +107,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   // Escuchar evento de actualización de productos
   useEffect(() => {
     const handleProductUpdate = () => {
-      console.log('🔄 Producto actualizado, forzando recarga de imágenes...')
       setImageTimestamp(Date.now())
     }
     
@@ -127,10 +126,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           else router.push("/"); 
           return; 
         }
-        
-        console.log('📋 Product data loaded:', productData);
-        console.log('📋 Specs raw:', productData.specs);
-        console.log('📋 Specs parsed:', productData.specs ? parseProductSpecs(productData.specs) : 'null');
         
         setProduct(productData);
         setImageTimestamp(Date.now())
@@ -425,7 +420,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                           priority
                           unoptimized={true}
                           onError={(e) => {
-                            console.error('❌ Error cargando imagen:', currentMedia.url)
+                            console.error('Error cargando imagen:', currentMedia.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
                           }}

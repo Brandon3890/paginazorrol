@@ -169,7 +169,7 @@ export default function ProfilePage() {
 
   const handleNotificationToggle = async () => {
     if (!token) {
-      console.error('❌ No hay token disponible')
+      console.error('No hay token disponible')
       toast({
         title: "Error",
         description: "No se encontró el token de autenticación",

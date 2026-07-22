@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('📄 Descargando PDF para folio:', folioNumero);
+    console.log('Descargando PDF ');
 
     // Obtener PDF como Buffer
     const pdfBuffer = await obtenerPDFSimpleFactura(folioNumero);
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('❌ Error en pdf route:', error);
+    console.error('Error en pdf route:', error);
     return NextResponse.json(
       { error: error.message || 'Error al obtener PDF' },
       { status: 500 }

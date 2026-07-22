@@ -91,7 +91,6 @@ async function notifyUsersAboutPriceDrop(
   originalPrice: number | null
 ) {
   try {
-    console.log('===== INICIANDO NOTIFICACION DE OFERTA =====');
     
     let realOriginalPrice = originalPrice;
     
@@ -99,7 +98,7 @@ async function notifyUsersAboutPriceDrop(
       if (oldPrice > newPrice) {
         realOriginalPrice = oldPrice;
       } else {
-        console.log('⚠️ No hay precio original válido');
+        console.log(' No hay precio original válido');
         return { notified: false, reason: 'Sin precio original válido' };
       }
     }
@@ -143,7 +142,7 @@ async function notifyUsersAboutPriceDrop(
       return { notified: false, reason: 'Descuento inválido' };
     }
 
-    console.log('📧 Enviando email a', emails.length, 'usuarios con descuento del', discountPercent, '%');
+    console.log('Enviando email a usuarios con descuento');
     
     const emailResult = await sendProductOnSaleEmail(
       productName,
@@ -463,7 +462,7 @@ export async function PUT(
     }
 
     const slug = generateProductSlug(name)
-    console.log('📝 Slug actualizado:', slug)
+    console.log('Slug actualizado:', slug)
 
     const oldProductData = await transaction.query(
       'SELECT price, original_price, name, image FROM products WHERE id = ?',
@@ -478,16 +477,16 @@ export async function PUT(
     
     if (mainImageFile && mainImageFile.size > 0) {
       finalImage = await saveImage(mainImageFile, name, false);
-      console.log('✅ Nueva imagen principal guardada:', finalImage);
+      console.log('Nueva imagen principal guardada:', finalImage);
     } else if (imageFromForm && imageFromForm !== 'null' && imageFromForm !== '') {
       finalImage = imageFromForm;
-      console.log('📸 Usando imagen existente del form:', finalImage);
+      console.log('Usando imagen existente del form:', finalImage);
     } else if (oldProductData.length > 0 && oldProductData[0].image) {
       finalImage = oldProductData[0].image;
-      console.log('📸 Manteniendo imagen existente de la BD:', finalImage);
+      console.log('Manteniendo imagen existente de la BD:', finalImage);
     } else {
       finalImage = '/uploads/products/diverse-products-still-life.png';
-      console.log('📸 Usando imagen por defecto');
+      console.log('Usando imagen por defecto');
     }
 
     const updateProductQuery = `
@@ -563,7 +562,7 @@ export async function PUT(
           const filePath = path.join(process.cwd(), 'public', 'uploads', 'products', filename)
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath)
-            console.log(`🗑️ Imagen eliminada: ${filePath}`)
+            console.log(`Imagen eliminada`)
           }
         }
       }
@@ -578,7 +577,6 @@ export async function PUT(
           'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
           [productId, imageUrl, i]
         )
-        console.log(`✅ Additional image ${i + 1} saved: ${imageUrl}`)
       }
     }
 
@@ -595,7 +593,6 @@ export async function PUT(
       const hasValidOriginalPrice = newOriginalPrice !== null && newOriginalPrice > 0 && newOriginalPrice > newPriceValue;
       
       if (isPriceDrop && hasValidOriginalPrice) {
-        console.log('📧 Enviando notificaciones de oferta por bajada de precio...');
         setTimeout(async () => {
           try {
             const result = await notifyUsersAboutPriceDrop(
@@ -606,13 +603,12 @@ export async function PUT(
               productImageFromDb,
               newOriginalPrice
             );
-            console.log('📊 Resultado notificación:', result);
           } catch (error) {
             console.error('Error en notificación de oferta:', error);
           }
         }, 1000);
       } else {
-        console.log('⏭️ No se enviarán notificaciones (no cumple condiciones)');
+        console.log('⏭No se enviarán notificaciones');
       }
     } catch (notifyError) {
       console.error('Error al verificar notificación de oferta:', notifyError);

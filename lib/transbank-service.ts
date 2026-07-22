@@ -42,10 +42,8 @@ class TransbankService {
     
     if (process.env.TRANSBANK_ENVIRONMENT === 'production') {
       this.baseURL = 'https://webpay3g.transbank.cl'
-      console.log('Transbank en modo PRODUCCIÓN')
     } else {
       this.baseURL = 'https://webpay3gint.transbank.cl'
-      console.log('Transbank en modo INTEGRACIÓN')
     }
   }
 
@@ -58,12 +56,7 @@ class TransbankService {
   }
 
   async createTransaction(transactionData: TransbankTransaction): Promise<TransbankResponse> {
-    try {
-      console.log('Creando transacción Webpay:', {
-        ...transactionData,
-        amount: `$${transactionData.amount.toLocaleString('es-CL')}`
-      })
-      
+    try {      
       // Validaciones adicionales
       if (transactionData.amount <= 0) {
         throw new Error('El monto debe ser mayor a 0')
@@ -144,7 +137,7 @@ class TransbankService {
       
       return response.data
     } catch (error: any) {
-      console.error('❌ Error obteniendo estado de transacción:', error.response?.data || error.message)
+      console.error('Error obteniendo estado de transacción:', error.response?.data || error.message)
       throw error
     }
   }

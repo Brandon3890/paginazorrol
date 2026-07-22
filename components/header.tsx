@@ -52,7 +52,7 @@ export function Header() {
     loadCategories()
     
     const handleCategoriesUpdate = () => {
-      console.log('🔄 Header: Categorías actualizadas, recargando...')
+      console.log(' Header: Categorías actualizadas, recargando...')
       fetchCategories(true)
     }
     

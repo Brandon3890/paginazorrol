@@ -14,7 +14,7 @@ export async function POST() {
           OR order_number = ''`
     ) as any[]
 
-    console.log(`🔄 Corrigiendo ${orders.length} órdenes con números duplicados...`)
+    console.log(`Corrigiendo ${orders.length} órdenes con números duplicados...`)
 
     let fixedCount = 0
 
@@ -30,7 +30,7 @@ export async function POST() {
         [newOrderNumber, order.id]
       )
       
-      console.log(`✅ Orden ${order.id} corregida:`, {
+      console.log(` Orden corregida:`, {
         old: order.order_number,
         new: newOrderNumber,
         transbank: order.transbank_buy_order

@@ -44,15 +44,6 @@ export async function GET(
 
     const order = orders[0]
 
-    // Log para depuración
-    console.log('📦 Orden encontrada:', {
-      id: order.id,
-      shipping_address_id: order.shipping_address_id,
-      shipping_street: order.shipping_street,
-      shipping_commune: order.shipping_commune,
-      has_address: !!order.shipping_street
-    })
-
     // Obtener los items de la orden
     const orderItems = await query(
       `SELECT * FROM order_items WHERE order_id = ?`,
@@ -186,12 +177,6 @@ export async function GET(
       shipping_address: shippingAddress
     }
 
-    // Log de la respuesta
-    console.log('📤 Respuesta enviada:', {
-      has_shipping_address: !!shippingAddress,
-      shipping_street: shippingAddress?.street,
-      order_id: order.id
-    })
 
     return NextResponse.json(orderWithItems)
 

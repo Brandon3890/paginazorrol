@@ -12,7 +12,7 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
-    console.log('📁 Creada carpeta:', uploadDir);
+    console.log('Creada carpeta:', uploadDir);
   }
 
   let extension = file.type.split('/')[1] || 'png';
@@ -28,7 +28,7 @@ async function saveImage(file: File, productName: string, isAdditional: boolean 
   const filepath = path.join(uploadDir, uniqueFilename);
 
   fs.writeFileSync(filepath, buffer);
-  console.log(`✅ Imagen guardada: ${filepath}`);
+  console.log(`Imagen guardada: ${filepath}`);
   
   return `/uploads/products/${uniqueFilename}`;
 }
@@ -259,7 +259,7 @@ export async function POST(request: Request) {
     }
 
     const slug = generateProductSlug(name);
-    console.log('📝 Slug generado:', slug);
+    console.log('Slug generado:', slug);
 
     const mainImageFile = formData.get('mainImage') as File;
     let mainImageUrl = '/uploads/products/diverse-products-still-life.png';
@@ -267,9 +267,9 @@ export async function POST(request: Request) {
     if (mainImageFile && mainImageFile.size > 0) {
       try {
         mainImageUrl = await saveImage(mainImageFile, name, false);
-        console.log('✅ Main image saved:', mainImageUrl);
+        console.log(' Main image saved:', mainImageUrl);
       } catch (error) {
-        console.error('❌ Error saving main image:', error);
+        console.error('Error saving main image:', error);
       }
     }
 
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
     );
 
     const productId = result.insertId;
-    console.log('✅ Product created with ID:', productId, 'Slug:', slug);
+    console.log('Product created y Slug');
 
     for (let i = 0; i < subcategoryIds.length; i++) {
       const subcategoryId = subcategoryIds[i];
@@ -323,7 +323,7 @@ export async function POST(request: Request) {
         [productId, parseInt(subcategoryId), isPrimary, i + 1]
       );
     }
-    console.log(`✅ ${subcategoryIds.length} subcategories associated`);
+    console.log(`${subcategoryIds.length} subcategories associated`);
 
     const additionalImages = formData.getAll('additionalImages') as File[];
     for (let i = 0; i < additionalImages.length; i++) {
@@ -335,7 +335,7 @@ export async function POST(request: Request) {
             'INSERT INTO product_images (product_id, image_url, display_order) VALUES (?, ?, ?)',
             [productId, imageUrl, i]
           );
-          console.log(`✅ Additional image ${i + 1} saved: ${imageUrl}`);
+          console.log(` Additional image ${i + 1} saved: ${imageUrl}`);
         } catch (error) {
           console.error(`❌ Error saving additional image ${i + 1}:`, error);
         }
@@ -343,7 +343,7 @@ export async function POST(request: Request) {
     }
 
     await transaction.commit();
-    console.log('✅ Transaction completed successfully');
+    console.log('Transaction completed successfully');
 
     return NextResponse.json({ 
       id: productId, 
@@ -352,7 +352,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('❌ Error en POST /api/products:', error);
+    console.error(' Error en POST /api/products:', error);
     await transaction.rollback();
     return NextResponse.json(
       { 

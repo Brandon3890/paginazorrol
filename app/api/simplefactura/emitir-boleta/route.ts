@@ -50,11 +50,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { cliente, productos, total, ordenId, ordenNumero } = body;
 
-    console.log('Emitiendo boleta para orden:', ordenId);
-    console.log('Cliente:', cliente.nombre, cliente.rut);
-    console.log('Productos:', productos.length);
-    console.log('Total:', total);
-
     if (!productos || productos.length === 0) {
       return NextResponse.json(
         { success: false, error: 'No hay productos para emitir' },
@@ -62,14 +57,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ VERIFICAR SI YA EXISTE BOLETA POR ORDER_ID
+    // VERIFICAR SI YA EXISTE BOLETA POR ORDER_ID
     const boletaExistente = await query(
       `SELECT id, folio FROM boletas WHERE order_id = ?`,
       [ordenId]
     ) as any[];
 
     if (boletaExistente.length > 0) {
-      console.log('📋 Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
+      console.log('Boleta ya existe para orden:', ordenId, 'folio:', boletaExistente[0].folio);
       return NextResponse.json({
         success: true,
         folio: boletaExistente[0].folio,
@@ -78,7 +73,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ✅ VERIFICAR SI LA ORDEN YA TIENE BOLETA_ID
+    //  VERIFICAR SI LA ORDEN YA TIENE BOLETA_ID
     const orderCheck = await query(
       `SELECT boleta_id FROM orders WHERE id = ?`,
       [ordenId]
@@ -91,7 +86,7 @@ export async function POST(request: NextRequest) {
       ) as any[];
       
       if (boleta.length > 0) {
-        console.log('📋 Orden ya tiene boleta asociada:', boleta[0].folio);
+        console.log('Orden ya tiene boleta asociada:', boleta[0].folio);
         return NextResponse.json({
           success: true,
           folio: boleta[0].folio,

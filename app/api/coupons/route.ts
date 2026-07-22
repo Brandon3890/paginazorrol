@@ -253,7 +253,7 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log(`✅ Coupon created successfully with ID: ${couponId}`);
+    console.log(`Coupon created successfully`);
 
     // Obtener el cupón recién creado con toda su información
     const newCouponResponse = await query(`
@@ -349,7 +349,7 @@ export async function POST(request: Request) {
     return NextResponse.json(couponResponse, { status: 201 });
 
   } catch (error) {
-    console.error('❌ Error creating coupon:', error);
+    console.error(' Error creating coupon:', error);
     return NextResponse.json(
       { error: 'Error al crear el cupón' },
       { status: 500 }

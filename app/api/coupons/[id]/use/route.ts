@@ -26,7 +26,7 @@ export async function POST(
       [couponId]
     );
 
-    console.log(`✅ Coupon ${couponId} used successfully`);
+    console.log(` Coupon used successfully`);
 
     return NextResponse.json({ 
       success: true,
@@ -34,7 +34,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('❌ Error using coupon:', error);
+    console.error(' Error using coupon:', error);
     return NextResponse.json(
       { error: 'Error al usar el cupón' },
       { status: 500 }

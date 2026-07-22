@@ -48,7 +48,7 @@ export async function getShippingRates(request: ChilexpressRateRequest): Promise
   }
 
   const url = buildRatingUrl('/rates/courier');
-  console.log("📡 Rating URL:", url);
+  console.log("Rating URL:", url);
   
   const body = {
     originCountyCode: request.originCountyCode,
@@ -65,7 +65,7 @@ export async function getShippingRates(request: ChilexpressRateRequest): Promise
     deliveryTime: request.deliveryTime ?? 0,
   };
 
-  console.log("📦 Rating request body:", JSON.stringify(body, null, 2));
+  console.log("Rating request body:", JSON.stringify(body, null, 2));
 
   const response = await fetch(url, {
     method: "POST",
@@ -77,7 +77,7 @@ export async function getShippingRates(request: ChilexpressRateRequest): Promise
   });
 
   const responseText = await response.text();
-  console.log(`📡 Rating response status: ${response.status}`);
+  console.log(` Rating response status: ${response.status}`);
 
   let data;
   try {

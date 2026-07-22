@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           const applies = item.categoryId && categoryIds.includes(parseInt(item.categoryId));
           
           if (applies) {
-            console.log(`✅ Producto ${item.id} aplica para categoría ${item.categoryId}`);
+            console.log(`Producto aplica para categoría`);
           }
           
           return applies;
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error validating coupon:', error);
+    console.error(' Error validating coupon:', error);
     return NextResponse.json(
       { error: 'Error al validar el cupón' },
       { status: 500 }

@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Token verification error:', error)
     return NextResponse.json({ valid: false }, { status: 401 })
   }
 }
@@ -65,7 +64,7 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error verifying token:', error)
+    console.error('Error :', error)
     return NextResponse.json({ valid: false, error: 'Token inválido' }, { status: 401 })
   }
 }

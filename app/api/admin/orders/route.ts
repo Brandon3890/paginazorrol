@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       [userId]
     ) as any[]
 
-    console.log(`📦 Found ${orders.length} orders for user ${userId}`)
+    console.log(`Found ${orders.length} orders for user`)
 
     // Para cada orden, obtener los items
     const ordersWithItems = await Promise.all(

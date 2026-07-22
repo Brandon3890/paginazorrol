@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     ) as any
     
     const shippingAddressId = addressResult.insertId
-    console.log('✅ Dirección creada con ID:', shippingAddressId)
+    console.log('Dirección creada')
 
     // Calcular impuestos
     const tax = Math.round(totals.total * 0.19)
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     ) as any
     
     const orderId = orderResult.insertId
-    console.log('✅ Orden creada con ID:', orderId, 'y shipping_address_id:', shippingAddressId)
+    console.log('Orden creada ')
 
     // Crear items de la orden - SIN LA COLUMNA 'category'
     for (const item of items) {
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         ]
       )
     }
-    console.log('✅ Items de la orden creados:', items.length)
+    console.log(' Items de la orden creados:', items.length)
 
     // Guardar guest session si existe
     if (guestSessionId) {

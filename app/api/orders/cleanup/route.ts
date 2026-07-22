@@ -11,7 +11,7 @@ export async function POST() {
         OR (payment_status = 'pending' AND created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
     `) as any
 
-    console.log(`🧹 Órdenes limpiadas: ${result.affectedRows}`)
+    console.log(`Órdenes limpiadas: ${result.affectedRows}`)
 
     return NextResponse.json({
       success: true,
@@ -36,7 +36,7 @@ export async function GET() {
         OR (payment_status = 'pending' AND created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
     `) as any
 
-    console.log(`🧹 Órdenes limpiadas vía GET: ${result.affectedRows}`)
+    console.log(`Órdenes limpiadas vía GET: ${result.affectedRows}`)
 
     return NextResponse.json({
       success: true,

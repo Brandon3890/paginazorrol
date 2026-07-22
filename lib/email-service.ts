@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
 
-// Configuración básica del transporter para desarrollo
 const createTransporter = () => {
   // Si no hay configuración SMTP, usar un transporter de desarrollo
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
-    console.log(' Usando transporter de desarrollo (sin envío real)');
     return nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
@@ -53,7 +53,7 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
   } = orderData;
 
   if (!customerEmail) {
-    console.error('❌ No se puede enviar email: customerEmail es undefined');
+    console.error(' No se puede enviar email: customerEmail es undefined');
     return false;
   }
 
@@ -97,7 +97,7 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
 
 <!-- HEADER -->
 <tr>
-<td style="background:#111827;padding:30px;">
+<td style="background:#cf741f;padding:30px;">
   <table width="100%">
     <tr>
       <td align="left">
@@ -227,7 +227,7 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 <h3 style="margin:20px 0;color:#111827;">Detalle de Productos</h3>
 
 <table width="100%" cellpadding="10" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb;">
-<tr style="background:#111827;color:#ffffff;font-size:13px;">
+<tr style="background:#cf741f;color:#ffffff;font-size:13px;">
   <th align="left">Producto</th>
   <th align="center">Cant.</th>
   <th align="center">Precio Unitario</th>
@@ -334,7 +334,7 @@ ${items.map((item: any) => {
 <tr>
 <td align="center" style="padding:20px 0;">
 <a href="${process.env.NEXTAUTH_URL}/orders"
-style="background:#111827;color:#ffffff;text-decoration:none;
+style="background:#cf741f;color:#ffffff;text-decoration:none;
 padding:14px 30px;display:inline-block;font-weight:bold;border-radius:8px;">
 Ver Mis Pedidos
 </a>
@@ -386,11 +386,10 @@ Contáctanos en jinfranko@zorroludico.cl
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
     return true;
 
   } catch (error) {
-    console.error('❌ Error enviando email con boleta:', error);
+    console.error('Error enviando email:', error);
     return false;
   }
 }
@@ -414,7 +413,7 @@ export async function sendPasswordResetEmail(email: string, verificationCode: st
 
 <!-- HEADER -->
 <tr>
-<td align="center" style="background:#111827;padding:30px;">
+<td align="center" style="background:#cf741f;padding:30px;">
   <h1 style="margin:0;color:#ffffff;font-size:24px;">Zorro Lúdico</h1>
   <p style="margin:8px 0 0 0;color:#d1d5db;font-size:14px;">Recuperación de Contraseña</p>
 </td>
@@ -487,7 +486,7 @@ Este código expira en 30 minutos
 <td align="center" style="padding:15px 0;">
 
 <a href="${verifyUrl}"
-style="background:#111827;color:#ffffff;
+style="background:#cf741f;color:#ffffff;
 text-decoration:none;
 padding:14px 40px;
 font-weight:bold;
@@ -577,14 +576,11 @@ Ingresar Código
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email de recuperación enviado:', info.messageId);
     return true;
 
   } catch (error) {
-    console.error('❌ Error enviando email:', error);
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DEV] Simulación de envío');
       return true;
     }
 
@@ -607,7 +603,6 @@ export async function sendContactEmail(formData: {
   const { name, email, phone, subject, message } = formData;
 
   if (!email) {
-    console.error('No se puede enviar email: email es undefined');
     return false;
   }
 
@@ -805,7 +800,7 @@ export async function sendContactEmail(formData: {
 
 <!-- HEADER -->
 <tr>
-<td class="header" style="background:#111827;padding:30px;">
+<td class="header" style="background:#cf741f;padding:30px;">
   <table width="100%">
     <tr>
       <td align="left">
@@ -879,7 +874,7 @@ export async function sendContactEmail(formData: {
   <p style="font-size:14px;color:#6b7280;margin:0 0 15px 0;">
     Responde al cliente para brindar una atencion rapida
   </p>
-  <a href="mailto:${escapeHtml(email)}?subject=Respuesta: ${escapeHtml(subject)}" class="btn" style="display:inline-block;background:#111827;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:15px;border-radius:4px;">
+  <a href="mailto:${escapeHtml(email)}?subject=Respuesta: ${escapeHtml(subject)}" class="btn" style="display:inline-block;background:#cf741f;color:#ffffff;padding:14px 40px;text-decoration:none;font-weight:600;font-size:15px;border-radius:4px;">
     Responder al Cliente
   </a>
 </div>
@@ -916,14 +911,12 @@ export async function sendContactEmail(formData: {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email de contacto enviado a:', destEmail);
     return true;
 
   } catch (error) {
     console.error('Error enviando email de contacto:', error);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DEV] Simulacion de envio de contacto');
       return true;
     }
     
@@ -936,7 +929,7 @@ export async function sendProductOnSaleEmail(
   productName: string,
   productPrice: number,
   productOriginalPrice: number,
-  productImage: string,
+  productImage: string | Buffer, 
   productId: number,
   usersEmails: string[],
   discountPercent: number
@@ -957,24 +950,65 @@ export async function sendProductOnSaleEmail(
     }).format(price);
   };
 
-  const getImageUrl = (imagePath: string) => {
-    if (!imagePath) {
-      return process.env.NEXTAUTH_URL + '/diverse-products-still-life.png';
+  // Función para obtener la imagen 
+  const getImageData = async (imagePath: string): Promise<{ buffer: Buffer | null; mimeType: string }> => {
+    try {
+      if (Buffer.isBuffer(imagePath)) {
+        return { buffer: imagePath, mimeType: 'image/png' };
+      }
+
+      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        const response = await fetch(imagePath);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        const contentType = response.headers.get('content-type') || 'image/png';
+        return { buffer, mimeType: contentType };
+      }
+
+      if (imagePath.startsWith('/uploads/') || imagePath.startsWith('uploads/')) {
+        const fs = await import('fs');
+        const path = await import('path');
+        
+        const basePath = process.cwd();
+        let fullPath = '';
+        
+        if (imagePath.startsWith('/uploads/')) {
+          fullPath = path.join(basePath, 'public', imagePath);
+        } else if (imagePath.startsWith('uploads/')) {
+          fullPath = path.join(basePath, 'public', imagePath);
+        } else {
+          fullPath = path.join(basePath, 'public', 'uploads', 'products', imagePath);
+        }
+
+        if (fs.existsSync(fullPath)) {
+          const fileBuffer = fs.readFileSync(fullPath);
+          const ext = path.extname(fullPath).toLowerCase();
+          const mimeType = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+          }[ext] || 'image/png';
+          
+          return { buffer: fileBuffer, mimeType };
+        }
+      }
+
+      console.warn(`Imagen no encontrada para ${productName}, usando imagen por defecto`);
+      const defaultImagePath = path.join(process.cwd(), 'public', 'diverse-products-still-life.png');
+      const fs = await import('fs');
+      if (fs.existsSync(defaultImagePath)) {
+        const buffer = fs.readFileSync(defaultImagePath);
+        return { buffer, mimeType: 'image/png' };
+      }
+
+      return { buffer: null, mimeType: 'image/png' };
+    } catch (error) {
+      console.error('Error obteniendo imagen:', error);
+      return { buffer: null, mimeType: 'image/png' };
     }
-    
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      return imagePath;
-    }
-    
-    if (imagePath.startsWith('/')) {
-      return process.env.NEXTAUTH_URL + imagePath;
-    }
-    
-    if (imagePath.startsWith('uploads/')) {
-      return process.env.NEXTAUTH_URL + '/' + imagePath;
-    }
-    
-    return process.env.NEXTAUTH_URL + '/uploads/products/' + imagePath;
   };
 
   const calculateRealDiscount = (originalPrice: number, salePrice: number) => {
@@ -984,14 +1018,40 @@ export async function sendProductOnSaleEmail(
   };
 
   const realDiscountPercent = calculateRealDiscount(productOriginalPrice, productPrice);
-  
-  // Si el descuento calculado es 0 o negativo, usar el que viene por parámetro
   const finalDiscountPercent = realDiscountPercent > 0 ? realDiscountPercent : discountPercent;
 
+  const productUrl = `${process.env.NEXTAUTH_URL}/products/${productId}`;
 
-  const productUrl = process.env.NEXTAUTH_URL + '/products/' + productId;
-  const imageUrl = getImageUrl(productImage);
-  
+  let imageBuffer: Buffer | null = null;
+  let imageMimeType = 'image/png';
+  let imageDataUrl = '';
+
+  if (productImage) {
+    try {
+      const result = await getImageData(productImage as string);
+      if (result.buffer) {
+        imageBuffer = result.buffer;
+        imageMimeType = result.mimeType;
+        imageDataUrl = `data:${imageMimeType};base64,${imageBuffer.toString('base64')}`;
+      } else {
+        imageDataUrl = `${process.env.NEXTAUTH_URL}/diverse-products-still-life.png`;
+      }
+    } catch (error) {
+      imageDataUrl = `${process.env.NEXTAUTH_URL}/diverse-products-still-life.png`;
+    }
+  } else {
+    imageDataUrl = `${process.env.NEXTAUTH_URL}/diverse-products-still-life.png`;
+  }
+
+  const attachments = [];
+  if (imageBuffer) {
+    attachments.push({
+      filename: 'product-image.jpg',
+      content: imageBuffer,
+      cid: 'productImage', 
+      contentType: imageMimeType
+    });
+  }
 
   const emailTemplate = `
 <!DOCTYPE html>
@@ -1109,16 +1169,27 @@ export async function sendProductOnSaleEmail(
     }
     
     .product-image-cell {
-      width: 60px;
-      padding-right: 12px;
+      width: 80px;
+      padding-right: 16px;
+      min-width: 80px;
+    }
+    
+    .product-image-container {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     
     .product-image {
-      width: 60px;
-      height: 60px;
+      width: 80px;
+      height: 80px;
       border-radius: 8px;
       object-fit: cover;
-      background-color: #e5e7eb;
       display: block;
     }
     
@@ -1278,13 +1349,19 @@ export async function sendProductOnSaleEmail(
       }
       
       .product-image-cell {
-        width: 45px;
-        padding-right: 8px;
+        width: 60px;
+        min-width: 60px;
+        padding-right: 12px;
+      }
+      
+      .product-image-container {
+        width: 60px;
+        height: 60px;
       }
       
       .product-image {
-        width: 45px;
-        height: 45px;
+        width: 60px;
+        height: 60px;
       }
       
       .product-name {
@@ -1351,11 +1428,11 @@ export async function sendProductOnSaleEmail(
       <table width="100%" cellpadding="0" cellspacing="0" class="main" style="background:#ffffff;max-width:600px;border-radius:8px;overflow:hidden;">
         
         <tr>
-          <td class="header" style="background:#111827;padding:30px 40px;">
+          <td class="header" style="background:#cf741f;padding:30px 40px;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td align="left">
-                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zorro Ludico</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zorro Lúdico</h1>
                   <p style="margin:5px 0 0 0;color:#d1d5db;font-size:14px;">Tu producto favorito está en oferta</p>
                 </td>
                 <td align="right" style="color:#d1d5db;font-size:13px;white-space:nowrap;">
@@ -1386,8 +1463,14 @@ export async function sendProductOnSaleEmail(
             <div class="product-card" style="background:#f9fafb;border:2px solid #e5e7eb;border-radius:12px;padding:16px 20px;margin:0 0 25px 0;display:table;width:100%;box-sizing:border-box;">
               <div class="product-row" style="display:table-row;">
                 
-                <div class="product-cell product-image-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;width:60px;padding-right:12px;">
-                  <img src="${imageUrl}" alt="${productName}" class="product-image" style="width:60px;height:60px;border-radius:8px;object-fit:cover;background-color:#e5e7eb;display:block;" onerror="this.src='${process.env.NEXTAUTH_URL}/diverse-products-still-life.png'">
+                <div class="product-cell product-image-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;width:80px;padding-right:16px;min-width:80px;">
+                  <div class="product-image-container" style="width:80px;height:80px;border-radius:8px;overflow:hidden;background-color:#e5e7eb;display:flex;align-items:center;justify-content:center;">
+                    <img src="${imageBuffer ? 'cid:productImage' : imageDataUrl}" 
+                         alt="${productName}" 
+                         class="product-image" 
+                         style="width:80px;height:80px;border-radius:8px;object-fit:cover;display:block;"
+                         onerror="this.src='${process.env.NEXTAUTH_URL}/diverse-products-still-life.png'">
+                  </div>
                 </div>
                 
                 <div class="product-cell product-name-cell" style="display:table-cell;vertical-align:middle;padding:0 8px;white-space:nowrap;padding-right:16px;width:auto;">
@@ -1454,7 +1537,7 @@ export async function sendProductOnSaleEmail(
         <tr>
           <td class="footer" style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
             <p style="margin:0;font-size:12px;color:#9ca3af;">
-              Zorro Ludico &bull; Tu tienda de confianza
+              Zorro Lúdico &bull; Tu tienda de confianza
             </p>
           </td>
         </tr>
@@ -1469,23 +1552,20 @@ export async function sendProductOnSaleEmail(
   `;
 
   try {
-    const transporter = (await import('@/lib/email-service')).transporter;
-    
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Ludico" <jinfranko@zorroludico.cl>',
+      from: process.env.SMTP_FROM || '"Zorro Lúdico" <jinfranko@zorroludico.cl>',
       bcc: usersEmails.join(','),
       subject: `¡Oferta! ${productName} - ${finalDiscountPercent}% de descuento`,
       html: emailTemplate,
+      attachments: attachments 
     };
 
     const info = await transporter.sendMail(mailOptions);
     return true;
 
   } catch (error) {
-    console.error('Error enviando email de oferta:', error);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('[DEV] Simulación de envío de oferta');
       return true;
     }
     

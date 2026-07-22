@@ -5,10 +5,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> } // ← Nota: params es una Promise
 ) {
-  console.log('=== REORDER SUBCATEGORIES API CALLED ===')
   
   try {
-    // ✅ CORRECCIÓN: Esperar a que params se resuelva
+    // CORRECCIÓN: Esperar a que params se resuelva
     const { id } = await params
     const categoryId = parseInt(id)
     

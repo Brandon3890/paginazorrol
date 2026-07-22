@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, slug, category_id, is_active = true } = body;
 
-    console.log('📥 Recibida solicitud POST para subcategoría:', { name, slug, category_id, is_active });
+    console.log('Recibida solicitud para subcategoría');
 
     if (!name || !slug || !category_id) {
       return NextResponse.json(
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
     await transaction.commit();
 
-    console.log(`✅ Subcategoría creada con ID: ${result.insertId}`);
+    console.log(`Subcategoría creada`);
 
     return NextResponse.json({ 
       id: result.insertId,

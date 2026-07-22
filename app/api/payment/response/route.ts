@@ -51,7 +51,7 @@ async function emitirBoleta(orderId: number) {
     ) as any[];
 
     if (boletaExistente.length > 0) {
-      console.log('✅ Boleta ya existe para orden:', orderId, 'folio:', boletaExistente[0].folio);
+      console.log('Boleta ya existe');
       return {
         success: true,
         folio: boletaExistente[0].folio,
@@ -79,7 +79,7 @@ async function emitirBoleta(orderId: number) {
     
     if (order.is_guest === 1) {
       rutCliente = '55555555-5';
-      console.log('👤 Cliente invitado, usando RUT por defecto:', rutCliente);
+      console.log('Cliente invitado, usando RUT por defecto:', rutCliente);
     }
 
     if (rutCliente === '55555555-5' || !rutCliente || rutCliente === '') {
@@ -91,12 +91,6 @@ async function emitirBoleta(orderId: number) {
       : order.is_guest === 1 
         ? 'Consumidor Final' 
         : 'Cliente';
-
-    console.log('📋 Datos para boleta:', {
-      rut: rutCliente,
-      nombre: nombreCliente,
-      is_guest: order.is_guest
-    });
 
     const cliente = {
       rut: rutCliente,
@@ -114,7 +108,7 @@ async function emitirBoleta(orderId: number) {
 
     const total = parseFloat(order.total);
 
-    console.log('📦 Emitiendo boleta para:', cliente.nombre, 'con', productos.length, 'productos');
+    console.log('Emitiendo boleta para:', cliente.nombre, 'con', productos.length, 'productos');
 
     const result = await emitirBoletaSimpleFactura(
       productos,
@@ -123,7 +117,7 @@ async function emitirBoleta(orderId: number) {
     );
 
     if (result.status === 200) {
-      console.log('✅ Boleta emitida exitosamente. Folio:', result.data.folio);
+      console.log('Boleta emitida exitosamente. Folio:', result.data.folio);
       
       const neto = Math.round(total / 1.19);
       const iva = total - neto;
@@ -161,21 +155,18 @@ async function emitirBoleta(orderId: number) {
         yaExistia: false
       };
     } else {
-      console.error('❌ Error emitiendo boleta:', result.error);
+      console.error('Error emitiendo boleta:', result.error);
       return { success: false, error: result.error };
     }
 
   } catch (error: any) {
-    console.error('❌ Error en emitirBoleta:', error.message);
+    console.error('Error en emitirBoleta:', error.message);
     return { success: false, error: error.message };
   }
 }
 
 async function descontarStock(orderId: number) {
-  try {
-    console.log('🔄 PROCESANDO STOCK PARA ORDEN:', orderId);
-    console.log('📌 Flujo: Reserva → Pago exitoso → Devolver reserva → Descontar definitivo');
-    
+  try {    
     // Obtener items de la orden
     const orderItems = await query(
       `SELECT product_id, quantity FROM order_items WHERE order_id = ?`,
@@ -183,11 +174,10 @@ async function descontarStock(orderId: number) {
     ) as any[];
 
     if (!orderItems || orderItems.length === 0) {
-      console.log('⚠️ No hay items en la orden, no se procesa stock');
       return true;
     }
 
-    console.log(`📦 Procesando ${orderItems.length} productos...`);
+    console.log(`Procesando ${orderItems.length} productos...`);
 
     // Obtener el userId de la orden
     const [orderInfo] = await query(
@@ -199,7 +189,7 @@ async function descontarStock(orderId: number) {
 
     // 1️⃣ DEVOLVER STOCK DE LA RESERVA (si existe)
     if (userId) {
-      console.log(`🔄 Devolviendo stock de reserva para usuario: ${userId}`);
+      console.log(`Devolviendo stock de reserva para usuario: ${userId}`);
       
       const reservations = await query(
         `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
@@ -207,7 +197,6 @@ async function descontarStock(orderId: number) {
       ) as any[];
 
       if (reservations && reservations.length > 0) {
-        console.log(`📋 Encontradas ${reservations.length} reservas para liberar`);
         
         for (const res of reservations) {
           await query(
@@ -217,7 +206,6 @@ async function descontarStock(orderId: number) {
              WHERE id = ?`,
             [res.quantity, res.product_id]
           );
-          console.log(`↩️ Stock devuelto de reserva: Producto ${res.product_id} +${res.quantity}`);
         }
 
         // Eliminar reservas
@@ -225,14 +213,11 @@ async function descontarStock(orderId: number) {
           'DELETE FROM stock_reservations WHERE user_id = ?',
           [userId]
         );
-        console.log(`🗑️ Reservas eliminadas para usuario ${userId}`);
       } else {
-        console.log('ℹ️ No hay reservas activas para este usuario');
       }
     }
 
-    // 2️⃣ DESCONTAR STOCK DEFINITIVO (cantidad correcta de la orden)
-    console.log('🔽 Descontando stock definitivo de la orden...');
+    // 2️DESCONTAR STOCK DEFINITIVO (cantidad correcta de la orden)
 
     for (const item of orderItems) {
       const [productCheck] = await query(
@@ -241,7 +226,7 @@ async function descontarStock(orderId: number) {
       ) as any[];
 
       if (!productCheck) {
-        console.warn(`⚠️ Producto ${item.product_id} no encontrado, saltando...`);
+        console.warn(` Producto ${item.product_id} no encontrado, saltando...`);
         continue;
       }
 
@@ -249,7 +234,7 @@ async function descontarStock(orderId: number) {
       const nuevaCantidad = stockActual - item.quantity;
 
       if (nuevaCantidad < 0) {
-        console.error(`❌ Stock insuficiente para producto ${item.product_id}. Stock: ${stockActual}, Solicitado: ${item.quantity}`);
+        console.error(`Stock insuficiente para producto ${item.product_id}. Stock: ${stockActual}, Solicitado: ${item.quantity}`);
         continue;
       }
 
@@ -261,15 +246,13 @@ async function descontarStock(orderId: number) {
          WHERE id = ?`,
         [nuevaCantidad, nuevaCantidad, item.product_id]
       );
-
-      console.log(`✅ Stock definitivo: ${productCheck.name} (ID: ${item.product_id}) ${stockActual} → ${nuevaCantidad}`);
     }
 
-    console.log('✅ Proceso de stock completado exitosamente');
+    console.log('Proceso de stock completado exitosamente');
     return true;
 
   } catch (error) {
-    console.error('❌ Error procesando stock:', error);
+    console.error(' Error procesando stock:', error);
     return false;
   }
 }
@@ -286,7 +269,6 @@ async function liberarStock(userId: number) {
       return true
     }
     
-    console.log('Liberando', reservations.length, 'reservas para usuario', userId)
     
     for (const res of reservations) {
       const [productCheck] = await query(
@@ -299,9 +281,8 @@ async function liberarStock(userId: number) {
           `UPDATE products SET stock = stock + ? WHERE id = ?`,
           [res.quantity, res.product_id]
         )
-        console.log('Stock devuelto para producto', res.product_id, '+', res.quantity, 'unidades')
       } else {
-        console.warn('Producto', res.product_id, 'no encontrado, no se puede devolver stock')
+        console.warn('Producto no encontrado')
       }
     }
     
@@ -323,11 +304,6 @@ export async function POST(request: NextRequest) {
     const token_ws = formData.get('token_ws') as string
     const TBK_TOKEN = formData.get('TBK_TOKEN') as string
 
-    console.log('Respuesta de Webpay recibida:', { 
-      token_ws: token_ws ? 'PRESENTE (' + token_ws.substring(0, 10) + '...)' : 'AUSENTE', 
-      TBK_TOKEN: TBK_TOKEN ? 'PRESENTE (' + TBK_TOKEN.substring(0, 10) + '...)' : 'AUSENTE' 
-    })
-
     // CASO: Pago ABORTADO por el usuario
     if (TBK_TOKEN && !token_ws) {
       console.log('Pago ABORTADO por el usuario')
@@ -343,7 +319,6 @@ export async function POST(request: NextRequest) {
         if (order.user_id) {
           await liberarStock(order.user_id)
         } else {
-          console.log('⚠️ Usuario invitado, no hay reservas que liberar');
         }
         
         await query(
@@ -371,7 +346,7 @@ export async function POST(request: NextRequest) {
 
     // CASO: Pago EXITOSO
     if (token_ws && !TBK_TOKEN) {
-      console.log('Procesando pago EXITOSO con token_ws')
+      console.log('Procesando pago EXITOSO')
       
       try {
         const commitResponse = await transbankService.commitTransaction(token_ws)
@@ -419,13 +394,11 @@ export async function POST(request: NextRequest) {
                 'DELETE FROM stock_reservations WHERE user_id = ?',
                 [order.user_id]
               );
-              console.log('Reservas eliminadas para usuario:', order.user_id);
             } else {
-              console.log('✅ Usuario invitado, stock ya descontado directamente');
             }
 
             // EMITIR BOLETA
-            console.log('Emitiendo boleta electronica...');
+            console.log('Emitiendo boleta electronica');
             const resultadoBoleta = await emitirBoleta(order.id);
             
             let pdfBuffer = null;
@@ -433,7 +406,7 @@ export async function POST(request: NextRequest) {
             
             if (resultadoBoleta.success) {
               folio = resultadoBoleta.folio;
-              console.log('✅ Boleta emitida/obtenida, folio:', folio);
+              console.log('Boleta obtenida');
               
               pdfBuffer = await obtenerPDFBoleta(folio);
               if (pdfBuffer) {
@@ -442,7 +415,7 @@ export async function POST(request: NextRequest) {
                 console.warn('No se pudo obtener el PDF de la boleta');
               }
             } else {
-              console.error('❌ Error emitiendo boleta:', resultadoBoleta.error);
+              console.error('Error emitiendo boleta:', resultadoBoleta.error);
             }
 
             // ENVIAR EMAIL DE CONFIRMACIÓN
@@ -471,7 +444,7 @@ export async function POST(request: NextRequest) {
                 LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
                 WHERE o.id = ?`,
                 [order.id]
-              ) as any[]; // 👈 Casteo explícito a any[]
+              ) as any[]; 
 
               if (orderDetailsResult && orderDetailsResult.length > 0) {
                 const firstItem = orderDetailsResult[0];
@@ -557,22 +530,20 @@ export async function POST(request: NextRequest) {
                   // Enviar email con boleta
                   if (pdfBuffer && folio) {
                     await sendBoletaEmail(emailData, pdfBuffer, folio);
-                    console.log('✅ Email con boleta PDF enviado a:', customerEmail);
                     if (shippingAddress) {
-                      console.log('   📍 Dirección:', shippingAddress.street, shippingAddress.commune_name);
                     }
                   } else {
-                    console.warn('⚠️ No se pudo enviar boleta PDF, enviando solo confirmación');
+                    console.warn('No se pudo enviar boleta PDF, enviando solo confirmación');
                     await sendBoletaEmail(emailData, Buffer.from(''), 'SIN_FOLIO');
                   }
                 } else {
-                  console.warn('⚠️ No se encontró email del cliente');
+                  console.warn('No se encontró email del cliente');
                 }
               } else {
-                console.warn('⚠️ No se encontraron detalles de la orden');
+                console.warn('No se encontraron detalles de la orden');
               }
             } catch (emailError) {
-              console.error('❌ Error enviando email:', emailError);
+              console.error('Error enviando email:', emailError);
             }
           }
 
@@ -605,13 +576,13 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log('Pago APROBADO - Stock descontado y boleta emitida correctamente')
+          console.log('Pago APROBADO y boleta emitida correctamente')
 
           const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
           redirectUrl.searchParams.set('orderId', order.id.toString())
           redirectUrl.searchParams.set('status', 'success')
           
-          console.log('🔄 Redirigiendo a:', redirectUrl.toString())
+          console.log('Redirigiendo a:', redirectUrl.toString())
           
           return NextResponse.redirect(redirectUrl)
 
@@ -622,7 +593,6 @@ export async function POST(request: NextRequest) {
           if (order.user_id) {
             await liberarStock(order.user_id)
           } else {
-            console.log('⚠️ Usuario invitado, no hay reservas que liberar');
           }
           
           await query(

@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
     const userId = result.insertId
 
     const uniqueRut = generateUniqueRut(userId)
-    console.log(`🔑 RUT generado para usuario ${userId}: ${uniqueRut}`)
 
     // Actualizar el usuario con el RUT generado
     await pool.execute(

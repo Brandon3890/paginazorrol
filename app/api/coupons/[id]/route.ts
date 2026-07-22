@@ -13,7 +13,7 @@ export async function GET(
     const resolvedParams = await params;
     const couponId = parseInt(resolvedParams.id);
 
-    console.log(`🔍 Fetching coupon ID: ${couponId}`);
+    console.log(`Fetching coupon ID`);
 
     if (isNaN(couponId)) {
       return NextResponse.json(
@@ -165,7 +165,7 @@ export async function GET(
     return NextResponse.json(couponResponse);
 
   } catch (error) {
-    console.error('❌ Error fetching coupon:', error);
+    console.error('Error fetching coupon:', error);
     return NextResponse.json(
       { error: 'Error al obtener el cupón' },
       { status: 500 }
@@ -182,7 +182,7 @@ export async function PUT(
     const couponId = parseInt(resolvedParams.id);
     const body = await request.json();
 
-    console.log(`🔄 Updating coupon ID: ${couponId}`, body);
+    console.log(` Updating coupon ID`);
 
     if (isNaN(couponId)) {
       return NextResponse.json(
@@ -294,13 +294,6 @@ export async function PUT(
       );
     }
 
-    // Actualizar relaciones - siempre procesar incluso si están vacíos
-    console.log('Actualizando relaciones:', {
-      categories,
-      subcategories, 
-      products,
-      type
-    });
 
     // Eliminar relaciones existentes
     await query('DELETE FROM coupon_categories WHERE coupon_id = ?', [couponId]);
@@ -309,9 +302,9 @@ export async function PUT(
 
     // Insertar nuevas relaciones según el tipo
     if (type === 'category' || type === 'multiple') {
-      console.log(`📂 Insertando ${categories.length} categorías`);
+      console.log(`Insertando ${categories.length} categorías`);
       for (const categoryId of categories) {
-        if (categoryId) { // Validar que no sea null/undefined
+        if (categoryId) { 
           await query(
             'INSERT INTO coupon_categories (coupon_id, category_id) VALUES (?, ?)',
             [couponId, categoryId]
@@ -321,7 +314,7 @@ export async function PUT(
     }
 
     if (type === 'subcategory' || type === 'multiple') {
-      console.log(`📂 Insertando ${subcategories.length} subcategorías`);
+      console.log(`Insertando ${subcategories.length} subcategorías`);
       for (const subcategoryId of subcategories) {
         if (subcategoryId) { // Validar que no sea null/undefined
           await query(
@@ -333,7 +326,7 @@ export async function PUT(
     }
 
     if (type === 'product' || type === 'multiple') {
-      console.log(`📦 Insertando ${products.length} productos`);
+      console.log(`Insertando ${products.length} productos`);
       for (const productId of products) {
         if (productId) { // Validar que no sea null/undefined
           await query(
@@ -344,7 +337,7 @@ export async function PUT(
       }
     }
 
-    console.log(`✅ Coupon ${couponId} updated successfully`);
+    console.log(`Coupon ${couponId} updated successfully`);
 
     // Obtener el cupón actualizado con todas las relaciones
     const updatedCouponResponse = await query(`
@@ -486,12 +479,12 @@ export async function PUT(
       productNames
     };
 
-    console.log(`✅ Coupon ${couponId} fully updated:`, couponResponse);
+    console.log(`Coupon ${couponId} fully updated:`, couponResponse);
 
     return NextResponse.json(couponResponse);
 
   } catch (error) {
-    console.error('❌ Error updating coupon:', error);
+    console.error('Error updating coupon:', error);
     
     // Proporcionar más detalles del error
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
@@ -514,7 +507,7 @@ export async function DELETE(
     const resolvedParams = await params;
     const couponId = parseInt(resolvedParams.id);
 
-    console.log(`🗑️ Deleting coupon ID: ${couponId}`);
+    console.log(`Deleting coupon ID: ${couponId}`);
 
     if (isNaN(couponId)) {
       return NextResponse.json(
@@ -539,7 +532,7 @@ export async function DELETE(
     // Las relaciones se eliminarán automáticamente por CASCADE
     await query('DELETE FROM coupons WHERE id = ?', [couponId]);
 
-    console.log(`✅ Coupon ${couponId} deleted successfully`);
+    console.log(`Coupon ${couponId} deleted successfully`);
 
     return NextResponse.json({ 
       message: 'Cupón eliminado exitosamente',
@@ -547,7 +540,7 @@ export async function DELETE(
     });
 
   } catch (error) {
-    console.error('❌ Error deleting coupon:', error);
+    console.error('Error deleting coupon:', error);
     return NextResponse.json(
       { error: 'Error al eliminar el cupón' },
       { status: 500 }

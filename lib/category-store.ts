@@ -60,7 +60,6 @@ export const emitCategoryUpdate = () => {
       detail: { timestamp: Date.now() }
     })
     window.dispatchEvent(event)
-    console.log('📢 Evento "categories-updated" emitido')
   }
 }
 
@@ -74,7 +73,6 @@ export const useCategoryStore = create<CategoryStore>()(
       lastFetchTimestamp: 0,
 
       resetStore: () => {
-        console.log('🔄 Reseteando store de categorías...')
         set({ 
           categories: [], 
           categoriesLoaded: false,
@@ -88,7 +86,7 @@ export const useCategoryStore = create<CategoryStore>()(
       },
 
       forceRefresh: async () => {
-        console.log('🔄 Forzando refresco de categorías...')
+
         set({ categoriesLoaded: false, lastFetchTimestamp: 0 })
         await get().fetchCategories(true)
       },
@@ -99,14 +97,13 @@ export const useCategoryStore = create<CategoryStore>()(
         }
 
         if (get().categoriesLoaded && !force) {
-          console.log('📦 Categorías ya cargadas, omitiendo fetch')
+          console.log('Categorías cargadas')
           return
         }
 
         set({ loading: true, error: null })
         try {
           const timestamp = Date.now()
-          console.log(`🔄 Fetching categories con timestamp: ${timestamp}`)
           
           const response = await fetch(`/api/categories?_=${timestamp}`, {
             cache: 'no-store',
@@ -123,7 +120,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           const categories = await response.json()
           
-          // ✅ CORRECCIÓN: Convertir is_active correctamente a boolean
+          // CORRECCIÓN: Convertir is_active correctamente a boolean
           const processedCategories = categories.map((cat: any) => ({
             ...cat,
             is_active: cat.is_active === 1 || cat.is_active === true,
@@ -135,11 +132,6 @@ export const useCategoryStore = create<CategoryStore>()(
               : []
           }))
           
-          console.log(`✅ ${processedCategories.length} categorías cargadas`)
-          console.log('📊 Categorías:', processedCategories.map((c: any) => ({ 
-            name: c.name, 
-            is_active: c.is_active 
-          })))
           
           set({ 
             categories: processedCategories, 
@@ -148,7 +140,7 @@ export const useCategoryStore = create<CategoryStore>()(
             lastFetchTimestamp: timestamp
           })
         } catch (error) {
-          console.error('❌ Error fetching categories:', error)
+          console.error('Error fetching categories:', error)
           set({ 
             error: (error as Error).message, 
             loading: false 
@@ -219,7 +211,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Subcategorías reordenadas para categoría ${categoryId}`)
+          console.log(`Subcategorías reordenadas para categoría ${categoryId}`)
         } catch (error) {
           console.error('Error reordering subcategories:', error)
           set({ error: (error as Error).message })
@@ -236,7 +228,6 @@ export const useCategoryStore = create<CategoryStore>()(
             is_active: category.is_active !== undefined ? category.is_active : true
           }
 
-          console.log('📤 Enviando categoría:', categoryData)
 
           const response = await fetch('/api/categories', {
             method: 'POST',
@@ -251,9 +242,9 @@ export const useCategoryStore = create<CategoryStore>()(
           
           await get().fetchCategories(true)
           emitCategoryUpdate()
-          console.log('✅ Categoría creada exitosamente')
+          console.log('Categoría creada exitosamente')
         } catch (error) {
-          console.error('❌ Error creating category:', error)
+          console.error('Error creating category:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -274,7 +265,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           await get().fetchCategories(true)
           emitCategoryUpdate()
-          console.log(`✅ Categoría ${id} actualizada`)
+          console.log(`Categoría actualizada`)
         } catch (error) {
           console.error('Error updating category:', error)
           set({ error: (error as Error).message })
@@ -300,7 +291,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Categoría ${id} desactivada`)
+          console.log(`Categoría desactivada`)
         } catch (error) {
           console.error('Error deactivating category:', error)
           set({ error: (error as Error).message })
@@ -326,7 +317,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Categoría ${id} activada`)
+          console.log(`Categoría activada`)
         } catch (error) {
           console.error('Error activating category:', error)
           set({ error: (error as Error).message })
@@ -350,7 +341,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Categoría ${id} eliminada permanentemente`)
+          console.log(`Categoría eliminada permanentemente`)
         } catch (error) {
           console.error('Error deleting category:', error)
           set({ error: (error as Error).message })
@@ -373,9 +364,9 @@ export const useCategoryStore = create<CategoryStore>()(
           
           await get().fetchCategories(true)
           emitCategoryUpdate()
-          console.log('✅ Subcategoría creada exitosamente')
+          console.log('Subcategoría creada exitosamente')
         } catch (error) {
-          console.error('❌ Error creating subcategory:', error)
+          console.error('Error creating subcategory:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -396,7 +387,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           await get().fetchCategories(true)
           emitCategoryUpdate()
-          console.log(`✅ Subcategoría ${id} actualizada`)
+          console.log(`Subcategoría actualizada`)
         } catch (error) {
           console.error('Error updating subcategory:', error)
           set({ error: (error as Error).message })
@@ -425,7 +416,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Subcategoría ${id} desactivada`)
+          console.log(`Subcategoría ${id} desactivada`)
         } catch (error) {
           console.error('Error deactivating subcategory:', error)
           set({ error: (error as Error).message })
@@ -454,7 +445,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Subcategoría ${id} activada`)
+          console.log(`Subcategoría activada`)
         } catch (error) {
           console.error('Error activating subcategory:', error)
           set({ error: (error as Error).message })
@@ -481,7 +472,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }))
           
           emitCategoryUpdate()
-          console.log(`✅ Subcategoría ${id} eliminada permanentemente`)
+          console.log(`Subcategoría eliminada permanentemente`)
         } catch (error) {
           console.error('Error deleting subcategory:', error)
           set({ error: (error as Error).message })

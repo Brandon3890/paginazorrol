@@ -14,7 +14,7 @@ export default async function CategoryPage({ params }: PageProps) {
   const resolvedParams = await params
   const categorySlug = resolvedParams.category
 
-  // ✅ En el servidor, usar localhost, no el dominio externo
+  // En el servidor, usar localhost, no el dominio externo
   const isServer = typeof window === 'undefined'
   const baseUrl = isServer 
     ? 'http://localhost:3000'  // En servidor, llamada interna
@@ -22,19 +22,18 @@ export default async function CategoryPage({ params }: PageProps) {
   
   let categories = []
   try {
-    console.log(`🔍 Fetching categories desde: ${baseUrl}/api/categories`)
     const response = await fetch(`${baseUrl}/api/categories`, {
       next: { revalidate: 3600 },
-      // ✅ Importante: no usar cache: 'no-store'
+      // Importante: no usar cache: 'no-store'
     })
     
     if (response.ok) {
       categories = await response.json()
     } else {
-      console.error(`❌ Error ${response.status} fetching categories`)
+      console.error(`Error ${response.status} fetching categories`)
     }
   } catch (error) {
-    console.error('❌ Error fetching categories:', error)
+    console.error('Error fetching categories:', error)
   }
 
   const category = categories.find((cat: any) => 
@@ -72,7 +71,7 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   const resolvedParams = await params
   const categorySlug = resolvedParams.category
 
-  // ✅ Metadata también usa localhost en servidor
+  // Metadata también usa localhost en servidor
   const baseUrl = 'http://localhost:3000'
   
   let categories = []

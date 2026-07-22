@@ -7,7 +7,7 @@ async function verifyToken(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('❌ No hay token o formato incorrecto')
+    console.log('No hay token o formato incorrecto')
     return null
   }
 
@@ -15,10 +15,10 @@ async function verifyToken(request: NextRequest) {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any
-    console.log('✅ Token verificado:', decoded.email || decoded.id)
+    console.log('Token verificado')
     return decoded
   } catch (error) {
-    console.error('❌ Error verificando token:', error)
+    console.error('Error verificando token:', error)
     return null
   }
 }
@@ -44,12 +44,12 @@ async function getUserIdFromToken(request: NextRequest): Promise<number | null> 
     ) as any[]
     
     if (results.length > 0) {
-      console.log('✅ Usuario encontrado por email:', decoded.email, 'ID:', results[0].id)
+      console.log('Usuario encontrado')
       return results[0].id
     }
   }
   
-  console.log('❌ No se pudo obtener el ID del usuario')
+  console.log('No se pudo obtener el ID del usuario')
   return null
 }
 
@@ -94,14 +94,14 @@ export async function PUT(request: NextRequest) {
     const userId = await getUserIdFromToken(request)
     
     if (!userId) {
-      console.log('❌ No se pudo obtener el ID del usuario')
+      console.log('No se pudo obtener el ID del usuario')
       return NextResponse.json(
         { error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    console.log('✅ User ID from token:', userId)
+    console.log(' User ID from token')
     
     const body = await request.json()
     const { favoritePriceDrop } = body

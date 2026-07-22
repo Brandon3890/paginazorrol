@@ -12,7 +12,7 @@ export async function POST() {
        ORDER BY created_at DESC`
     ) as any[]
 
-    console.log(`🔄 Normalizando ${orders.length} órdenes...`)
+    console.log(`Normalizando ${orders.length} órdenes...`)
 
     let normalizedCount = 0
     let skippedCount = 0
@@ -34,7 +34,7 @@ export async function POST() {
           [newOrderNumber, order.id]
         )
         
-        console.log(`✅ Orden ${order.id} normalizada:`, {
+        console.log(` Orden normalizada:`, {
           old: order.order_number,
           new: newOrderNumber,
           transbank: order.transbank_buy_order,
@@ -44,7 +44,7 @@ export async function POST() {
         normalizedCount++
       } else {
         skippedCount++
-        console.log(`⏭️ Orden ${order.id} ya está normalizada:`, order.order_number)
+        console.log(`Orden ya está normalizada`)
       }
     }
 

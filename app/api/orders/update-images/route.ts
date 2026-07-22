@@ -12,8 +12,6 @@ export async function POST() {
        WHERE oi.image_url IS NULL OR oi.image_url = ''`
     ) as any[]
 
-    console.log(`🔄 Actualizando ${orderItems.length} items sin imagen...`)
-
     let updatedCount = 0
 
     for (const item of orderItems) {
@@ -23,7 +21,7 @@ export async function POST() {
           [item.image, item.id]
         )
         updatedCount++
-        console.log(`✅ Item ${item.id} actualizado con imagen:`, item.image)
+        console.log(` Item ${item.id} actualizado con imagen:`, item.image)
       }
     }
 

@@ -110,7 +110,6 @@ export function CartDrawer() {
     if (!user || !hasActiveCheckout()) return false
     
     try {
-      console.log(`Liberando stock de producto: ${productName} (${quantity} unidades)`)
       
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
@@ -131,7 +130,7 @@ export function CartDrawer() {
         return false
       }
       
-      console.log(`Stock liberado correctamente para ${productName}`)
+      console.log(`Stock liberado correctamente `)
       return true
       
     } catch (error) {

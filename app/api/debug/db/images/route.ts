@@ -40,7 +40,7 @@ export async function GET() {
     return NextResponse.json(results);
     
   } catch (error) {
-    console.error('❌ Image debug failed:', error);
+    console.error('Image debug failed:', error);
     return NextResponse.json(
       { error: 'Image debug failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

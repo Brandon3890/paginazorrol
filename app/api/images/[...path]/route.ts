@@ -13,7 +13,7 @@ export async function GET(
     const filename = pathSegments.join('/')
     const decodedFilename = decodeURIComponent(filename)
     
-    console.log('📸 Buscando imagen:', decodedFilename)
+    console.log('Buscando imagen')
     
     // Buscar en la carpeta de uploads/products
     const uploadPath = path.join(process.cwd(), 'public', 'uploads', 'products', decodedFilename)
@@ -31,7 +31,7 @@ export async function GET(
         '.ico': 'image/x-icon',
       }
       
-      console.log('✅ Imagen encontrada:', uploadPath)
+      console.log('Imagen encontrada')
       
       return new NextResponse(fileBuffer, {
         headers: {
@@ -41,7 +41,7 @@ export async function GET(
       })
     }
     
-    console.warn('❌ Imagen no encontrada:', uploadPath)
+    console.warn('Imagen no encontrada')
     
     // Si no se encuentra, devolver la imagen por defecto
     const defaultPath = path.join(process.cwd(), 'public', 'uploads', 'products', 'diverse-products-still-life.png')
@@ -58,7 +58,7 @@ export async function GET(
     return new NextResponse('Image not found', { status: 404 })
     
   } catch (error) {
-    console.error('❌ Error sirviendo imagen:', error)
+    console.error(' Error sirviendo imagen:', error)
     return new NextResponse('Error serving image', { status: 500 })
   }
 }

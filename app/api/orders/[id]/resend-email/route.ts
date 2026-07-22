@@ -126,13 +126,10 @@ export async function POST(
       }
     };
 
-    console.log('Reenviando email con boleta para orden:', order.order_number);
-    console.log('   Folio boleta:', order.boleta_folio);
-    console.log('   Total productos a incluir:', emailData.items.length);
-    
+   
     try {
       // Obtener el PDF de la boleta
-      console.log('Descargando PDF de boleta folio:', order.boleta_folio);
+      console.log('Descargando PDF de boleta');
       const pdfUint8Array = await obtenerPDFSimpleFactura(order.boleta_folio);
       const pdfBuffer = Buffer.from(pdfUint8Array);
       

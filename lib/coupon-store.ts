@@ -45,7 +45,6 @@ export const useCouponStore = create<CouponStore>()(
       fetchCoupons: async () => {
         set({ loading: true, error: null });
         try {
-          console.log('Fetching coupons from API...');
           const response = await fetch('/api/coupons');
           
           if (!response.ok) {
@@ -60,7 +59,7 @@ export const useCouponStore = create<CouponStore>()(
             error: null 
           });
         } catch (error) {
-          console.error('❌ Error in fetchCoupons:', error);
+          console.error('Error in fetch:', error);
           set({ 
             error: error instanceof Error ? error.message : 'Error al cargar cupones', 
             loading: false 
@@ -86,7 +85,7 @@ export const useCouponStore = create<CouponStore>()(
             errorData = { error: `HTTP error ${response.status}` };
           }
           
-          console.error('❌ API Error using coupon:', errorData);
+          console.error('API Error using coupon:', errorData);
           throw new Error(errorData.error || errorData.details || 'Error using coupon');
         }
 
@@ -104,7 +103,7 @@ export const useCouponStore = create<CouponStore>()(
         return result;
         
       } catch (error) {
-        console.error('❌ Error in useCoupon:', error);
+        console.error('Error in useCoupon:', error);
         const errorMessage = error instanceof Error ? error.message : 'Error al usar el cupón';
         set({ error: errorMessage });
         throw error;
@@ -158,7 +157,7 @@ export const useCouponStore = create<CouponStore>()(
               errorData = { error: `HTTP error ${response.status}` };
             }
             
-            console.error('❌ API Error response:', errorData);
+            console.error('API Error response:', errorData);
             throw new Error(errorData.error || errorData.details || 'Error updating coupon');
           }
           
@@ -171,7 +170,6 @@ export const useCouponStore = create<CouponStore>()(
           }));
           
         } catch (error) {
-          console.error('❌ Error in updateCoupon:', error);
           const errorMessage = error instanceof Error ? error.message : 'Error al actualizar el cupón';
           set({ error: errorMessage });
           throw error;
