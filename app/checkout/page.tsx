@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -71,8 +72,6 @@ interface RegionsResponse {
 const roundToInteger = (amount: number): number => Math.round(amount)
 const formatCLP = (price: number): string => roundToInteger(price).toLocaleString('es-CL')
 
-type DeliveryMethod = 'home' | 'pickup'
-
 export default function CheckoutPage() {
   const {
     items,
@@ -100,9 +99,6 @@ export default function CheckoutPage() {
 
   const { formattedTime, isExpired, progress, isReserving, confirmPurchase } = useCheckoutTimer()
 
-  // Estado para método de entrega
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('home')
-
   const [formData, setFormData] = useState({
     email: "", firstName: "", lastName: "", phone: "", notes: "",
   })
@@ -119,10 +115,12 @@ export default function CheckoutPage() {
     firstName: '',
     lastName: '',
     phone: '',
+    rut: '',
     confirmEmail: ''
   })
   const [guestFormErrors, setGuestFormErrors] = useState<Record<string, string>>({})
 
+  // Estados para dirección manual con API de regiones
   const [regions, setRegions] = useState<Region[]>([])
   const [loadingRegions, setLoadingRegions] = useState(false)
   const [manualAddress, setManualAddress] = useState({
@@ -144,23 +142,16 @@ export default function CheckoutPage() {
   const [showBranchSelector, setShowBranchSelector] = useState(false)
   const [availableBranches, setAvailableBranches] = useState<any[]>([])
 
+  // Estado para términos y condiciones
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
   const totalAfterDiscount = roundToInteger(getTotalPrice())
-  const shipping = deliveryMethod === 'pickup' ? 0 : roundToInteger(getShippingCost())
+  const shipping = roundToInteger(getShippingCost())
   const finalTotal = roundToInteger(totalAfterDiscount + shipping)
 
-  // Dirección del local para retiro
-  const STORE_ADDRESS = {
-    street: 'Arcangel 1200',
-    communeName: 'San Miguel',
-    regionName: 'Región Metropolitana',
-    regionIso: 'CL-RM',
-    postalCode: '8900000',
-    department: '',
-    deliveryInstructions: 'Retirar en local - Arcangel 1200, San Miguel'
-  }
-
+  // Cargar regiones para el formulario de invitado
   useEffect(() => {
     const fetchRegions = async () => {
       setLoadingRegions(true)
@@ -177,24 +168,8 @@ export default function CheckoutPage() {
     fetchRegions()
   }, [])
 
+  // Región seleccionada para el formulario manual
   const selectedRegion = regions.find(r => r.region_iso_3166_2 === manualAddress.regionIso)
-
-  // Cuando se cambia el método de entrega, resetear selecciones
-  useEffect(() => {
-    if (deliveryMethod === 'pickup') {
-      setShippingCost(0)
-      setSelectedChilexpressOption(null)
-      setChilexpressOptions([])
-      setShippingError(null)
-      setSelectedBranch(null)
-      setShowBranchSelector(false)
-    } else {
-      // Si vuelve a home y ya hay dirección, recalcular envío
-      if (selectedAddress?.communeName && items.length > 0) {
-        fetchShippingRates(selectedAddress.communeName)
-      }
-    }
-  }, [deliveryMethod])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -214,6 +189,7 @@ export default function CheckoutPage() {
           firstName: existingGuest.firstName,
           lastName: existingGuest.lastName,
           phone: existingGuest.phone,
+          rut: existingGuest.rut || '',
           confirmEmail: existingGuest.email
         })
       }
@@ -347,10 +323,10 @@ export default function CheckoutPage() {
   }, [items, getTotalPrice, setShippingCost, setShippingMethod]);
 
   useEffect(() => {
-    if (deliveryMethod === 'home' && selectedAddress?.communeName && items.length > 0) {
+    if (selectedAddress?.communeName && items.length > 0) {
       fetchShippingRates(selectedAddress.communeName)
     }
-  }, [selectedAddress?.communeName, items, fetchShippingRates, deliveryMethod])
+  }, [selectedAddress?.communeName, items, fetchShippingRates])
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -388,6 +364,7 @@ export default function CheckoutPage() {
     }
   }, [user?.addresses, selectedAddress, isGuestMode])
 
+  // Validar formulario de invitado
   const validateGuestForm = () => {
     const errors: Record<string, string> = {}
     
@@ -397,11 +374,18 @@ export default function CheckoutPage() {
     if (!guestData.confirmEmail) errors.confirmEmail = "Confirmar email requerido"
     if (guestData.email !== guestData.confirmEmail) errors.confirmEmail = "Los correos no coinciden"
     if (!guestData.phone) errors.phone = "Teléfono requerido"
+    if (!guestData.rut) errors.rut = "RUT requerido para la boleta"
+    
+    // Validar formato de RUT básico
+    if (guestData.rut && !guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
+      errors.rut = "Formato de RUT inválido (ej: 12345678-5)"
+    }
     
     setGuestFormErrors(errors)
     return Object.keys(errors).length === 0
   }
 
+  // Validar dirección manual
   const validateManualAddress = () => {
     const errors: Record<string, string> = {}
     
@@ -430,7 +414,8 @@ export default function CheckoutPage() {
       email: guestData.email,
       firstName: guestData.firstName,
       lastName: guestData.lastName,
-      phone: guestData.phone
+      phone: guestData.phone,
+      rut: guestData.rut
     })
     
     setFormData({
@@ -462,6 +447,7 @@ export default function CheckoutPage() {
       })
     }
     
+    // Cuando cambia la región, resetear comuna
     if (name === 'regionIso') {
       setManualAddress(prev => ({
         ...prev,
@@ -472,7 +458,9 @@ export default function CheckoutPage() {
       }))
     }
     
+    // Cuando cambia la comuna, NO auto-llenar el código postal (dejarlo editable)
     if (name === 'communeName') {
+      // Solo actualizar la comuna, el código postal queda como está
       setManualAddress(prev => ({
         ...prev,
         communeName: value
@@ -542,19 +530,28 @@ export default function CheckoutPage() {
       return
     }
     
-    if (deliveryMethod === 'home') {
-      if (!selectedAddress) {
-        toast({ title: "Error", description: "Selecciona o ingresa una dirección de envío", variant: "destructive" })
-        return
-      }
-      if (!selectedChilexpressOption) {
-        toast({ title: "Error", description: "Selecciona un método de envío", variant: "destructive" })
-        return
-      }
-      if (selectedChilexpressOption.requiresBranchSelection && !selectedBranch) {
-        toast({ title: "Error", description: "Por favor selecciona una sucursal para retirar", variant: "destructive" })
-        return
-      }
+    if (!selectedAddress) {
+      toast({ title: "Error", description: "Selecciona o ingresa una dirección de envío", variant: "destructive" })
+      return
+    }
+
+    if (!selectedChilexpressOption) {
+      toast({ title: "Error", description: "Selecciona un método de envío", variant: "destructive" })
+      return
+    }
+
+    if (selectedChilexpressOption.requiresBranchSelection && !selectedBranch) {
+      toast({ title: "Error", description: "Por favor selecciona una sucursal para retirar", variant: "destructive" })
+      return
+    }
+
+    if (!acceptedTerms) {
+      toast({ 
+        title: "Error", 
+        description: "Debes aceptar los Términos y Condiciones para continuar", 
+        variant: "destructive" 
+      })
+      return
     }
 
     setIsProcessing(true)
@@ -562,43 +559,6 @@ export default function CheckoutPage() {
     try {
       const isGuestUser = isGuestMode && !isAuthenticated
       const apiEndpoint = isGuestUser ? '/api/orders/create-guest' : '/api/orders/create'
-      
-      let shippingAddress
-      let shippingAddressForOrder 
-      
-      if (deliveryMethod === 'pickup') {
-        const pickupAddress = {
-          street: STORE_ADDRESS.street,
-          hasNoNumber: false,
-          regionIso: STORE_ADDRESS.regionIso,
-          regionName: STORE_ADDRESS.regionName,
-          communeName: STORE_ADDRESS.communeName,
-          postalCode: STORE_ADDRESS.postalCode,
-          department: STORE_ADDRESS.department || '',
-          deliveryInstructions: STORE_ADDRESS.deliveryInstructions
-        }
-        shippingAddress = pickupAddress
-        shippingAddressForOrder = {
-          ...pickupAddress,
-          title: 'Retiro presencial - Arcangel 1200'
-        }
-      } else {
-        const homeAddress = {
-          street: selectedAddress.street,
-          hasNoNumber: selectedAddress.hasNoNumber || false,
-          regionIso: selectedAddress.regionIso || 'CL-RM',
-          regionName: selectedAddress.regionName,
-          communeName: selectedAddress.communeName,
-          postalCode: selectedAddress.postalCode,
-          department: selectedAddress.department || '',
-          deliveryInstructions: selectedAddress.deliveryInstructions || ''
-        }
-        shippingAddress = homeAddress
-        shippingAddressForOrder = {
-          ...homeAddress,
-          title: selectedAddress.title || 'Dirección de envío'
-        }
-      }
       
       const orderPayload: any = {
         items: items.map((item) => ({
@@ -614,42 +574,43 @@ export default function CheckoutPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
+          rut: isGuestUser ? guestData.rut : user?.rut
         },
-        shippingAddress: shippingAddress,
+        shippingAddress: {
+          street: selectedAddress.street,
+          hasNoNumber: selectedAddress.hasNoNumber || false,
+          regionIso: selectedAddress.regionIso || 'CL-RM',
+          regionName: selectedAddress.regionName,
+          communeName: selectedAddress.communeName,
+          postalCode: selectedAddress.postalCode,
+          department: selectedAddress.department,
+          deliveryInstructions: selectedAddress.deliveryInstructions
+        },
         totals: {
           subtotal: subtotalBeforeDiscount,
           discount: discountAmount,
-          shipping: shipping,
+          shipping,
           total: finalTotal
         },
         notes: formData.notes,
         couponId: appliedCoupon ? couponDetails?.id : null,
         couponCode: appliedCoupon,
-        shippingMethod: deliveryMethod === 'pickup' ? 'pickup' : shippingMethod,
-        deliveryMethod: deliveryMethod,
-        shippingDetails: deliveryMethod === 'pickup' ? {
-          carrier: "Retiro presencial",
-          serviceName: "Retiro en tienda",
-          serviceCode: 0,
-          finalWeight: 0,
-          selectedBranch: null,
-          isCashOnDelivery: false,
-          actualShippingCost: 0,
-          storeAddress: STORE_ADDRESS
-        } : {
+        shippingMethod: shippingMethod,
+        shippingDetails: {
           carrier: "Chilexpress",
-          serviceName: selectedChilexpressOption?.name || '',
-          serviceCode: selectedChilexpressOption?.typeCode || 0,
-          finalWeight: selectedChilexpressOption?.finalWeight || 0,
+          serviceName: selectedChilexpressOption.name,
+          serviceCode: selectedChilexpressOption.typeCode,
+          finalWeight: selectedChilexpressOption.finalWeight,
           selectedBranch: selectedBranch ? {
             id: selectedBranch.id,
             name: selectedBranch.name,
             address: selectedBranch.address,
             telephone: selectedBranch.telephone,
           } : null,
-          isCashOnDelivery: selectedChilexpressOption?.isCashOnDelivery || false,
-          actualShippingCost: selectedChilexpressOption?.actualShippingCost || 0,
-        }
+          isCashOnDelivery: selectedChilexpressOption.isCashOnDelivery,
+          actualShippingCost: selectedChilexpressOption.actualShippingCost,
+        },
+        acceptedTerms: acceptedTerms
       }
       
       if (isGuestUser) {
@@ -671,21 +632,15 @@ export default function CheckoutPage() {
       addOrder({
         userId: orderData.userId,
         items: items.map((item) => ({ ...item, id: item.id.toString() })),
-        customerInfo: { 
-          ...formData, 
-          address: shippingAddress.street, 
-          city: shippingAddress.communeName, 
-          region: shippingAddress.regionName, 
-          postalCode: shippingAddress.postalCode 
-        },
-        shippingAddress: shippingAddressForOrder, 
+        customerInfo: { ...formData, address: selectedAddress.street, city: selectedAddress.communeName, region: selectedAddress.regionName, postalCode: selectedAddress.postalCode },
+        shippingAddress: selectedAddress,
         paymentInfo: { method: "transbank", status: "pending" },
         totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping, tax: 0, total: finalTotal },
         status: "pending",
         notes: formData.notes,
         couponId: appliedCoupon ? couponDetails?.id : null,
         couponCode: appliedCoupon,
-        shippingMethod: deliveryMethod === 'pickup' ? 'pickup' : shippingMethod,
+        shippingMethod: shippingMethod,
       })
 
       const paymentResponse = await fetch('/api/payment/create', {
@@ -762,6 +717,7 @@ export default function CheckoutPage() {
         </Link>
       </div>
 
+      {/* Timer solo para usuarios autenticados */}
       {isAuthenticated && !isGuestMode && (
         <CheckoutTimer timeLeft={formattedTime} progress={progress} isExpired={isExpired} />
       )}
@@ -892,6 +848,21 @@ export default function CheckoutPage() {
                       </p>
                     )}
                   </div>
+                  <div>
+                    <Label>RUT *</Label>
+                    <Input
+                      placeholder="Ej: 12345678-5"
+                      value={guestData.rut}
+                      onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
+                      className={guestFormErrors.rut ? "border-red-500" : ""}
+                    />
+                    {guestFormErrors.rut && (
+                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {guestFormErrors.rut}
+                      </p>
+                    )}
+                  </div>
                   <div className="flex gap-3 pt-3">
                     <Button type="submit" className="flex-1">
                       Continuar como Invitado
@@ -926,7 +897,7 @@ export default function CheckoutPage() {
                   setSelectedAddress(null)
                   setShowGuestForm(true)
                   setFormData({ email: "", firstName: "", lastName: "", phone: "", notes: "" })
-                  setGuestData({ email: "", firstName: "", lastName: "", phone: "", confirmEmail: "" })
+                  setGuestData({ email: "", firstName: "", lastName: "", phone: "", rut: "", confirmEmail: "" })
                   toast({ title: "Sesión cerrada", description: "Puedes iniciar sesión o volver a comprar como invitado" })
                 }}
               >
@@ -987,311 +958,192 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {/* SELECCIÓN DE MÉTODO DE ENTREGA */}
-          {(isAuthenticated || isGuestMode) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="w-5 h-5" />
-                  Método de Entrega
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RadioGroup 
-                  value={deliveryMethod} 
-                  onValueChange={(value) => setDeliveryMethod(value as DeliveryMethod)}
-                  className="space-y-3"
-                >
-                  {/* Opción: Envío a domicilio */}
-                  <div
-                    className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-all ${
-                      deliveryMethod === 'home' 
-                        ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200' 
-                        : 'hover:bg-muted/50'
-                    }`}
-                    onClick={() => setDeliveryMethod('home')}
-                  >
-                    <RadioGroupItem value="home" id="home" className="mt-1" />
-                    <Label htmlFor="home" className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium flex items-center gap-2">
-                            <Truck className="w-4 h-4 text-orange-500" />
-                            Envío a domicilio
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            Recibe tu pedido en la dirección que prefieras
-                          </div>
-                        </div>
-                      </div>
-                    </Label>
-                  </div>
-
-                  {/* Opción: Retiro presencial */}
-                  <div
-                    className={`flex items-start space-x-3 border rounded-lg p-4 cursor-pointer transition-all ${
-                      deliveryMethod === 'pickup' 
-                        ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
-                        : 'hover:bg-muted/50'
-                    }`}
-                    onClick={() => setDeliveryMethod('pickup')}
-                  >
-                    <RadioGroupItem value="pickup" id="pickup" className="mt-1" />
-                    <Label htmlFor="pickup" className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium flex items-center gap-2">
-                            <Store className="w-4 h-4 text-green-500" />
-                            Retiro presencial
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            <span className="font-medium">Arcangel 1200</span>, Comuna de San Miguel
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
-                          Gratis
-                        </Badge>
-                      </div>
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* DIRECCIÓN DE ENVÍO - Solo si eligió envío a domicilio */}
-          {deliveryMethod === 'home' && (isAuthenticated || isGuestMode) && (
-            <Card>
-              <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
-              <CardContent>
-                {isAuthenticated && !isGuestMode ? (
-                  <>
-                    {loadingAddresses ? (
-                      <div className="text-center py-6">
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                        <p className="mt-2">Cargando direcciones...</p>
-                      </div>
-                    ) : user?.addresses && user.addresses.length > 0 ? (
-                      <>
-                        <Select value={selectedAddress?.id?.toString()} onValueChange={(value) => {
-                          const address = user.addresses!.find(addr => addr.id.toString() === value)
-                          setSelectedAddress(address)
-                        }}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona una dirección" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {user.addresses.map((address) => (
-                              <SelectItem key={address.id} value={address.id.toString()}>
-                                {address.title} - {address.street}, {address.communeName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Link href="/profile" className="mt-4 block">
-                          <Button variant="outline" size="sm">
-                            <Plus className="w-4 h-4 mr-2" />Gestionar direcciones
-                          </Button>
-                        </Link>
-                      </>
-                    ) : (
-                      <div className="text-center py-6">
-                        <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <Link href="/profile">
-                          <Button>Agregar dirección en tu perfil</Button>
-                        </Link>
-                      </div>
-                    )}
-                  </>
-                ) : isGuestMode && !selectedAddress ? (
-                  <form onSubmit={handleManualAddressSubmit} className="space-y-4">
-                    <div>
-                      <Label>Calle y número *</Label>
-                      <Input
-                        name="street"
-                        required
-                        value={manualAddress.street}
-                        onChange={handleManualAddressChange}
-                        placeholder="Ej: Av. Providencia 1234"
-                        className={manualAddressErrors.street ? "border-red-500" : ""}
-                      />
-                      {manualAddressErrors.street && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {manualAddressErrors.street}
-                        </p>
-                      )}
+          <Card>
+            <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
+            <CardContent>
+              {isAuthenticated && !isGuestMode ? (
+                <>
+                  {loadingAddresses ? (
+                    <div className="text-center py-6">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                      <p className="mt-2">Cargando direcciones...</p>
                     </div>
-                    
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <Label>Región *</Label>
-                        <select
-                          name="regionIso"
-                          required
-                          value={manualAddress.regionIso}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            const selectedRegion = regions.find(r => r.region_iso_3166_2 === value);
-                            setManualAddress(prev => ({
-                              ...prev,
-                              regionIso: value,
-                              regionName: selectedRegion?.name || '',
-                              communeName: '',
-                              postalCode: prev.postalCode || ''
-                            }));
-                            if (manualAddressErrors.regionIso) {
-                              setManualAddressErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors.regionIso;
-                                return newErrors;
-                              });
-                            }
-                          }}
-                          className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
-                          disabled={loadingRegions}
-                        >
-                          <option value="">Selecciona una región</option>
-                          {regions.map(region => (
-                            <option key={region.region_iso_3166_2} value={region.region_iso_3166_2}>
-                              {region.name}
-                            </option>
+                  ) : user?.addresses && user.addresses.length > 0 ? (
+                    <>
+                      <Select value={selectedAddress?.id?.toString()} onValueChange={(value) => {
+                        const address = user.addresses!.find(addr => addr.id.toString() === value)
+                        setSelectedAddress(address)
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona una dirección" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {user.addresses.map((address) => (
+                            <SelectItem key={address.id} value={address.id.toString()}>
+                              {address.title} - {address.street}, {address.communeName}
+                            </SelectItem>
                           ))}
-                        </select>
-                        {manualAddressErrors.regionIso && (
-                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {manualAddressErrors.regionIso}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <Label>Comuna *</Label>
-                        <select
-                          name="communeName"
-                          required
-                          value={manualAddress.communeName}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setManualAddress(prev => ({
-                              ...prev,
-                              communeName: value
-                            }));
-                            if (manualAddressErrors.communeName) {
-                              setManualAddressErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors.communeName;
-                                return newErrors;
-                              });
-                            }
-                          }}
-                          disabled={!manualAddress.regionIso || loadingRegions}
-                          className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
-                        >
-                          <option value="">Selecciona una comuna</option>
-                          {regions
-                            .find(r => r.region_iso_3166_2 === manualAddress.regionIso)
-                            ?.communes.map(commune => (
-                              <option key={commune.name} value={commune.name}>
-                                {commune.name}
-                              </option>
-                            ))}
-                        </select>
-                        {manualAddressErrors.communeName && (
-                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {manualAddressErrors.communeName}
-                          </p>
-                        )}
-                      </div>
+                        </SelectContent>
+                      </Select>
+                      <Link href="/profile" className="mt-4 block">
+                        <Button variant="outline" size="sm">
+                          <Plus className="w-4 h-4 mr-2" />Gestionar direcciones
+                        </Button>
+                      </Link>
+                    </>
+                  ) : (
+                    <div className="text-center py-6">
+                      <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                      <Link href="/profile">
+                        <Button>Agregar dirección en tu perfil</Button>
+                      </Link>
                     </div>
-
-                    <div>
-                      <Label>Código Postal *</Label>
-                      <Input
-                        name="postalCode"
-                        required
-                        value={manualAddress.postalCode}
-                        onChange={handleManualAddressChange}
-                        placeholder="Ej: 7500000"
-                        className={manualAddressErrors.postalCode ? "border-red-500" : ""}
-                      />
-                      {manualAddressErrors.postalCode && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {manualAddressErrors.postalCode}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Ingresa el código postal de tu dirección
+                  )}
+                </>
+              ) : isGuestMode && !selectedAddress ? (
+                <form onSubmit={handleManualAddressSubmit} className="space-y-4">
+                  <div>
+                    <Label>Calle y número *</Label>
+                    <Input
+                      name="street"
+                      required
+                      value={manualAddress.street}
+                      onChange={handleManualAddressChange}
+                      placeholder="Ej: Av. Providencia 1234"
+                      className={manualAddressErrors.street ? "border-red-500" : ""}
+                    />
+                    {manualAddressErrors.street && (
+                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {manualAddressErrors.street}
                       </p>
-                    </div>
-
-                    <div>
-                      <Label>Departamento (Opcional)</Label>
-                      <Input
-                        name="department"
-                        value={manualAddress.department}
-                        onChange={handleManualAddressChange}
-                        placeholder="Depto, oficina, etc."
-                      />
-                    </div>
-
-                    <div>
-                      <Label>Instrucciones de entrega</Label>
-                      <Textarea
-                        name="deliveryInstructions"
-                        value={manualAddress.deliveryInstructions}
-                        onChange={handleManualAddressChange}
-                        rows={2}
-                        placeholder="Referencias, horario, etc."
-                      />
-                    </div>
-
-                    <Button type="submit" className="w-full">
-                      Guardar dirección
-                    </Button>
-                  </form>
-                ) : selectedAddress && (
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="font-medium">{selectedAddress.street}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAddress.communeName}, {selectedAddress.regionName}
-                    </p>
-                    <p className="text-sm text-muted-foreground"> {selectedAddress.postalCode}</p>
-                    {selectedAddress.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
-                    {selectedAddress.deliveryInstructions && (
-                      <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
-                    )}
-                    {isGuestMode && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={() => {
-                          setSelectedAddress(null);
-                          setManualAddress({
-                            street: '',
-                            regionIso: '',
-                            regionName: '',
-                            communeName: '',
-                            postalCode: '',
-                            department: '',
-                            deliveryInstructions: ''
-                          });
-                        }}
-                      >
-                        Cambiar dirección
-                      </Button>
                     )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Región *</Label>
+                      <select
+                        name="regionIso"
+                        required
+                        value={manualAddress.regionIso}
+                        onChange={handleManualAddressChange}
+                        className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
+                        disabled={loadingRegions}
+                      >
+                        <option value="">Selecciona una región</option>
+                        {regions.map(region => (
+                          <option key={region.region_iso_3166_2} value={region.region_iso_3166_2}>
+                            {region.name}
+                          </option>
+                        ))}
+                      </select>
+                      {manualAddressErrors.regionIso && (
+                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {manualAddressErrors.regionIso}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Label>Comuna *</Label>
+                      <select
+                        name="communeName"
+                        required
+                        value={manualAddress.communeName}
+                        onChange={handleManualAddressChange}
+                        disabled={!manualAddress.regionIso || loadingRegions}
+                        className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
+                      >
+                        <option value="">Selecciona una comuna</option>
+                        {selectedRegion?.communes.map(commune => (
+                          <option key={commune.name} value={commune.name}>
+                            {commune.name}
+                          </option>
+                        ))}
+                      </select>
+                      {manualAddressErrors.communeName && (
+                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {manualAddressErrors.communeName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
 
-          {/* MÉTODO DE ENVÍO - Solo si eligió envío a domicilio */}
-          {deliveryMethod === 'home' && (isAuthenticated || isGuestMode) && selectedAddress && (
+                  <div>
+                    <Label>Código Postal *</Label>
+                    <Input
+                      name="postalCode"
+                      required
+                      value={manualAddress.postalCode}
+                      onChange={handleManualAddressChange}
+                      placeholder="Ej: 7500000"
+                      className={manualAddressErrors.postalCode ? "border-red-500" : ""}
+                    />
+                    {manualAddressErrors.postalCode && (
+                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {manualAddressErrors.postalCode}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ingresa el código postal de tu dirección
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Departamento (Opcional)</Label>
+                    <Input
+                      name="department"
+                      value={manualAddress.department}
+                      onChange={handleManualAddressChange}
+                      placeholder="Depto, oficina, etc."
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Instrucciones de entrega</Label>
+                    <Textarea
+                      name="deliveryInstructions"
+                      value={manualAddress.deliveryInstructions}
+                      onChange={handleManualAddressChange}
+                      rows={2}
+                      placeholder="Referencias, horario, etc."
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full">
+                    Guardar dirección
+                  </Button>
+                </form>
+              ) : selectedAddress && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{selectedAddress.street}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAddress.communeName}, {selectedAddress.regionName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">CP: {selectedAddress.postalCode}</p>
+                  {selectedAddress.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
+                  {selectedAddress.deliveryInstructions && (
+                    <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
+                  )}
+                  {isGuestMode && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => setSelectedAddress(null)}
+                    >
+                      Cambiar dirección
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {(isAuthenticated || isGuestMode) && selectedAddress && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1443,39 +1295,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {/* Información de Retiro presencial - Solo si eligió Retiro presencial */}
-          {deliveryMethod === 'pickup' && (isAuthenticated || isGuestMode) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Store className="w-5 h-5 text-green-500" />
-                  Retiro presencial
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <Store className="w-5 h-5 text-green-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Arcangel 1200</p>
-                      <p className="text-sm text-muted-foreground">Comuna de San Miguel</p>
-                      <p className="text-sm text-muted-foreground">Región Metropolitana</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                          Retiro presencial
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-3">
-                        Presenta tu número de pedido al momento de retirar.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {(isAuthenticated || isGuestMode) && (
+          {(isAuthenticated || isGuestMode) && selectedAddress && (
             <Card>
               <CardHeader><CardTitle>Método de Pago</CardTitle></CardHeader>
               <CardContent>
@@ -1487,7 +1307,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {(isAuthenticated || isGuestMode) && (
+          {(isAuthenticated || isGuestMode) && selectedAddress && (
             <Card>
               <CardHeader><CardTitle>Notas del Pedido</CardTitle></CardHeader>
               <CardContent>
@@ -1550,26 +1370,7 @@ export default function CheckoutPage() {
                 
                 <div className="flex justify-between">
                   <span>Envío</span>
-                  <span className="text-orange-600 font-medium">
-                    {deliveryMethod === 'pickup' ? (
-                      'Gratis'
-                    ) : !selectedAddress ? (
-                      <span className="flex items-center gap-1 text-orange-600">
-                        Calculando
-                      </span>
-                    ) : isLoadingShipping ? (
-                      <span className="flex items-center gap-1 text-orange-600">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Calculando...
-                      </span>
-                    ) : shippingError ? (
-                      <span className="text-red-500 text-sm">Error</span>
-                    ) : shipping === 0 ? (
-                      'Gratis'
-                    ) : (
-                      `$${formatCLP(shipping)}`
-                    )}
-                  </span>
+                  <span>{shipping === 0 ? "Gratis" : `$${formatCLP(shipping)}`}</span>
                 </div>
                 
                 <Separator />
@@ -1579,16 +1380,7 @@ export default function CheckoutPage() {
                   <span>${formatCLP(finalTotal)}</span>
                 </div>
                 
-                {deliveryMethod === 'pickup' && (
-                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                    <p className="text-xs text-orange-700 flex items-center gap-2">
-                      <Store className="w-3 h-3" />
-                      <span>Retirarás tu pedido en: <strong>Arcangel 1200, San Miguel</strong></span>
-                    </p>
-                  </div>
-                )}
-                
-                {selectedChilexpressOption?.isCashOnDelivery && deliveryMethod === 'home' && (
+                {selectedChilexpressOption?.isCashOnDelivery && (
                   <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-700">
                       El envío se pagará al momento de la entrega. El monto mostrado corresponde solo a los productos.
@@ -1596,7 +1388,7 @@ export default function CheckoutPage() {
                   </div>
                 )}
                 
-                {selectedChilexpressOption?.isBranchPickup && deliveryMethod === 'home' && selectedBranch && (
+                {selectedChilexpressOption?.isBranchPickup && selectedBranch && (
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 flex items-start gap-2">
                       <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
@@ -1607,13 +1399,48 @@ export default function CheckoutPage() {
                 )}
               </div>
 
+              {/* Términos y Condiciones */}
+              <div className="flex items-start space-x-3 pt-2">
+                <Checkbox
+                  id="terms"
+                  checked={acceptedTerms}
+                  onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                  className="mt-0.5"
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label
+                    htmlFor="terms"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Acepto los{" "}
+                    <Link 
+                      href="/terminos-y-condiciones" 
+                      target="_blank"
+                      className="text-blue-600 hover:text-blue-800 hover:underline transition-colors font-semibold"
+                    >
+                      Términos y Condiciones
+                    </Link>
+                    {" "}de compra
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Al marcar esta casilla, confirmas que has leído y aceptas nuestros términos y condiciones.
+                  </p>
+                </div>
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full" 
                 size="lg" 
-                disabled={isProcessing || 
-                  (deliveryMethod === 'home' && (!selectedAddress || !selectedChilexpressOption || isLoadingShipping || (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch))) ||
-                  (!isAuthenticated && !isGuestMode)} 
+                disabled={
+                  isProcessing || 
+                  !selectedAddress || 
+                  !selectedChilexpressOption || 
+                  isLoadingShipping || 
+                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch) || 
+                  (!isAuthenticated && !isGuestMode) ||
+                  !acceptedTerms
+                } 
                 onClick={handleSubmit}
               >
                 {isProcessing ? (
@@ -1622,14 +1449,23 @@ export default function CheckoutPage() {
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Calculando envío...</>
                 ) : (!isAuthenticated && !isGuestMode) ? (
                   "Selecciona una opción arriba"
+                ) : !acceptedTerms ? (
+                  "Acepta los Términos y Condiciones"
                 ) : (
                   `Pagar $${formatCLP(finalTotal)}`
                 )}
               </Button>
               
-              {deliveryMethod === 'home' && selectedChilexpressOption?.requiresBranchSelection && !selectedBranch && selectedAddress && (
+              {selectedChilexpressOption?.requiresBranchSelection && !selectedBranch && selectedAddress && (
                 <p className="text-xs text-red-500 text-center mt-2">
                   Debes seleccionar una sucursal para continuar
+                </p>
+              )}
+              
+              {!acceptedTerms && (isAuthenticated || isGuestMode) && selectedAddress && selectedChilexpressOption && (
+                <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Debes aceptar los Términos y Condiciones para continuar
                 </p>
               )}
               

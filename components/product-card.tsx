@@ -243,32 +243,34 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
               animate={{ scale: isHovered ? 1.02 : 1 }}
               transition={{ duration: 0.3 }}
             >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentImageIndex}
-                  initial={{ opacity: 0, scale: 1.1 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative w-full h-full"
-                >
-                  <Image
-                    src={imageUrls[currentImageIndex] || "/api/images/diverse-products-still-life.png"}
-                    alt={product.name}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    priority={index < 6}
-                    loading={index < 6 ? "eager" : "lazy"}
-                    quality={80}
-                    unoptimized={true}
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = '/api/images/diverse-products-still-life.png';
-                    }}
-                  />
-                </motion.div>
-              </AnimatePresence>
+              <div className={`relative w-full h-full ${outOfStock ? 'filter grayscale opacity-70' : ''}`}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentImageIndex}
+                    initial={{ opacity: 0, scale: 1.1 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.3 }}
+                    className="relative w-full h-full"
+                  >
+                    <Image
+                      src={imageUrls[currentImageIndex] || "/api/images/diverse-products-still-life.png"}
+                      alt={product.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      priority={index < 6}
+                      loading={index < 6 ? "eager" : "lazy"}
+                      quality={80}
+                      unoptimized={true}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = '/api/images/diverse-products-still-life.png';
+                      }}
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
 
               {imageUrls.length > 1 && !outOfStock && (
                 <motion.div 
@@ -328,7 +330,7 @@ export function ProductCard({ product, index = 0 }: ProductCardProps) {
 
               <motion.div 
                 className="flex items-center gap-2 mt-auto pt-2 flex-wrap"
-                animate={isHovered ? { scale: 1.05, x: 5 } : { scale: 1, x: 0 }}
+                animate={isHovered && !outOfStock ? { scale: 1.05, x: 5 } : { scale: 1, x: 0 }}
                 transition={{ type: "spring", stiffness: 300 }}
               >
                 {outOfStock ? (

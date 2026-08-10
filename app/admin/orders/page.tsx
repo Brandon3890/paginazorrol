@@ -18,7 +18,8 @@ import {
   Users,
   Search,
   RefreshCw,
-  User
+  User,
+  Circle
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -65,12 +66,19 @@ interface Order {
 }
 
 const statusConfig = {
-  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200" },
-  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200" },
-  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200" },
-  cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
+  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
+  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
+  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
+  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 3 },
+  cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
+
+const orderSteps = [
+  { key: "pending", label: "Pedido confirmado" },
+  { key: "processing", label: "Preparando pedido" },
+  { key: "shipped", label: "Enviado" },
+  { key: "delivered", label: "Entregado" },
+]
 
 const statusOptions = [
   { value: "all", label: "Todos los estados" },
@@ -182,13 +190,19 @@ export default function AdminOrdersPage() {
     }
   }
 
-  // 🔥 FUNCIÓN CORREGIDA - Misma que usa el panel de usuario
   const getImageUrl = (url?: string) => {
     if (!url) return "/placeholder.svg"
     if (url.startsWith("http")) return url
     if (url.startsWith("/")) return url
     if (url.startsWith("uploads/")) return `/${url}`
     return `/uploads/products/${url}`
+  }
+
+  const getCurrentStep = (order: Order) => {
+    const status = order.status as keyof typeof statusConfig
+    const config = statusConfig[status]
+    if (!config || status === 'cancelled') return -1
+    return config.step
   }
 
   const filteredOrders = orders.filter(order => {
@@ -418,6 +432,8 @@ export default function AdminOrdersPage() {
               const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
               const StatusIcon = statusInfo.icon
               const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
+              const currentStep = getCurrentStep(order)
+              const isCancelled = order.status === 'cancelled'
 
               return (
                 <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -476,12 +492,78 @@ export default function AdminOrdersPage() {
                   </CardHeader>
                   
                   <CardContent className="pt-0 space-y-4 lg:space-y-6">
+                    {/* 🔥 TIMELINE DE ESTADOS - Debajo de la información de fecha */}
+                    {!isCancelled ? (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between relative">
+                          {orderSteps.map((step, index) => {
+                            const isCompleted = currentStep === 3 ? index <= currentStep : currentStep > index
+                            const isActive = currentStep === index && currentStep !== 3
+                            const isLast = index === orderSteps.length - 1
+                            
+                            let stepStatus = 'pending'
+                            if (isCompleted) stepStatus = 'completed'
+                            else if (isActive) stepStatus = 'active'
+
+                            const getStepColor = () => {
+                              if (stepStatus === 'completed') return 'bg-green-500 border-green-500 text-white'
+                              if (stepStatus === 'active') return 'bg-blue-500 border-blue-500 text-white ring-2 ring-blue-200'
+                              return 'bg-gray-300 border-gray-300 text-gray-400'
+                            }
+
+                            const getLineColor = () => {
+                              if (stepStatus === 'completed' || stepStatus === 'active') return 'bg-green-400'
+                              return 'bg-gray-300'
+                            }
+
+                            return (
+                              <div key={step.key} className="flex-1 flex items-center">
+                                <div className="flex flex-col items-center flex-1">
+                                  <div className={`
+                                    w-6 h-6 rounded-full flex items-center justify-center border-2
+                                    ${getStepColor()}
+                                    transition-all duration-300
+                                    ${stepStatus === 'active' ? 'animate-pulse' : ''}
+                                  `}>
+                                    {stepStatus === 'completed' ? (
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                    ) : stepStatus === 'active' ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Circle className="w-3 h-3" />
+                                    )}
+                                  </div>
+                                  <span className={`
+                                    text-[9px] font-medium mt-0.5 whitespace-nowrap
+                                    ${stepStatus === 'completed' ? 'text-green-600' :
+                                      stepStatus === 'active' ? 'text-blue-600' :
+                                      'text-gray-400'}
+                                  `}>
+                                    {step.label}
+                                  </span>
+                                </div>
+                                {!isLast && (
+                                  <div className={`flex-1 h-0.5 ${getLineColor()} transition-colors duration-300`} />
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+                        <p className="text-xs text-red-600 font-medium flex items-center gap-1.5">
+                          <X className="w-3.5 h-3.5" />
+                          Pedido cancelado
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       <h4 className="font-medium text-sm">Productos</h4>
                       {order.items && order.items.length > 0 ? (
                         order.items.map((item) => {
                           const itemTotal = item.product_price * item.quantity
-                          const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
                           
                           return (
                             <div key={item.id} className="flex gap-3 p-2 bg-muted/50 rounded-lg">
