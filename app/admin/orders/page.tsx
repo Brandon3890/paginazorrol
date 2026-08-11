@@ -74,10 +74,10 @@ const statusConfig = {
 }
 
 const orderSteps = [
-  { key: "pending", label: "Pedido confirmado" },
-  { key: "processing", label: "Preparando pedido" },
-  { key: "shipped", label: "Enviado" },
-  { key: "delivered", label: "Entregado" },
+  { key: "pending", label: "Compra confirmada", description: "Compra confirmada y en espera." },
+  { key: "processing", label: "Preparando pedido", description: "Preparando productos para el envío." },
+  { key: "shipped", label: "Enviado", description: "Pedido en camino al cliente." },
+  { key: "delivered", label: "Entregado", description: "Pedido entregado con éxito." },
 ]
 
 const statusOptions = [
@@ -492,7 +492,7 @@ export default function AdminOrdersPage() {
                   </CardHeader>
                   
                   <CardContent className="pt-0 space-y-4 lg:space-y-6">
-                    {/* 🔥 TIMELINE DE ESTADOS - Debajo de la información de fecha */}
+                    {/* Timeline de estados con descripciones */}
                     {!isCancelled ? (
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center justify-between relative">
@@ -520,26 +520,34 @@ export default function AdminOrdersPage() {
                               <div key={step.key} className="flex-1 flex items-center">
                                 <div className="flex flex-col items-center flex-1">
                                   <div className={`
-                                    w-6 h-6 rounded-full flex items-center justify-center border-2
+                                    w-7 h-7 rounded-full flex items-center justify-center border-2
                                     ${getStepColor()}
                                     transition-all duration-300
                                     ${stepStatus === 'active' ? 'animate-pulse' : ''}
                                   `}>
                                     {stepStatus === 'completed' ? (
-                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      <CheckCircle className="w-4 h-4" />
                                     ) : stepStatus === 'active' ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
-                                      <Circle className="w-3 h-3" />
+                                      <Circle className="w-3.5 h-3.5" />
                                     )}
                                   </div>
                                   <span className={`
-                                    text-[9px] font-medium mt-0.5 whitespace-nowrap
+                                    text-[10px] font-medium mt-1 text-center
                                     ${stepStatus === 'completed' ? 'text-green-600' :
                                       stepStatus === 'active' ? 'text-blue-600' :
                                       'text-gray-400'}
                                   `}>
                                     {step.label}
+                                  </span>
+                                  <span className={`
+                                    text-[8px] text-center mt-0.5 max-w-[80px]
+                                    ${stepStatus === 'completed' ? 'text-green-500' :
+                                      stepStatus === 'active' ? 'text-blue-500' :
+                                      'text-gray-400'}
+                                  `}>
+                                    {step.description}
                                   </span>
                                 </div>
                                 {!isLast && (

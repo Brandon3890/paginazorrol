@@ -91,13 +91,13 @@ const orderSteps = [
   {
     key: "pending",
     label: "Pedido confirmado",
-    description: "Estamos procesando tu pedido.",
+    description: "Pedido en preparación.",
     icon: CheckCircle,
   },
   {
     key: "processing",
     label: "Preparando pedido",
-    description: "Estamos preparando tus productos para el envío.",
+    description: "Preparando tu pedido para el envío.",
     icon: Package,
   },
   {
