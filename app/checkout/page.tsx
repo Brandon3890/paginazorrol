@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle } from "lucide-react"
+import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -560,6 +560,18 @@ export default function CheckoutPage() {
       const isGuestUser = isGuestMode && !isAuthenticated
       const apiEndpoint = isGuestUser ? '/api/orders/create-guest' : '/api/orders/create'
       
+      // Determinar el tipo de envío
+      let shippingType = 'standard'
+      if (selectedBranch) {
+        shippingType = 'branch_pickup'
+      } else if (selectedChilexpressOption?.isCashOnDelivery) {
+        shippingType = 'cash_on_delivery'
+      } else if (selectedChilexpressOption?.isHomeDelivery || selectedChilexpressOption?.type === 'home_delivery') {
+        shippingType = 'home_delivery'
+      } else if (selectedChilexpressOption?.type === 'branch_pickup') {
+        shippingType = 'branch_pickup'
+      }
+      
       const orderPayload: any = {
         items: items.map((item) => ({
           id: item.id,
@@ -596,19 +608,21 @@ export default function CheckoutPage() {
         couponId: appliedCoupon ? couponDetails?.id : null,
         couponCode: appliedCoupon,
         shippingMethod: shippingMethod,
+        shippingType: shippingType,
         shippingDetails: {
+          type: shippingType,
           carrier: "Chilexpress",
-          serviceName: selectedChilexpressOption.name,
-          serviceCode: selectedChilexpressOption.typeCode,
-          finalWeight: selectedChilexpressOption.finalWeight,
+          serviceName: selectedChilexpressOption?.name || null,
+          serviceCode: selectedChilexpressOption?.typeCode || selectedChilexpressOption?.serviceTypeCode || null,
+          finalWeight: selectedChilexpressOption?.finalWeight || null,
           selectedBranch: selectedBranch ? {
             id: selectedBranch.id,
             name: selectedBranch.name,
             address: selectedBranch.address,
-            telephone: selectedBranch.telephone,
+            telephone: selectedBranch.telephone || null,
           } : null,
-          isCashOnDelivery: selectedChilexpressOption.isCashOnDelivery,
-          actualShippingCost: selectedChilexpressOption.actualShippingCost,
+          isCashOnDelivery: selectedChilexpressOption?.isCashOnDelivery || false,
+          actualShippingCost: selectedChilexpressOption?.actualShippingCost || selectedChilexpressOption?.price || 0,
         },
         acceptedTerms: acceptedTerms
       }

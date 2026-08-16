@@ -1,3 +1,4 @@
+// app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -13,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // 🔥 QUERY CORREGIDO - Trae TODOS los datos incluyendo la dirección
+    // Query que trae TODOS los datos incluyendo shipping_type y shipping_details
     const orders = await query(
       `SELECT 
         o.*,
@@ -72,7 +73,7 @@ export async function GET(
       })
     )
 
-    // 🔥 CONSTRUIR DIRECCIÓN DE ENVÍO - AHORA CON LOS DATOS CORRECTOS
+    // Construir dirección de envío
     const shippingAddress = order.shipping_street ? {
       street: order.shipping_street || 'Dirección no especificada',
       commune_name: order.shipping_commune || 'Comuna no especificada',
@@ -139,6 +140,55 @@ export async function GET(
       }
     }
 
+    // Parsear shipping_details
+    let shippingDetails = null
+    if (order.shipping_details) {
+      try {
+        shippingDetails = typeof order.shipping_details === 'string' 
+          ? JSON.parse(order.shipping_details) 
+          : order.shipping_details
+      } catch (e) {
+        console.error('Error parsing shipping_details:', e)
+      }
+    }
+
+    // Determinar el método de envío mostrado
+    let shippingMethodDisplay = 'Método no especificado'
+    let shippingType = order.shipping_type || 'standard'
+    
+    if (shippingDetails) {
+      if (shippingDetails.selectedBranch) {
+        shippingType = 'branch_pickup'
+        shippingMethodDisplay = 'Retiro en Sucursal'
+      } else if (shippingDetails.isCashOnDelivery) {
+        shippingType = 'cash_on_delivery'
+        shippingMethodDisplay = 'Envío por Pagar'
+      } else if (shippingDetails.serviceName) {
+        shippingMethodDisplay = shippingDetails.serviceName
+        if (shippingDetails.serviceName.toLowerCase().includes('domicilio') || 
+            shippingDetails.serviceName.toLowerCase().includes('envío')) {
+          shippingType = 'home_delivery'
+        }
+      }
+    }
+
+    // Si no hay shippingDetails pero hay shipping_type
+    if (!shippingDetails && order.shipping_type) {
+      switch (order.shipping_type) {
+        case 'branch_pickup':
+          shippingMethodDisplay = 'Retiro en Sucursal'
+          break
+        case 'cash_on_delivery':
+          shippingMethodDisplay = 'Envío por Pagar'
+          break
+        case 'home_delivery':
+          shippingMethodDisplay = 'Envío a Domicilio'
+          break
+        default:
+          shippingMethodDisplay = 'Envío Estándar'
+      }
+    }
+
     // Combinar datos finales
     const orderWithItems = {
       id: order.id,
@@ -153,6 +203,9 @@ export async function GET(
       total: parseFloat(order.total) || 0,
       notes: order.notes,
       coupon_code: order.coupon_code,
+      shipping_method: shippingMethodDisplay,
+      shipping_type: shippingType,
+      shipping_details: shippingDetails,
       customer_email: order.customer_email || '',
       customer_first_name: order.customer_first_name || '',
       customer_last_name: order.customer_last_name || '',
@@ -177,11 +230,50 @@ export async function GET(
       shipping_address: shippingAddress
     }
 
-
     return NextResponse.json(orderWithItems)
 
   } catch (error) {
     console.error('Error obteniendo orden:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const orderId = parseInt(id)
+
+    if (isNaN(orderId)) {
+      return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { status } = body
+
+    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+    }
+
+    await query(
+      `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, orderId]
+    )
+
+    console.log(`Order ${orderId} status updated to ${status}`)
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Estado actualizado correctamente' 
+    })
+
+  } catch (error) {
+    console.error('Error actualizando estado de orden:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

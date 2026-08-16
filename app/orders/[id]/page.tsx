@@ -21,7 +21,8 @@ import {
   Mail,
   Download,
   Eye,
-  Check
+  Check,
+  Store
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -53,6 +54,22 @@ interface Order {
   notes?: string
   coupon_code?: string
   shipping_method?: string
+  shipping_type?: 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'standard'
+  shipping_details?: {
+    type?: string
+    carrier?: string
+    serviceName?: string
+    serviceCode?: number
+    finalWeight?: number
+    selectedBranch?: {
+      id?: string | number
+      name: string
+      address: string
+      telephone?: string
+    }
+    isCashOnDelivery?: boolean
+    actualShippingCost?: number
+  }
   created_at: string
   updated_at: string
   status_dates?: Record<string, string>
@@ -90,29 +107,84 @@ const statusConfig = {
 const orderSteps = [
   {
     key: "pending",
-    label: "Pedido confirmado",
-    description: "Pedido en preparación.",
-    icon: CheckCircle,
+    label: "Pedido Recibido",
+    description: "Hemos recibido tu pedido. Estamos revisando tu pago.",
+    icon: Clock,
   },
   {
     key: "processing",
-    label: "Preparando pedido",
-    description: "Preparando tu pedido para el envío.",
+    label: "Validando Compra",
+    description: "Estamos emitiendo tu boleta y preparando tu pedido.",
     icon: Package,
   },
   {
     key: "shipped",
-    label: "Enviado",
+    label: "En Camino",
     description: "Tu pedido está en camino.",
     icon: Truck,
   },
   {
     key: "delivered",
-    label: "Entregado",
+    label: "Entrega",
     description: "Tu pedido ha sido entregado con éxito.",
     icon: CheckCircle,
   },
 ]
+
+// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
+const getShippingMethodDisplay = (order: Order | null) => {
+  if (!order) return 'Método no especificado'
+  
+  const shippingDetails = order.shipping_details
+  const shippingType = order.shipping_type || ''
+  
+  // 1. Si tiene detalles de envío con sucursal seleccionada
+  if (shippingDetails?.selectedBranch) {
+    return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
+  }
+  
+  // 2. Si tiene detalles de envío con envío por pagar
+  if (shippingDetails?.isCashOnDelivery) {
+    return 'Envío por Pagar - Paga al momento de la entrega'
+  }
+  
+  // 3. Si tiene nombre del servicio en detalles
+  if (shippingDetails?.serviceName) {
+    return shippingDetails.serviceName
+  }
+  
+  // 4. Si tiene tipo de envío
+  if (shippingType) {
+    switch (shippingType) {
+      case 'branch_pickup':
+        return 'Retiro en Sucursal'
+      case 'cash_on_delivery':
+        return 'Envío por Pagar - Paga al momento de la entrega'
+      case 'home_delivery':
+        if (order.shipping_address?.street) {
+          return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
+        }
+        return 'Envío a Domicilio'
+      default:
+        break
+    }
+  }
+  
+  // 5. Si tiene shipping_method y no es "transbank"
+  if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
+    return order.shipping_method
+  }
+  
+  // 6. Si tiene costo de envío, asumimos que es a domicilio
+  if (order.shipping > 0) {
+    if (order.shipping_address?.street) {
+      return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
+    }
+    return 'Envío a Domicilio'
+  }
+  
+  return 'Método no especificado'
+}
 
 const calculateTaxBreakdown = (amountWithIVA: number) => {
   const neto = Math.round(amountWithIVA / 1.19)
@@ -128,25 +200,6 @@ const formatCLP = (amount: number): string => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount)
-}
-
-const formatDate = (dateString: string) => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleDateString("es-ES", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  })
-}
-
-const formatTime = (dateString: string) => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })
 }
 
 export default function OrderDetailPage() {
@@ -322,34 +375,6 @@ export default function OrderDetailPage() {
   const currentStep = getCurrentStep()
   const isCancelled = order?.status === 'cancelled'
 
-  const getShippingInfo = () => {
-    if (!order) return null
-    
-    const shippingMethod = order.shipping_method || 'standard'
-    const shippingCost = order.shipping || 0
-    
-    let isExpress = false
-    let isCashOnDelivery = false
-    
-    if (shippingMethod.toLowerCase().includes('express')) {
-      isExpress = true
-    }
-    
-    if (shippingMethod.toLowerCase().includes('cash') || shippingMethod.toLowerCase().includes('contra')) {
-      isCashOnDelivery = true
-    }
-    
-    return {
-      method: shippingMethod,
-      cost: shippingCost,
-      isExpress,
-      isCashOnDelivery,
-      isFree: shippingCost === 0
-    }
-  }
-
-  const shippingInfo = getShippingInfo()
-
   if (authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -422,6 +447,20 @@ export default function OrderDetailPage() {
   const tieneBoleta = order.boleta_emitida === 1 && order.boleta_info?.folio
   
   const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
+
+  // OBTENER EL MÉTODO DE ENVÍO PARA MOSTRAR
+  const shippingMethodDisplay = getShippingMethodDisplay(order)
+  
+  // DETERMINAR SI ES RETIRO EN SUCURSAL O DOMICILIO
+  const isBranchPickup = order.shipping_type === 'branch_pickup' || order.shipping_details?.selectedBranch !== undefined
+  const isHomeDelivery = order.shipping_type === 'home_delivery'
+  const isCashOnDelivery = order.shipping_type === 'cash_on_delivery' || order.shipping_details?.isCashOnDelivery === true
+
+  // OBTENER LA SUCURSAL SELECCIONADA
+  const selectedBranch = order.shipping_details?.selectedBranch
+
+  // DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
+  const isDelivered = order.status === 'delivered'
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -534,7 +573,6 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-
             {/* SEGUIMIENTO DEL PEDIDO */}
             {!isCancelled && (
               <Card className="shadow-sm">
@@ -549,62 +587,63 @@ export default function OrderDetailPage() {
                   <div className="relative">
                     <div className="relative">
                       {orderSteps.map((step, index) => {
-                        const isCompleted =
-                          currentStep === 3
-                            ? index <= currentStep
-                            : currentStep > index
-
-                        const isActive =
-                          currentStep === index && currentStep !== 3
-
-                        const isLast = index === orderSteps.length - 1
-                        const StepIcon = step.icon
+                        const isCompleted = currentStep > index
+                        const isActive = currentStep === index
 
                         let stepStatus = "pending"
-
-                        if (isCompleted) {
+                        if (step.key === "delivered" && isActive) {
+                          stepStatus = "completed"
+                        } else if (isCompleted) {
                           stepStatus = "completed"
                         } else if (isActive) {
                           stepStatus = "active"
                         }
 
-                        if (isCancelled && index > currentStep) {
-                          return null
-                        }
+                        const StepIcon = step.icon
 
-                        const statusDate =
-                          order.status_dates?.[step.key] || order.created_at
+                        let stepDescription = step.description
+                        if (step.key === "shipped" && (isCompleted || isActive)) {
+                          stepDescription = shippingMethodDisplay
+                        }
+                        if (step.key === "delivered" && (isCompleted || isActive)) {
+                          if (isBranchPickup) {
+                            const branch = order.shipping_details?.selectedBranch
+                            if (branch) {
+                              stepDescription = `Disponible para retiro en ${branch.name}`
+                            } else {
+                              stepDescription = 'Disponible para retiro'
+                            }
+                          } else if (isHomeDelivery) {
+                            stepDescription = `Entregado en tu domicilio: ${order.shipping_address?.street || ''}`
+                          } else if (isCashOnDelivery) {
+                            stepDescription = 'Entrega realizada - Pago del envío completado'
+                          }
+                        }
 
                         const getColors = () => {
                           if (stepStatus === "completed") {
                             return {
-                              circle:
-                                "bg-green-500 border-green-500 text-white",
+                              circle: "bg-green-500 border-green-500 text-white",
                               line: "bg-green-400",
                               title: "text-green-700",
                               description: "text-green-600",
-                              badge:
-                                "bg-green-100 text-green-700 border-green-200",
+                              badge: "bg-green-100 text-green-700 border-green-200",
                             }
                           } else if (stepStatus === "active") {
                             return {
-                              circle:
-                                "bg-blue-500 border-blue-500 text-white ring-4 ring-blue-100",
+                              circle: "bg-blue-500 border-blue-500 text-white ring-4 ring-blue-100",
                               line: "bg-blue-400",
                               title: "text-blue-700",
                               description: "text-blue-600",
-                              badge:
-                                "bg-blue-100 text-blue-700 border-blue-200",
+                              badge: "bg-blue-100 text-blue-700 border-blue-200",
                             }
                           } else {
                             return {
-                              circle:
-                                "bg-gray-100 border-gray-300 text-gray-400",
+                              circle: "bg-gray-100 border-gray-300 text-gray-400",
                               line: "bg-gray-200",
                               title: "text-gray-500",
                               description: "text-gray-400",
-                              badge:
-                                "bg-gray-100 text-gray-500 border-gray-200",
+                              badge: "bg-gray-100 text-gray-500 border-gray-200",
                             }
                           }
                         }
@@ -625,11 +664,7 @@ export default function OrderDetailPage() {
                                   w-10 h-10 rounded-full flex items-center justify-center border-2
                                   ${colors.circle}
                                   transition-all duration-300
-                                  ${
-                                    stepStatus === "active"
-                                      ? "shadow-lg shadow-blue-200"
-                                      : ""
-                                  }
+                                  ${stepStatus === "active" ? "shadow-lg shadow-blue-200" : ""}
                                 `}
                               >
                                 {stepStatus === "completed" ? (
@@ -639,15 +674,11 @@ export default function OrderDetailPage() {
                                 )}
                               </div>
 
-                              {!isLast && (
+                              {index < orderSteps.length - 1 && stepStatus !== "pending" && (
                                 <div
                                   className={`
                                     absolute top-10 left-1/2 -translate-x-1/2 w-0.5 h-8
-                                    ${
-                                      stepStatus === "pending"
-                                        ? "bg-gray-200"
-                                        : colors.line
-                                    }
+                                    ${stepStatus === "pending" ? "bg-gray-200" : colors.line}
                                     transition-colors duration-300
                                   `}
                                 />
@@ -667,6 +698,7 @@ export default function OrderDetailPage() {
                                     {step.label}
                                   </h4>
 
+                                  {/* DESCRIPCIÓN CON EL MÉTODO DE ENVÍO */}
                                   <p
                                     className={`
                                       text-sm mt-0.5
@@ -674,8 +706,123 @@ export default function OrderDetailPage() {
                                       transition-colors duration-300
                                     `}
                                   >
-                                    {step.description}
+                                    {stepDescription}
                                   </p>
+
+                                  {/* INFORMACIÓN DETALLADA DE ENVÍO - SE MUESTRA CUANDO EL ESTADO ES "shipped" (En Camino) */}
+                                  {step.key === "shipped" && (isActive || isCompleted) && (
+                                    <div className="mt-3 space-y-2">
+                                      <div className="flex flex-wrap gap-2">
+                                        {isBranchPickup && (
+                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                                            <Store className="w-3 h-3 mr-1" />
+                                            Retiro en Sucursal
+                                          </Badge>
+                                        )}
+                                        {isHomeDelivery && (
+                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                                            <Truck className="w-3 h-3 mr-1" />
+                                            Envío a Domicilio
+                                          </Badge>
+                                        )}
+                                        {isCashOnDelivery && (
+                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                                            <CreditCard className="w-3 h-3 mr-1" />
+                                            Envío por Pagar
+                                          </Badge>
+                                        )}
+                                        {order.shipping === 0 && order.total > 0 && (
+                                          <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                            Envío Gratis
+                                          </Badge>
+                                        )}
+                                      </div>
+
+                                      {/* DETALLE DE SUCURSAL - SOLO PARA RETIRO EN SUCURSAL */}
+                                      {isBranchPickup && selectedBranch && (
+                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
+                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-blue-700'} flex items-start gap-2`}>
+                                            <Store className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>Sucursal de retiro:</strong><br />
+                                              {selectedBranch.name}<br />
+                                              {selectedBranch.address}
+                                            </span>
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/*  DETALLE DE DOMICILIO - SOLO PARA ENVÍO A DOMICILIO */}
+                                      {isHomeDelivery && order.shipping_address && (
+                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-green-50 border border-green-200'}`}>
+                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-green-700'} flex items-start gap-2`}>
+                                            <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>Dirección de entrega:</strong>
+                                              <br />
+                                              {order.shipping_address.street}
+                                              <br />
+                                              {order.shipping_address.commune_name},{" "}
+                                              {order.shipping_address.region_name}
+                                              {order.shipping_address.department && (
+                                                <>
+                                                  <br />
+                                                  Depto: {order.shipping_address.department}
+                                                </>
+                                              )}
+                                            </span>
+                                          </p>
+                                          {order.shipping_details?.serviceName && (
+                                            <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-green-600'} mt-1 pl-6`}>
+                                              {order.shipping_details.serviceName}
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* DETALLE PARA ENVÍO POR PAGAR */}
+                                      {isCashOnDelivery && (
+                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-amber-700'} flex items-start gap-2`}>
+                                            <CreditCard className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>Envío por Pagar</strong><br />
+                                              El costo del envío se pagará al momento de la entrega.
+                                              {order.shipping > 0 && (
+                                                <> Monto a pagar: {formatCLP(order.shipping)}</>
+                                              )}
+                                            </span>
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/*  INFORMACIÓN DE ENTREGA - SOLO CUANDO ESTÁ ENTREGADO */}
+                                  {step.key === "delivered" && (isActive || isCompleted) && (
+                                    <div className="mt-3">
+                                      {isBranchPickup && selectedBranch && (
+                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                          <p className="text-sm text-green-700 flex items-start gap-2">
+                                            <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>¡Pedido listo para retirar!</strong>
+                                            </span>
+                                          </p>
+                                        </div>
+                                      )}
+                                      {isHomeDelivery && order.shipping_address && (
+                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                          <p className="text-sm text-green-700 flex items-start gap-2">
+                                            <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>¡Pedido entregado!</strong><br />
+                                            </span>
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
 
                                 {stepStatus !== "pending" && (
@@ -697,30 +844,6 @@ export default function OrderDetailPage() {
                                   </Badge>
                                 )}
                               </div>
-
-                              {/* Información de envío solo para el paso "Enviado" */}
-                              {step.key === "shipped" &&
-                                stepStatus === "completed" &&
-                                order.shipping_address && (
-                                  <div className="mt-3 flex flex-col gap-1.5 text-xs">
-                                    <div className="flex items-center gap-2 text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-md">
-                                      <Truck className="w-3.5 h-3.5" />
-
-                                      <span className="font-medium">
-                                        Servicio estándar - Envío 100% asegurado
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 text-muted-foreground px-3 py-1">
-                                      <MapPin className="w-3 h-3" />
-
-                                      <span>
-                                        {order.shipping_address.commune_name},{" "}
-                                        {order.shipping_address.region_name}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
                             </div>
                           </motion.div>
                         )
@@ -730,7 +853,6 @@ export default function OrderDetailPage() {
                 </CardContent>
               </Card>
             )}
-
 
             {/* NOTAS */}
             {order.notes && (
@@ -750,7 +872,6 @@ export default function OrderDetailPage() {
               </Card>
             )}
           </div>
-
 
           {/* COLUMNA DERECHA */}
           <div className="space-y-3">
@@ -833,7 +954,6 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-
             {/* DIRECCIÓN DE ENVÍO */}
             <Card className="shadow-sm gap-1">
               <CardHeader className="pb-1">
@@ -891,7 +1011,6 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-
             {/* MÉTODO DE PAGO */}
             <Card className="shadow-sm gap-1">
               <CardHeader className="pb-1">
@@ -903,7 +1022,7 @@ export default function OrderDetailPage() {
 
               <CardContent className="pt-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 bg-blue-600">
                     <span className="text-white text-xs font-bold">
                       TB
                     </span>
@@ -927,7 +1046,6 @@ export default function OrderDetailPage() {
                 </div>
               </CardContent>
             </Card>
-
 
             {/* BOTONES */}
             <div className="space-y-2">

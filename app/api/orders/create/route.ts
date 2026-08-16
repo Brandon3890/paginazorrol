@@ -1,3 +1,4 @@
+// app/api/orders/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -21,7 +22,9 @@ export async function POST(request: NextRequest) {
       notes,
       couponId,
       couponCode,
-      guestSessionId
+      guestSessionId,
+      shippingType,
+      shippingDetails
     } = body
 
     if (!items || !items.length) {
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
         shippingAddress.postalCode || '0000000',
         shippingAddress.department || null,
         shippingAddress.deliveryInstructions || null,
-        0 // No es predeterminada para no sobrescribir
+        0
       ]
     ) as any
     
@@ -111,12 +114,13 @@ export async function POST(request: NextRequest) {
     // Calcular impuestos
     const tax = Math.round(totals.total * 0.19)
 
-    // Crear orden CON el shipping_address_id
+    // Crear orden CON shipping_type y shipping_details
     const orderResult = await query(
       `INSERT INTO orders (
         user_id, customer_rut, order_number, status, subtotal, discount, shipping, tax, total,
-        coupon_id, coupon_code, shipping_address_id, payment_method, payment_status, notes, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        coupon_id, coupon_code, shipping_address_id, payment_method, payment_status, notes,
+        shipping_type, shipping_details, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         userId,
         customerInfo.rut || '55555555-5',
@@ -132,14 +136,16 @@ export async function POST(request: NextRequest) {
         shippingAddressId,
         'transbank',
         'pending',
-        notes || null
+        notes || null,
+        shippingType || 'standard',
+        shippingDetails ? JSON.stringify(shippingDetails) : null
       ]
     ) as any
     
     const orderId = orderResult.insertId
-    console.log('Orden creada ')
+    console.log('Orden creada con shipping_type:', shippingType)
 
-    // Crear items de la orden - SIN LA COLUMNA 'category'
+    // Crear items de la orden
     for (const item of items) {
       await query(
         `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal)
@@ -154,7 +160,7 @@ export async function POST(request: NextRequest) {
         ]
       )
     }
-    console.log(' Items de la orden creados:', items.length)
+    console.log('Items de la orden creados:', items.length)
 
     // Guardar guest session si existe
     if (guestSessionId) {
