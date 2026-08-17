@@ -22,7 +22,8 @@ import {
   Download,
   Eye,
   Check,
-  Store
+  Store,
+  AlertCircle
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -96,24 +97,27 @@ interface Order {
   }
 }
 
+//  ESTADOS 
 const statusConfig = {
-  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
-  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
-  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
+  pending: { label: "Pago Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
+  processing: { label: "Validando Compra", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
+  shipped: { label: "En Camino", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
   delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 3 },
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
+  payment_failed: { label: "Pago Rechazado", icon: AlertCircle, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
+// FLUJO DE ESTADOS
 const orderSteps = [
   {
     key: "pending",
-    label: "Pedido Recibido",
-    description: "Hemos recibido tu pedido. Estamos revisando tu pago.",
-    icon: Clock,
+    label: "Pago Recibido",
+    description: "Hemos recibido tu pago correctamente.",
+    icon: CheckCircle,
   },
   {
     key: "processing",
-    label: "Validando Compra",
+    label: "Validando tu Compra",
     description: "Estamos emitiendo tu boleta y preparando tu pedido.",
     icon: Package,
   },
@@ -125,9 +129,9 @@ const orderSteps = [
   },
   {
     key: "delivered",
-    label: "Entrega",
-    description: "Tu pedido ha sido entregado con éxito.",
-    icon: CheckCircle,
+    label: "Disponible para Retiro",
+    description: "Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs",
+    icon: Store,
   },
 ]
 
@@ -170,12 +174,10 @@ const getShippingMethodDisplay = (order: Order | null) => {
     }
   }
   
-  // 5. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
   
-  // 6. Si tiene costo de envío, asumimos que es a domicilio
   if (order.shipping > 0) {
     if (order.shipping_address?.street) {
       return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
@@ -368,12 +370,13 @@ export default function OrderDetailPage() {
     const status = order.status as keyof typeof statusConfig
     const config = statusConfig[status]
     if (!config) return -1
-    if (status === 'cancelled') return -1
+    if (status === 'cancelled' || status === 'payment_failed') return -1
     return config.step
   }
 
   const currentStep = getCurrentStep()
-  const isCancelled = order?.status === 'cancelled'
+  const isCancelled = order?.status === 'cancelled' || order?.status === 'payment_failed'
+  const isPaymentFailed = order?.status === 'payment_failed'
 
   if (authLoading) {
     return (
@@ -429,6 +432,52 @@ export default function OrderDetailPage() {
               Reintentar
             </Button>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Verificar si el pago fue rechazado
+  if (isPaymentFailed) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-8">
+            <Link href="/orders">
+              <span className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Volver a Mis Pedidos
+              </span>
+            </Link>
+          </div>
+
+          <Card className="shadow-sm">
+            <CardContent className="p-6 text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-10 h-10 text-red-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">
+                Pago Rechazado
+              </h2>
+              <p className="text-red-600 mb-6">
+                El pago de tu pedido #{order.order_number} no pudo ser procesado correctamente.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link href="/checkout">
+                  <Button className="w-full sm:w-auto">
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Intentar nuevamente
+                  </Button>
+                </Link>
+                <Link href="/orders">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Ver todos mis pedidos
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     )
@@ -573,7 +622,7 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* SEGUIMIENTO DEL PEDIDO */}
+            {/* SEGUIMIENTO DEL PEDIDO - ACTUALIZADO */}
             {!isCancelled && (
               <Card className="shadow-sm">
                 <CardHeader className="pb-0">
@@ -602,22 +651,13 @@ export default function OrderDetailPage() {
                         const StepIcon = step.icon
 
                         let stepDescription = step.description
+
+                        // Personalizar descripciones según el estado
                         if (step.key === "shipped" && (isCompleted || isActive)) {
                           stepDescription = shippingMethodDisplay
                         }
                         if (step.key === "delivered" && (isCompleted || isActive)) {
-                          if (isBranchPickup) {
-                            const branch = order.shipping_details?.selectedBranch
-                            if (branch) {
-                              stepDescription = `Disponible para retiro en ${branch.name}`
-                            } else {
-                              stepDescription = 'Disponible para retiro'
-                            }
-                          } else if (isHomeDelivery) {
-                            stepDescription = `Entregado en tu domicilio: ${order.shipping_address?.street || ''}`
-                          } else if (isCashOnDelivery) {
-                            stepDescription = 'Entrega realizada - Pago del envío completado'
-                          }
+                          stepDescription = ""
                         }
 
                         const getColors = () => {
@@ -698,7 +738,6 @@ export default function OrderDetailPage() {
                                     {step.label}
                                   </h4>
 
-                                  {/* DESCRIPCIÓN CON EL MÉTODO DE ENVÍO */}
                                   <p
                                     className={`
                                       text-sm mt-0.5
@@ -752,7 +791,7 @@ export default function OrderDetailPage() {
                                         </div>
                                       )}
 
-                                      {/*  DETALLE DE DOMICILIO - SOLO PARA ENVÍO A DOMICILIO */}
+                                      {/* DETALLE DE DOMICILIO - SOLO PARA ENVÍO A DOMICILIO */}
                                       {isHomeDelivery && order.shipping_address && (
                                         <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-green-50 border border-green-200'}`}>
                                           <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-green-700'} flex items-start gap-2`}>
@@ -798,7 +837,7 @@ export default function OrderDetailPage() {
                                     </div>
                                   )}
 
-                                  {/*  INFORMACIÓN DE ENTREGA - SOLO CUANDO ESTÁ ENTREGADO */}
+                                  {/* INFORMACIÓN DE DISPONIBILIDAD PARA RETIRO */}
                                   {step.key === "delivered" && (isActive || isCompleted) && (
                                     <div className="mt-3">
                                       {isBranchPickup && selectedBranch && (
@@ -806,7 +845,10 @@ export default function OrderDetailPage() {
                                           <p className="text-sm text-green-700 flex items-start gap-2">
                                             <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
-                                              <strong>¡Pedido listo para retirar!</strong>
+                                              <strong>¡Pedido listo para retirar!</strong><br />
+                                              <span className="text-xs text-green-600">
+                                                Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs
+                                              </span>
                                             </span>
                                           </p>
                                         </div>
@@ -817,6 +859,9 @@ export default function OrderDetailPage() {
                                             <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
                                               <strong>¡Pedido entregado!</strong><br />
+                                              <span className="text-xs text-green-600">
+                                                Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs
+                                              </span>
                                             </span>
                                           </p>
                                         </div>
@@ -1049,14 +1094,6 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
-              {order.status === "delivered" && (
-                <Link href="/">
-                  <Button className="w-full">
-                    Comprar de nuevo
-                  </Button>
-                </Link>
-              )}
-
               <Button
                 variant="outline"
                 className="w-full"

@@ -19,7 +19,9 @@ import {
   Search,
   RefreshCw,
   User,
-  Circle
+  Circle,
+  Store,
+  CreditCard
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -48,6 +50,22 @@ interface Order {
   notes?: string
   coupon_code?: string
   shipping_method?: string
+  shipping_type?: 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'standard'
+  shipping_details?: {
+    type?: string
+    carrier?: string
+    serviceName?: string
+    serviceCode?: number
+    finalWeight?: number
+    selectedBranch?: {
+      id?: string | number
+      name: string
+      address: string
+      telephone?: string
+    }
+    isCashOnDelivery?: boolean
+    actualShippingCost?: number
+  }
   created_at: string
   updated_at: string
   items: OrderItem[]
@@ -65,27 +83,29 @@ interface Order {
   }
 }
 
+//  ESTADOS
 const statusConfig = {
-  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
-  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
-  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
+  pending: { label: "Pago Recibido", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
+  processing: { label: "Validando Compra", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
+  shipped: { label: "En Camino", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
   delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 3 },
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
+// FLUJO DE ESTADOS
 const orderSteps = [
-  { key: "pending", label: "Compra confirmada", description: "Compra confirmada y en espera." },
-  { key: "processing", label: "Preparando pedido", description: "Preparando productos para el envío." },
-  { key: "shipped", label: "Enviado", description: "Pedido en camino al cliente." },
-  { key: "delivered", label: "Entregado", description: "Pedido entregado con éxito." },
+  { key: "pending", label: "Pago Recibido", description: "Pago confirmado correctamente." },
+  { key: "processing", label: "Validando Compra", description: "Emisión de boleta y preparación." },
+  { key: "shipped", label: "En Camino", description: "Pedido en ruta hacia el destino." },
+  { key: "delivered", label: "Disponible para Retiro", description: "Lunes a Viernes 12:00-18:00" },
 ]
 
 const statusOptions = [
   { value: "all", label: "Todos los estados" },
-  { value: "pending", label: "Pendiente" },
-  { value: "processing", label: "Procesando" },
-  { value: "shipped", label: "Enviado" },
-  { value: "delivered", label: "Entregado" },
+  { value: "pending", label: "Pago Recibido" },
+  { value: "processing", label: "Validando Compra" },
+  { value: "shipped", label: "En Camino" },
+  { value: "delivered", label: "Disponible para Retiro" },
   { value: "cancelled", label: "Cancelado" },
 ]
 
@@ -94,6 +114,49 @@ const calculateTaxBreakdown = (amountWithIVA: number) => {
   const neto = Math.round(amountWithIVA / 1.19)
   const iva = amountWithIVA - neto
   return { neto, iva }
+}
+
+// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
+const getShippingMethodDisplay = (order: Order | null) => {
+  if (!order) return 'Método no especificado'
+  
+  const shippingDetails = order.shipping_details
+  const shippingType = order.shipping_type || ''
+  
+  if (shippingDetails?.selectedBranch) {
+    return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
+  }
+  
+  if (shippingDetails?.isCashOnDelivery) {
+    return 'Envío por Pagar'
+  }
+  
+  if (shippingDetails?.serviceName) {
+    return shippingDetails.serviceName
+  }
+  
+  if (shippingType) {
+    switch (shippingType) {
+      case 'branch_pickup':
+        return 'Retiro en Sucursal'
+      case 'cash_on_delivery':
+        return 'Envío por Pagar'
+      case 'home_delivery':
+        return 'Envío a Domicilio'
+      default:
+        break
+    }
+  }
+  
+  if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
+    return order.shipping_method
+  }
+  
+  if (order.shipping > 0) {
+    return 'Envío a Domicilio'
+  }
+  
+  return 'Método no especificado'
 }
 
 export default function AdminOrdersPage() {
@@ -108,6 +171,7 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [searchTerm, setSearchTerm] = useState<string>("")
   const [refreshing, setRefreshing] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState<number | null>(null)
 
   const isAdmin = user?.role === "admin"
 
@@ -164,6 +228,14 @@ export default function AdminOrdersPage() {
   }
 
   const updateOrderStatus = async (orderId: number, newStatus: string) => {
+    // Validar que el estado sea válido
+    const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+    if (!validStatuses.includes(newStatus)) {
+      setError('Estado no válido')
+      return
+    }
+
+    setUpdatingStatus(orderId)
     try {
       const response = await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PATCH',
@@ -181,12 +253,19 @@ export default function AdminOrdersPage() {
         )
         setEditingOrderId(null)
         setSelectedStatus("")
+        setError(null)
       } else {
-        throw new Error('Error al actualizar el estado')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al actualizar el estado')
       }
     } catch (error) {
       console.error('Error updating order status:', error)
-      setError('Error al actualizar el estado del pedido')
+      setError(error instanceof Error ? error.message : 'Error al actualizar el estado del pedido')
+      // Revertir la selección
+      setEditingOrderId(null)
+      setSelectedStatus("")
+    } finally {
+      setUpdatingStatus(null)
     }
   }
 
@@ -270,14 +349,27 @@ export default function AdminOrdersPage() {
     )
   }
 
+  // Error 
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-7xl mx-auto text-center">
+        <div className="max-w-7xl mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
-            <X className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-red-800 mb-2">Error</h1>
-            <p className="text-red-600 mb-6">{error}</p>
+            <div className="flex items-start gap-3">
+              <X className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <p className="text-sm text-red-600 mt-1">{error}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-3 border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={() => setError(null)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
           </div>
           <Button onClick={fetchOrders}>
             Reintentar
@@ -302,7 +394,7 @@ export default function AdminOrdersPage() {
           
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold">Gestion de Pedidos</h1>
+              <h1 className="text-2xl lg:text-3xl font-bold">Gestión de Pedidos</h1>
               <p className="text-muted-foreground">Administra y revisa todos los pedidos del sistema</p>
             </div>
 
@@ -435,6 +527,13 @@ export default function AdminOrdersPage() {
               const currentStep = getCurrentStep(order)
               const isCancelled = order.status === 'cancelled'
 
+              // Obtener método de envío
+              const shippingMethodDisplay = getShippingMethodDisplay(order)
+              const isBranchPickup = order.shipping_type === 'branch_pickup' || order.shipping_details?.selectedBranch !== undefined
+              const isHomeDelivery = order.shipping_type === 'home_delivery'
+              const isCashOnDelivery = order.shipping_type === 'cash_on_delivery' || order.shipping_details?.isCashOnDelivery === true
+              const selectedBranch = order.shipping_details?.selectedBranch
+
               return (
                 <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-3">
@@ -482,7 +581,7 @@ export default function AdminOrdersPage() {
                         </Badge>
                         <Badge variant="outline" className="text-xs">
                           {order.payment_status === 'paid' ? 'Pagado' : 
-                           order.payment_status === 'pending' ? 'Pago pendiente' :
+                           order.payment_status === 'pending' ? 'Pago Recibido' :
                            order.payment_status === 'failed' ? 'Pago fallido' : 
                            order.payment_status === 'refunded' ? 'Reembolsado' :
                            order.payment_status}
@@ -516,6 +615,11 @@ export default function AdminOrdersPage() {
                               return 'bg-gray-300'
                             }
 
+                            let stepDescription = step.description
+                            if (step.key === 'shipped' && (isCompleted || isActive)) {
+                              stepDescription = shippingMethodDisplay
+                            }
+
                             return (
                               <div key={step.key} className="flex-1 flex items-center">
                                 <div className="flex flex-col items-center flex-1">
@@ -547,7 +651,7 @@ export default function AdminOrdersPage() {
                                       stepStatus === 'active' ? 'text-blue-500' :
                                       'text-gray-400'}
                                   `}>
-                                    {step.description}
+                                    {stepDescription}
                                   </span>
                                 </div>
                                 {!isLast && (
@@ -615,23 +719,62 @@ export default function AdminOrdersPage() {
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                       <div className="space-y-4">
                         <div>
-                          <h4 className="font-medium mb-2">Informacion de Envio</h4>
+                          <h4 className="font-medium mb-2">Información de Envío</h4>
                           <div className="text-sm text-muted-foreground space-y-1">
                             <p className="font-medium text-foreground">
                               {order.customer_first_name} {order.customer_last_name}
                             </p>
                             <p>{order.customer_email}</p>
                             <p>{order.customer_phone}</p>
-                            {order.shipping_address ? (
-                              <>
-                                <p>{order.shipping_address.street}</p>
-                                <p>
-                                  {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                            
+                            {/* Mostrar método de envío */}
+                            <p className="text-xs font-medium text-foreground mt-2">
+                              Método: {shippingMethodDisplay}
+                            </p>
+                            
+                            {/* Mostrar tipo de envío */}
+                            {isBranchPickup && selectedBranch && (
+                              <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2">
+                                <p className="text-xs text-blue-700 flex items-start gap-1.5">
+                                  <Store className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>
+                                    <strong>Retiro en Sucursal:</strong><br />
+                                    {selectedBranch.name}<br />
+                                    {selectedBranch.address}
+                                  </span>
                                 </p>
-                                <p>Codigo Postal: {order.shipping_address.postal_code}</p>
-                              </>
-                            ) : (
-                              <p className="text-yellow-600">Direccion no especificada</p>
+                              </div>
+                            )}
+                            
+                            {isHomeDelivery && order.shipping_address && (
+                              <div className="bg-green-50 border border-green-200 rounded p-2 mt-2">
+                                <p className="text-xs text-green-700 flex items-start gap-1.5">
+                                  <Truck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>
+                                    <strong>Envío a Domicilio:</strong><br />
+                                    {order.shipping_address.street}<br />
+                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                    {order.shipping_address.department && (
+                                      <> <br />Depto: {order.shipping_address.department}</>
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
+                            )}
+                            
+                            {isCashOnDelivery && (
+                              <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                                <p className="text-xs text-amber-700 flex items-start gap-1.5">
+                                  <CreditCard className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>
+                                    <strong>Envío por Pagar</strong><br />
+                                    El costo del envío se pagará al momento de la entrega.
+                                    {order.shipping > 0 && (
+                                      <> Monto: {formatPrice(order.shipping)}</>
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -644,6 +787,7 @@ export default function AdminOrdersPage() {
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
                                 className="border rounded-lg px-3 py-2 text-sm flex-1"
+                                disabled={updatingStatus === order.id}
                               >
                                 <option value="">Seleccionar estado</option>
                                 {statusOptions.filter(opt => opt.value !== 'all').map(option => (
@@ -656,9 +800,16 @@ export default function AdminOrdersPage() {
                                 <Button
                                   size="sm"
                                   onClick={() => updateOrderStatus(order.id, selectedStatus)}
-                                  disabled={!selectedStatus}
+                                  disabled={!selectedStatus || updatingStatus === order.id}
                                 >
-                                  Guardar
+                                  {updatingStatus === order.id ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      Guardando...
+                                    </>
+                                  ) : (
+                                    'Guardar'
+                                  )}
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -667,6 +818,7 @@ export default function AdminOrdersPage() {
                                     setEditingOrderId(null)
                                     setSelectedStatus("")
                                   }}
+                                  disabled={updatingStatus === order.id}
                                 >
                                   Cancelar
                                 </Button>
@@ -681,6 +833,7 @@ export default function AdminOrdersPage() {
                                 setSelectedStatus(order.status)
                               }}
                               className="flex items-center gap-2"
+                              disabled={updatingStatus === order.id}
                             >
                               <Edit className="w-4 h-4" />
                               Editar Estado
@@ -711,7 +864,7 @@ export default function AdminOrdersPage() {
                             </div>
                           )}
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Envio:</span>
+                            <span className="text-muted-foreground">Envío:</span>
                             <span>
                               {order.shipping === 0 ? "Gratis" : formatPrice(order.shipping)}
                             </span>
@@ -737,7 +890,7 @@ export default function AdminOrdersPage() {
                           )}
                           {order.coupon_code && (
                             <div>
-                              <h4 className="font-medium mb-2">Cupon Aplicado</h4>
+                              <h4 className="font-medium mb-2">Cupón Aplicado</h4>
                               <p className="text-sm text-green-600">{order.coupon_code}</p>
                             </div>
                           )}
@@ -747,7 +900,7 @@ export default function AdminOrdersPage() {
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
                       <div className="text-xs text-muted-foreground">
-                        Ultima actualizacion: {new Date(order.updated_at).toLocaleDateString("es-ES", {
+                        Última actualización: {new Date(order.updated_at).toLocaleDateString("es-ES", {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
