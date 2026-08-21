@@ -1127,10 +1127,7 @@ export default function OrderDetailPage() {
 
               <CardContent className="pt-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 bg-blue-600">
-                    <span className="text-white text-xs font-bold">
-                      TB
-                    </span>
+                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 ">
                   </div>
 
                   <div>
@@ -1154,14 +1151,6 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
-              {order.status === "delivered" && (
-                <Link href="/">
-                  <Button className="w-full">
-                    Comprar de nuevo
-                  </Button>
-                </Link>
-              )}
-
               <Button
                 variant="outline"
                 className="w-full"
@@ -1208,13 +1197,6 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               )}
-
-              <Link href="/orders">
-                <Button variant="ghost" className="w-full">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Ver todos mis pedidos
-                </Button>
-              </Link>
             </div>
 
           </div>
