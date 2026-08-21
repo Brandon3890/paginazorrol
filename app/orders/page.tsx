@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Package, Truck, CheckCircle, Clock, X, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, Package, Truck, CheckCircle, Clock, X, Loader2, Sparkles, Store } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -35,6 +35,7 @@ interface Order {
   notes?: string
   coupon_code?: string
   shipping_method?: string
+  shipping_type?: 'standard' | 'express' | 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'bodega_pickup'
   created_at: string
   updated_at: string
   items: OrderItem[]
@@ -48,6 +49,7 @@ interface Order {
     region_name: string
     postal_code: string
     department?: string
+    isBodega?: boolean
   }
 }
 
@@ -57,6 +59,50 @@ const statusConfig = {
   shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200" },
   delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200" },
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
+}
+
+//  Función para obtener el método de envío mostrado
+const getShippingMethodDisplay = (order: Order) => {
+  const shippingType = order.shipping_type || ''
+  
+  switch (shippingType) {
+    case 'bodega_pickup':
+      return 'Retiro en Bodega'
+    case 'branch_pickup':
+      return 'Retiro en Sucursal'
+    case 'home_delivery':
+      return 'Envío a Domicilio'
+    case 'cash_on_delivery':
+      return 'Envío por Pagar'
+    case 'express':
+      return 'Envío Express'
+    case 'standard':
+      return 'Envío Estándar'
+    default:
+      return order.shipping_method || 'Método no especificado'
+  }
+}
+
+//  Función para obtener el título de la sección de envío
+const getShippingTitle = (order: Order) => {
+  const shippingType = order.shipping_type || ''
+  
+  switch (shippingType) {
+    case 'bodega_pickup':
+      return 'Información de Bodega'
+    case 'branch_pickup':
+      return 'Información de Sucursal'
+    case 'home_delivery':
+      return 'Información de Envío'
+    case 'cash_on_delivery':
+      return 'Información de Envío'
+    case 'express':
+      return 'Información de Envío'
+    case 'standard':
+      return 'Información de Envío'
+    default:
+      return 'Información de Envío'
+  }
 }
 
 // Función para calcular Neto e IVA desde un monto que ya incluye IVA
@@ -205,6 +251,13 @@ export default function OrdersPage() {
               const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
               const StatusIcon = statusInfo.icon
               const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
+              
+              //  OBTENER MÉTODO DE ENVÍO Y TÍTULO
+              const shippingMethodDisplay = getShippingMethodDisplay(order)
+              const shippingTitle = getShippingTitle(order)
+              const isBodega = order.shipping_type === 'bodega_pickup'
+              const isBranch = order.shipping_type === 'branch_pickup'
+              const isHomeDelivery = order.shipping_type === 'home_delivery'
 
               return (
                 <Card key={order.id} className="overflow-hidden">
@@ -251,7 +304,6 @@ export default function OrdersPage() {
                       {order.items && order.items.length > 0 ? (
                         order.items.map((item) => {
                           const itemTotal = item.product_price * item.quantity
-                          const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
                           
                           return (
                             <div key={item.id} className="flex gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
@@ -275,8 +327,6 @@ export default function OrdersPage() {
                                   </Badge>
                                   <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
                                 </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                </div>
                               </div>
                               <div className="text-right">
                                 <div className="font-medium">{formatPrice(itemTotal)}</div>
@@ -296,21 +346,50 @@ export default function OrdersPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <h4 className="font-medium mb-2">Informacion de Envio</h4>
+                        {/*  TÍTULO DINÁMICO SEGÚN EL TIPO DE ENVÍO */}
+                        <h4 className="font-medium mb-2">{shippingTitle}</h4>
                         <div className="text-sm text-muted-foreground space-y-1">
                           <p className="font-medium text-foreground">
                             {order.customer_first_name} {order.customer_last_name}
                           </p>
+                          
+                          {/*  MOSTRAR MÉTODO DE ENVÍO */}
+                          <p className="text-xs text-muted-foreground">
+                             {shippingMethodDisplay}
+                          </p>
+                          
                           {order.shipping_address ? (
                             <>
-                              <p>{order.shipping_address.street}</p>
-                              <p>
-                                {order.shipping_address.commune_name}, {order.shipping_address.region_name}
-                              </p>
-                              <p>Codigo Postal: {order.shipping_address.postal_code}</p>
+                              {isBodega ? (
+                                //  DIRECCIÓN DE BODEGA - MISMO FORMATO
+                                <>
+                                  <p>Arcangel 1200, San Miguel</p>
+                                  <p>San Miguel, Región Metropolitana</p>
+                                  <p>Código Postal: 8900000</p>
+                                  <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
+                                </>
+                              ) : isBranch ? (
+                                //  DIRECCIÓN DE SUCURSAL - MISMO FORMATO
+                                <>
+                                  <p>{order.shipping_address.street}</p>
+                                  <p>
+                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                  </p>
+                                  <p>Código Postal: {order.shipping_address.postal_code}</p>
+                                </>
+                              ) : (
+                                //  DIRECCIÓN NORMAL - MISMO FORMATO
+                                <>
+                                  <p>{order.shipping_address.street}</p>
+                                  <p>
+                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                  </p>
+                                  <p>Código Postal: {order.shipping_address.postal_code}</p>
+                                </>
+                              )}
                             </>
                           ) : (
-                            <p className="text-yellow-600">Direccion no especificada</p>
+                            <p className="text-yellow-600">Dirección no especificada</p>
                           )}
                           <p>{order.customer_phone}</p>
                         </div>
@@ -338,7 +417,7 @@ export default function OrdersPage() {
                             </div>
                           )}
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Envio:</span>
+                            <span className="text-muted-foreground">Envío:</span>
                             <span>
                               {order.shipping === 0 ? "Gratis" : formatPrice(order.shipping)}
                             </span>
@@ -366,7 +445,7 @@ export default function OrdersPage() {
                       <>
                         <Separator />
                         <div>
-                          <h4 className="font-medium mb-2">Cupon Aplicado</h4>
+                          <h4 className="font-medium mb-2">Cupón Aplicado</h4>
                           <p className="text-sm text-green-600">{order.coupon_code}</p>
                         </div>
                       </>
@@ -376,7 +455,7 @@ export default function OrdersPage() {
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-2">
                       <div className="text-xs text-muted-foreground">
-                        Ultima actualizacion: {new Date(order.updated_at).toLocaleDateString("es-ES")}
+                        Última actualización: {new Date(order.updated_at).toLocaleDateString("es-ES")}
                       </div>
                       <div className="flex gap-2 w-full sm:w-auto">
                         <Link href={`/orders/${order.id}`} className="flex-1 sm:flex-initial">

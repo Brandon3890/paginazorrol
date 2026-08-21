@@ -1,4 +1,4 @@
-// app/api/orders/route.ts - NUEVO ARCHIVO
+// app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -11,9 +11,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Obtener todas las órdenes del usuario
+    // INCLUIR shipping_type y shipping_details en la consulta
     const orders = await query(
-      `SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC`,
+      `SELECT 
+        o.*,
+        o.shipping_type,
+        o.shipping_details
+      FROM orders o 
+      WHERE o.user_id = ? 
+      ORDER BY o.created_at DESC`,
       [userId]
     ) as any[]
 
@@ -51,9 +57,22 @@ export async function GET(request: NextRequest) {
           })
         )
 
-        // Obtener dirección de envío si existe
+        // OBTENER DIRECCIÓN DE ENVÍO - MANEJAR CASO DE BODEGA
         let shippingAddress = undefined
-        if (order.shipping_address_id) {
+        const isBodegaPickup = order.shipping_type === 'bodega_pickup'
+        
+        if (isBodegaPickup) {
+          // SI ES RETIRO EN BODEGA, USAR DIRECCIÓN DE BODEGA
+          shippingAddress = {
+            street: 'Arcangel 1200, San Miguel',
+            commune_name: 'San Miguel',
+            region_name: 'Región Metropolitana',
+            postal_code: '8900000',
+            department: '',
+            isBodega: true
+          }
+        } else if (order.shipping_address_id) {
+          // SI TIENE DIRECCIÓN NORMAL
           const addresses = await query(
             `SELECT street, commune_name, region_name, postal_code, department 
              FROM user_addresses WHERE id = ? AND user_id = ?`,
@@ -61,8 +80,50 @@ export async function GET(request: NextRequest) {
           ) as any[]
           
           if (addresses.length > 0) {
-            shippingAddress = addresses[0]
+            shippingAddress = {
+              ...addresses[0],
+              isBodega: false
+            }
           }
+        }
+
+        // PARSEAR SHIPPING_DETAILS
+        let shippingDetails = null
+        if (order.shipping_details) {
+          try {
+            shippingDetails = typeof order.shipping_details === 'string' 
+              ? JSON.parse(order.shipping_details) 
+              : order.shipping_details
+          } catch (e) {
+            console.error('Error parsing shipping_details:', e)
+          }
+        }
+
+        // DETERMINAR MÉTODO DE ENVÍO MOSTRADO
+        let shippingMethodDisplay = 'Método no especificado'
+        const shippingType = order.shipping_type || ''
+        
+        switch (shippingType) {
+          case 'bodega_pickup':
+            shippingMethodDisplay = 'Retiro en Bodega'
+            break
+          case 'branch_pickup':
+            shippingMethodDisplay = 'Retiro en Sucursal'
+            break
+          case 'home_delivery':
+            shippingMethodDisplay = 'Envío a Domicilio'
+            break
+          case 'cash_on_delivery':
+            shippingMethodDisplay = 'Envío por Pagar'
+            break
+          case 'express':
+            shippingMethodDisplay = 'Envío Express'
+            break
+          case 'standard':
+            shippingMethodDisplay = 'Envío Estándar'
+            break
+          default:
+            shippingMethodDisplay = order.payment_method || 'Método no especificado'
         }
 
         return {
@@ -70,23 +131,25 @@ export async function GET(request: NextRequest) {
           order_number: order.order_number,
           status: order.status,
           payment_status: order.payment_status,
-          subtotal: parseFloat(order.subtotal),
-          discount: parseFloat(order.discount),
-          shipping: parseFloat(order.shipping),
-          tax: parseFloat(order.tax),
-          total: parseFloat(order.total),
+          subtotal: parseFloat(order.subtotal) || 0,
+          discount: parseFloat(order.discount) || 0,
+          shipping: parseFloat(order.shipping) || 0,
+          tax: parseFloat(order.tax) || 0,
+          total: parseFloat(order.total) || 0,
           notes: order.notes,
           coupon_code: order.coupon_code,
-          shipping_method: order.payment_method,
+          shipping_method: shippingMethodDisplay,
+          shipping_type: shippingType,
+          shipping_details: shippingDetails,
           created_at: order.created_at,
           updated_at: order.updated_at,
           items: itemsWithImages.map((item: any) => ({
             id: item.id,
             product_id: item.product_id,
             product_name: item.product_name,
-            product_price: parseFloat(item.product_price),
-            quantity: item.quantity,
-            subtotal: parseFloat(item.subtotal),
+            product_price: parseFloat(item.product_price) || 0,
+            quantity: item.quantity || 0,
+            subtotal: parseFloat(item.subtotal) || 0,
             image_url: item.image_url,
             category: item.category
           })),

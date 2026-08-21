@@ -1,8 +1,6 @@
-// lib/order-store.ts - INTERFACES CORREGIDAS
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-// 🧩 Interfaces de datos actualizadas y corregidas
 interface OrderItem {
   id: string
   name: string
@@ -19,10 +17,10 @@ interface CustomerInfo {
   phone: string
   address: string
   city: string
-  region?: string // Agregado para compatibilidad
+  region?: string
   postalCode: string
-  department?: string // Agregado
-  deliveryInstructions?: string // Agregado
+  department?: string
+  deliveryInstructions?: string
 }
 
 interface PaymentInfo {
@@ -52,6 +50,24 @@ interface ShippingAddress {
   deliveryInstructions?: string
 }
 
+type ShippingType = 'standard' | 'express' | 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'bodega_pickup'
+
+interface ShippingDetails {
+  type?: ShippingType
+  carrier?: string
+  serviceName?: string
+  serviceCode?: number
+  finalWeight?: number
+  selectedBranch?: {
+    id?: string | number
+    name: string
+    address: string
+    telephone?: string
+  }
+  isCashOnDelivery?: boolean
+  actualShippingCost?: number
+}
+
 interface Order {
   id: string
   userId?: string
@@ -60,16 +76,17 @@ interface Order {
   shippingAddress?: ShippingAddress
   paymentInfo: PaymentInfo
   totals: OrderTotals 
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  status: 'pending' | 'processing' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
   notes?: string
   couponId?: number | null
   couponCode?: string | null
   shippingMethod?: string
+  shipping_type?: ShippingType  
+  shipping_details?: ShippingDetails 
   createdAt: string
   updatedAt: string
 }
 
-// 🧠 Estado global con Zustand
 interface OrderStore {
   orders: Order[]
   addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => string
@@ -81,13 +98,11 @@ interface OrderStore {
   updateOrderStatus: (id: string, status: Order['status']) => void
 }
 
-// 🪣 Persistencia local + funciones del store
 export const useOrderStore = create<OrderStore>()(
   persist(
     (set, get) => ({
       orders: [],
 
-      // 🆕 Crear una nueva orden
       addOrder: (orderData) => {
         const newOrder: Order = {
           ...orderData,
@@ -103,37 +118,37 @@ export const useOrderStore = create<OrderStore>()(
         return newOrder.id
       },
 
-      // 🔍 Obtener una orden específica
+      //  Obtener una orden específica
       getOrder: (id) => {
         const { orders } = get()
         return orders.find((order) => order.id === id)
       },
 
-      // 🔍 Obtener una orden específica (alias)
+      //  Obtener una orden específica (alias)
       getOrderById: (id) => {
         const { orders } = get()
         return orders.find((order) => order.id === id)
       },
 
-      // 👤 Obtener órdenes de un usuario
+      //  Obtener órdenes de un usuario
       getUserOrders: (userId) => {
         const { orders } = get()
         return orders.filter((order) => order.userId === userId)
       },
 
-      // 👤 Obtener órdenes de un usuario (alias)
+      //  Obtener órdenes de un usuario (alias)
       getOrdersByUserId: (userId) => {
         const { orders } = get()
         return orders.filter((order) => order.userId === userId)
       },
 
-      // 🔍 Obtener todas las órdenes
+      //  Obtener todas las órdenes
       getAllOrders: () => {
         const { orders } = get()
         return orders
       },
 
-      // 🔄 Actualizar estado de una orden
+      // Actualizar estado de una orden
       updateOrderStatus: (id, status) => {
         set((state) => ({
           orders: state.orders.map((order) =>

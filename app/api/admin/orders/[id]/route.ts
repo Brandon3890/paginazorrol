@@ -1,3 +1,4 @@
+// app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -26,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    // Obtener la orden con datos del usuario
+    // 🔥 INCLUIR shipping_type y shipping_details
     const orders = await query(
       `SELECT 
         o.*, 
@@ -38,7 +39,9 @@ export async function GET(
         o.transbank_payment_type,
         o.transbank_installments_number,
         o.transbank_transaction_date,
-        o.payment_method
+        o.payment_method,
+        o.shipping_type,
+        o.shipping_details
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        WHERE o.id = ?`,
@@ -109,6 +112,61 @@ export async function GET(
       }
     }
 
+    // 🔥 PARSEAR shipping_details
+    let shippingDetails = null
+    if (order.shipping_details) {
+      try {
+        shippingDetails = typeof order.shipping_details === 'string' 
+          ? JSON.parse(order.shipping_details) 
+          : order.shipping_details
+      } catch (e) {
+        console.error('Error parsing shipping_details:', e)
+      }
+    }
+
+    // 🔥 Determinar el método de envío mostrado
+    let shippingMethodDisplay = 'Método no especificado'
+    let shippingType = order.shipping_type || 'standard'
+    
+    if (shippingDetails) {
+      if (shippingDetails.selectedBranch) {
+        shippingType = 'branch_pickup'
+        shippingMethodDisplay = 'Retiro en Sucursal'
+      } else if (shippingDetails.isCashOnDelivery) {
+        shippingType = 'cash_on_delivery'
+        shippingMethodDisplay = 'Envío por Pagar'
+      } else if (shippingDetails.serviceName) {
+        shippingMethodDisplay = shippingDetails.serviceName
+        if (shippingDetails.serviceName.toLowerCase().includes('domicilio') || 
+            shippingDetails.serviceName.toLowerCase().includes('envío')) {
+          shippingType = 'home_delivery'
+        }
+      } else if (shippingDetails.type === 'bodega_pickup') {
+        shippingType = 'bodega_pickup'
+        shippingMethodDisplay = 'Retiro en Bodega'
+      }
+    }
+
+    // Si no hay shippingDetails pero hay shipping_type
+    if (!shippingDetails && order.shipping_type) {
+      switch (order.shipping_type) {
+        case 'branch_pickup':
+          shippingMethodDisplay = 'Retiro en Sucursal'
+          break
+        case 'cash_on_delivery':
+          shippingMethodDisplay = 'Envío por Pagar'
+          break
+        case 'home_delivery':
+          shippingMethodDisplay = 'Envío a Domicilio'
+          break
+        case 'bodega_pickup':
+          shippingMethodDisplay = 'Retiro en Bodega'
+          break
+        default:
+          shippingMethodDisplay = 'Envío Estándar'
+      }
+    }
+
     // Construir objeto transbank_info
     const transbankInfo = {
       authorization_code: order.transbank_authorization_code || null,
@@ -132,6 +190,9 @@ export async function GET(
       notes: order.notes || '',
       coupon_code: order.coupon_code || '',
       coupon_info: couponInfo,
+      shipping_method: shippingMethodDisplay,
+      shipping_type: shippingType,
+      shipping_details: shippingDetails,
       created_at: order.created_at,
       updated_at: order.updated_at,
       customer_email: order.email || '',
@@ -198,10 +259,11 @@ export async function PATCH(
       )
     }
 
-    const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+    // 🔥 INCLUIR 'confirmed' EN LOS ESTADOS VÁLIDOS
+    const validStatuses = ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'cancelled']
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
-        { error: 'Estado no valido' },
+        { error: `Estado no válido. Debe ser uno de: ${validStatuses.join(', ')}` },
         { status: 400 }
       )
     }
@@ -210,6 +272,8 @@ export async function PATCH(
       'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [status, orderId]
     )
+
+    console.log(`Admin: Order ${orderId} status updated to ${status}`)
 
     return NextResponse.json({ success: true, message: 'Estado actualizado correctamente' })
 

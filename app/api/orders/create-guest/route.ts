@@ -17,6 +17,18 @@ function generateGuestRut(userId: number): string {
   return `${baseRut}${userId}-${digit}`
 }
 
+//  DIRECCIÓN DE LA BODEGA
+const BODEGA_ADDRESS = {
+  street: "Arcangel 1200, San Miguel",
+  hasNoNumber: false,
+  regionIso: 'CL-RM',
+  regionName: 'Región Metropolitana',
+  communeName: 'San Miguel',
+  postalCode: '8900000',
+  department: '',
+  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -55,16 +67,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    //  BUSCAR USUARIO POR EMAIL - Incluir tanto invitados como registrados
     const existingUser = await query(
       'SELECT id, is_guest FROM users WHERE email = ?',
       [customerInfo.email]
     ) as any[]
     
     let userId = null
+    let isGuestUser = true
     
     if (existingUser.length > 0) {
       userId = existingUser[0].id
+      isGuestUser = existingUser[0].is_guest === 1
+      console.log(` Usuario existente encontrado: ${userId} (is_guest: ${isGuestUser})`)
     } else {
+      //  CREAR NUEVO USUARIO INVITADO
       const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
       
       const insertResult = await query(
@@ -80,48 +97,89 @@ export async function POST(request: NextRequest) {
       ) as any
       
       userId = insertResult.insertId
+      isGuestUser = true
       
       const guestRut = generateGuestRut(userId)
       await query(
         'UPDATE users SET rut = ? WHERE id = ?',
         [guestRut, userId]
       )
-      console.log(`Usuario invitado creado con RUT: ${guestRut}`)
+      console.log(` Usuario invitado creado con ID: ${userId}, RUT: ${guestRut}`)
     }
 
     const orderNumber = generateOrderNumber()
 
-    if (!shippingAddress?.street || !shippingAddress?.communeName) {
+    //  VALIDAR DIRECCIÓN (solo si no es retiro en bodega)
+    const isBodegaPickup = shippingType === 'bodega_pickup'
+    if (!isBodegaPickup && (!shippingAddress?.street || !shippingAddress?.communeName)) {
       return NextResponse.json(
         { error: 'Direccion de envio incompleta' },
         { status: 400 }
       )
     }
 
-    const addressResult = await query(
-      `INSERT INTO user_addresses 
-       (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        'Direccion de invitado',
-        shippingAddress.street,
-        shippingAddress.hasNoNumber || 0,
-        shippingAddress.regionIso || 'CL-RM',
-        shippingAddress.regionName,
-        shippingAddress.communeName,
-        shippingAddress.postalCode || '0000000',
-        shippingAddress.department || null,
-        shippingAddress.deliveryInstructions || null,
-        1
-      ]
-    ) as any
-    
-    const shippingAddressId = addressResult.insertId
+    let shippingAddressId = null
+
+    //  SOLO GUARDAR LA DIRECCIÓN EN user_addresses SI NO ES RETIRO EN BODEGA
+    if (!isBodegaPickup && shippingAddress) {
+      //  SI EL USUARIO YA EXISTE Y NO ES INVITADO, VERIFICAR SI LA DIRECCIÓN YA EXISTE
+      if (!isGuestUser) {
+        // Usuario registrado - verificar si ya tiene esta dirección
+        const existingAddresses = await query(
+          `SELECT id FROM user_addresses 
+           WHERE user_id = ? 
+           AND street = ? 
+           AND commune_name = ?`,
+          [userId, shippingAddress.street, shippingAddress.communeName]
+        ) as any[]
+
+        if (existingAddresses.length > 0) {
+          shippingAddressId = existingAddresses[0].id
+          console.log(` Usando dirección existente para usuario registrado: ${shippingAddressId}`)
+        }
+      }
+      
+      //  SI NO SE ENCONTRÓ DIRECCIÓN EXISTENTE O ES INVITADO, CREAR NUEVA
+      if (!shippingAddressId) {
+        // Para invitados, usar título "Dirección de invitado"
+        // Para usuarios registrados, usar título "Dirección de envío"
+        const addressTitle = isGuestUser ? 'Dirección de invitado' : 'Dirección de envío'
+        
+        const addressResult = await query(
+          `INSERT INTO user_addresses 
+           (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            addressTitle,
+            shippingAddress.street,
+            shippingAddress.hasNoNumber || 0,
+            shippingAddress.regionIso || 'CL-RM',
+            shippingAddress.regionName,
+            shippingAddress.communeName,
+            shippingAddress.postalCode || '0000000',
+            shippingAddress.department || null,
+            shippingAddress.deliveryInstructions || null,
+            1
+          ]
+        ) as any
+        
+        shippingAddressId = addressResult.insertId
+        console.log(` Nueva dirección creada para ${isGuestUser ? 'invitado' : 'usuario'}: ${shippingAddressId}`)
+      }
+    } else {
+      console.log(` Retiro en bodega - sin dirección guardada`)
+    }
 
     const tax = Math.round(totals.total * 0.19)
 
-    // Crear orden CON shipping_type y shipping_details
+    //  USAR DIRECCIÓN DE BODEGA SI CORRESPONDE
+    let finalShippingAddress = shippingAddress
+    if (isBodegaPickup) {
+      finalShippingAddress = BODEGA_ADDRESS
+    }
+
+    //  CREAR ORDEN
     const orderResult = await query(
       `INSERT INTO orders (
         user_id, customer_rut, order_number, status, subtotal, discount, shipping, tax, total,
@@ -130,7 +188,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         userId,
-        '66666666-6',
+        isGuestUser ? '66666666-6' : customerInfo.rut || '55555555-5',
         orderNumber,
         'pending',
         totals.subtotal,
@@ -150,7 +208,7 @@ export async function POST(request: NextRequest) {
     ) as any
     
     const orderId = orderResult.insertId
-    console.log('Orden invitado creada con shipping_type:', shippingType)
+    console.log(` Orden ${isGuestUser ? 'invitado' : 'usuario'} creada con ID: ${orderId}, shipping_type: ${shippingType}`)
 
     for (const item of items) {
       await query(
@@ -179,7 +237,8 @@ export async function POST(request: NextRequest) {
       success: true,
       orderId,
       orderNumber,
-      userId
+      userId,
+      isGuest: isGuestUser
     })
 
   } catch (error: any) {

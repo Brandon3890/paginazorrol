@@ -22,8 +22,7 @@ import {
   Download,
   Eye,
   Check,
-  Store,
-  AlertCircle
+  Store
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -55,7 +54,7 @@ interface Order {
   notes?: string
   coupon_code?: string
   shipping_method?: string
-  shipping_type?: 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'standard'
+  shipping_type?: 'standard' | 'express' | 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'bodega_pickup'
   shipping_details?: {
     type?: string
     carrier?: string
@@ -97,50 +96,78 @@ interface Order {
   }
 }
 
-//  ESTADOS 
 const statusConfig = {
-  pending: { label: "Pago Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
-  processing: { label: "Validando Compra", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
-  shipped: { label: "En Camino", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
+  pending: { label: "Pendiente", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
+  processing: { label: "Procesando", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
+  shipped: { label: "Enviado", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
   delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 3 },
-  cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
-  payment_failed: { label: "Pago Rechazado", icon: AlertCircle, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
+  cancelled: { label: "Rechazado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-// FLUJO DE ESTADOS
-const orderSteps = [
-  {
-    key: "pending",
-    label: "Pago Recibido",
-    description: "Hemos recibido tu pago correctamente.",
-    icon: CheckCircle,
-  },
-  {
-    key: "processing",
-    label: "Validando tu Compra",
-    description: "Estamos emitiendo tu boleta y preparando tu pedido.",
-    icon: Package,
-  },
-  {
-    key: "shipped",
-    label: "En Camino",
-    description: "Tu pedido está en camino.",
-    icon: Truck,
-  },
-  {
-    key: "delivered",
-    label: "Disponible para Retiro",
-    description: "Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs",
-    icon: Store,
-  },
-]
+//  PASOS DE SEGUIMIENTO CON ETIQUETAS DINÁMICAS
+const getOrderSteps = (shippingType: string | undefined) => {
+  let shippedLabel = "En Camino"
+  let shippedDescription = "Tu pedido está en camino."
+  
+  if (shippingType === 'branch_pickup') {
+    shippedLabel = "Retiro disponible"
+    shippedDescription = "Tu pedido está disponible para retiro en sucursal."
+  } else if (shippingType === 'bodega_pickup') {
+    //  PARA BODEGA: "Disponible en bodega"
+    shippedLabel = "Disponible en bodega"
+    shippedDescription = "Tu pedido está disponible para retiro en nuestra bodega."
+  }
+  
+  return [
+    {
+      key: "pending",
+      label: "Pago Recibido",
+      description: "Tu pago ha sido recibido exitosamente.",
+      icon: CheckCircle,
+    },
+    {
+      key: "processing",
+      label: "Validando tu compra",
+      description: "Estamos revisando los detalles de tu pedido.",
+      icon: Clock,
+    },
+    {
+      key: "confirmed",
+      label: "Compra Confirmada",
+      description: "Estamos emitiendo tu boleta y preparando tu pedido.",
+      icon: Package,
+    },
+    {
+      key: "shipped",
+      label: shippedLabel,
+      description: shippedDescription,
+      icon: Truck,
+    },
+    {
+      key: "delivered",
+      label: "Entregado",
+      description: "Tu pedido ha sido entregado con éxito.",
+      icon: CheckCircle,
+    },
+  ]
+}
 
-// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
-const getShippingMethodDisplay = (order: Order | null) => {
+//  MAPEO DE ESTADOS DE LA ORDEN A PASOS
+const statusToStepMap: Record<string, number> = {
+  'pending': 0,
+  'processing': 1,
+  'confirmed': 2,
+  'shipped': 3,
+  'delivered': 4,
+  'cancelled': -1,
+}
+
+//  FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
+const getShippingMethodDisplay = (order: Order | null): string => {
   if (!order) return 'Método no especificado'
   
   const shippingDetails = order.shipping_details
-  const shippingType = order.shipping_type || ''
+  const shippingType = order.shipping_type as string || ''
   
   // 1. Si tiene detalles de envío con sucursal seleccionada
   if (shippingDetails?.selectedBranch) {
@@ -157,27 +184,28 @@ const getShippingMethodDisplay = (order: Order | null) => {
     return shippingDetails.serviceName
   }
   
-  // 4. Si tiene tipo de envío
-  if (shippingType) {
-    switch (shippingType) {
-      case 'branch_pickup':
-        return 'Retiro en Sucursal'
-      case 'cash_on_delivery':
-        return 'Envío por Pagar - Paga al momento de la entrega'
-      case 'home_delivery':
-        if (order.shipping_address?.street) {
-          return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
-        }
-        return 'Envío a Domicilio'
-      default:
-        break
-    }
+  // 4. Usando un objeto de mapeo
+  const shippingTypeMap: Record<string, string> = {
+    'branch_pickup': 'Retiro en Sucursal',
+    'cash_on_delivery': 'Envío por Pagar - Paga al momento de la entrega',
+    'home_delivery': order.shipping_address?.street 
+      ? `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
+      : 'Envío a Domicilio',
+    'bodega_pickup': 'Retiro en Bodega',
+    'standard': 'Envío Estándar',
+    'express': 'Envío Express',
   }
   
+  if (shippingType in shippingTypeMap) {
+    return shippingTypeMap[shippingType]
+  }
+  
+  // 5. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
   
+  // 6. Si tiene costo de envío, asumimos que es a domicilio
   if (order.shipping > 0) {
     if (order.shipping_address?.street) {
       return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
@@ -186,6 +214,32 @@ const getShippingMethodDisplay = (order: Order | null) => {
   }
   
   return 'Método no especificado'
+}
+
+//  FUNCIÓN PARA OBTENER LA CATEGORÍA DE ENVÍO
+const getShippingCategory = (order: Order | null): string => {
+  if (!order) return 'unknown'
+  
+  const shippingType = order.shipping_type as string || ''
+  const shippingDetails = order.shipping_details
+  
+  const categoryMap: Record<string, string> = {
+    'bodega_pickup': 'bodega_pickup',
+    'branch_pickup': 'branch_pickup',
+    'home_delivery': 'home_delivery',
+    'cash_on_delivery': 'cash_on_delivery',
+    'standard': 'standard',
+    'express': 'express',
+  }
+  
+  if (shippingType in categoryMap) {
+    return categoryMap[shippingType]
+  }
+  
+  if (shippingDetails?.selectedBranch) return 'branch_pickup'
+  if (shippingDetails?.isCashOnDelivery) return 'cash_on_delivery'
+  
+  return 'unknown'
 }
 
 const calculateTaxBreakdown = (amountWithIVA: number) => {
@@ -367,16 +421,12 @@ export default function OrderDetailPage() {
 
   const getCurrentStep = () => {
     if (!order) return -1
-    const status = order.status as keyof typeof statusConfig
-    const config = statusConfig[status]
-    if (!config) return -1
-    if (status === 'cancelled' || status === 'payment_failed') return -1
-    return config.step
+    if (order.status === 'cancelled') return -1
+    return statusToStepMap[order.status] ?? 0
   }
 
   const currentStep = getCurrentStep()
-  const isCancelled = order?.status === 'cancelled' || order?.status === 'payment_failed'
-  const isPaymentFailed = order?.status === 'payment_failed'
+  const isCancelled = order?.status === 'cancelled'
 
   if (authLoading) {
     return (
@@ -437,52 +487,6 @@ export default function OrderDetailPage() {
     )
   }
 
-  // Verificar si el pago fue rechazado
-  if (isPaymentFailed) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="mb-8">
-            <Link href="/orders">
-              <span className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Volver a Mis Pedidos
-              </span>
-            </Link>
-          </div>
-
-          <Card className="shadow-sm">
-            <CardContent className="p-6 text-center">
-              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-10 h-10 text-red-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-red-800 mb-2">
-                Pago Rechazado
-              </h2>
-              <p className="text-red-600 mb-6">
-                El pago de tu pedido #{order.order_number} no pudo ser procesado correctamente.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/checkout">
-                  <Button className="w-full sm:w-auto">
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Intentar nuevamente
-                  </Button>
-                </Link>
-                <Link href="/orders">
-                  <Button variant="outline" className="w-full sm:w-auto">
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Ver todos mis pedidos
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    )
-  }
-
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
   const addressInfo = order.shipping_address || {
@@ -497,19 +501,32 @@ export default function OrderDetailPage() {
   
   const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
-  // OBTENER EL MÉTODO DE ENVÍO PARA MOSTRAR
+  //  OBTENER EL MÉTODO DE ENVÍO Y CATEGORÍA
   const shippingMethodDisplay = getShippingMethodDisplay(order)
+  const shippingCategory = getShippingCategory(order)
   
-  // DETERMINAR SI ES RETIRO EN SUCURSAL O DOMICILIO
-  const isBranchPickup = order.shipping_type === 'branch_pickup' || order.shipping_details?.selectedBranch !== undefined
-  const isHomeDelivery = order.shipping_type === 'home_delivery'
-  const isCashOnDelivery = order.shipping_type === 'cash_on_delivery' || order.shipping_details?.isCashOnDelivery === true
+  //  DETERMINAR TIPOS DE ENVÍO
+  const isBodegaPickup = shippingCategory === 'bodega_pickup'
+  const isBranchPickup = shippingCategory === 'branch_pickup'
+  const isHomeDelivery = shippingCategory === 'home_delivery'
+  const isCashOnDelivery = shippingCategory === 'cash_on_delivery'
 
-  // OBTENER LA SUCURSAL SELECCIONADA
+  //  OBTENER LA SUCURSAL SELECCIONADA
   const selectedBranch = order.shipping_details?.selectedBranch
 
-  // DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
+  //  DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
   const isDelivered = order.status === 'delivered'
+
+  //  OBTENER LOS PASOS CON ETIQUETAS DINÁMICAS
+  const orderSteps = getOrderSteps(order?.shipping_type)
+
+  //  OBTENER EL ICONO PARA EL PASO "EN CAMINO" SEGÚN EL TIPO
+  const getShippedIcon = () => {
+    if (isBodegaPickup || isBranchPickup) {
+      return Store
+    }
+    return Truck
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -622,7 +639,7 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* SEGUIMIENTO DEL PEDIDO - ACTUALIZADO */}
+            {/* SEGUIMIENTO DEL PEDIDO */}
             {!isCancelled && (
               <Card className="shadow-sm">
                 <CardHeader className="pb-0">
@@ -648,16 +665,51 @@ export default function OrderDetailPage() {
                           stepStatus = "active"
                         }
 
-                        const StepIcon = step.icon
+                        let StepIcon = step.icon
+                        if (step.key === "shipped") {
+                          StepIcon = getShippedIcon()
+                        }
 
                         let stepDescription = step.description
 
-                        // Personalizar descripciones según el estado
-                        if (step.key === "shipped" && (isCompleted || isActive)) {
-                          stepDescription = shippingMethodDisplay
+                        if (step.key === "pending" && (isActive || isCompleted)) {
+                          if (order.payment_status === 'paid') {
+                            stepDescription = ' Tu pago ha sido aprobado y recibido correctamente.'
+                          } else if (order.payment_status === 'failed') {
+                            stepDescription = '❌ Tu pago ha sido rechazado. Por favor, contacta con soporte.'
+                          } else {
+                            stepDescription = 'Tu pago ha sido recibido exitosamente.'
+                          }
                         }
-                        if (step.key === "delivered" && (isCompleted || isActive)) {
-                          stepDescription = ""
+
+                        if (step.key === "processing" && (isActive || isCompleted)) {
+                          stepDescription = 'Estamos revisando los detalles de tu pedido. Este proceso puede tomar unos momentos.'
+                        }
+
+                        if (step.key === "confirmed" && (isActive || isCompleted)) {
+                          stepDescription = 'Estamos emitiendo tu boleta y preparando tu pedido.'
+                        }
+
+                        if (step.key === "shipped" && (isActive || isCompleted)) {
+                          if (isBodegaPickup) {
+                            stepDescription = ' Tu pedido está disponible para retiro en nuestra bodega.'
+                          } else if (isBranchPickup) {
+                            stepDescription = ` Tu pedido está disponible para retiro en ${selectedBranch?.name || 'nuestra sucursal'}.`
+                          } else if (isHomeDelivery) {
+                            stepDescription = ` Tu pedido está en camino - ${shippingMethodDisplay}`
+                          } else {
+                            stepDescription = shippingMethodDisplay
+                          }
+                        }
+
+                        if (step.key === "delivered" && (isActive || isCompleted)) {
+                          if (isBodegaPickup || isBranchPickup) {
+                            stepDescription = ' Pedido retirado por el cliente'
+                          } else if (isHomeDelivery) {
+                            stepDescription = ` Pedido entregado en ${order.shipping_address?.street || 'tu domicilio'}`
+                          } else {
+                            stepDescription = ' Pedido entregado con éxito'
+                          }
                         }
 
                         const getColors = () => {
@@ -748,10 +800,16 @@ export default function OrderDetailPage() {
                                     {stepDescription}
                                   </p>
 
-                                  {/* INFORMACIÓN DETALLADA DE ENVÍO - SE MUESTRA CUANDO EL ESTADO ES "shipped" (En Camino) */}
                                   {step.key === "shipped" && (isActive || isCompleted) && (
                                     <div className="mt-3 space-y-2">
                                       <div className="flex flex-wrap gap-2">
+                                        {/*  SOLO RETIRO EN BODEGA - SIN ENVÍO GRATIS */}
+                                        {isBodegaPickup && (
+                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                                            <Store className="w-3 h-3 mr-1" />
+                                            Retiro en Bodega
+                                          </Badge>
+                                        )}
                                         {isBranchPickup && (
                                           <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
                                             <Store className="w-3 h-3 mr-1" />
@@ -759,7 +817,7 @@ export default function OrderDetailPage() {
                                           </Badge>
                                         )}
                                         {isHomeDelivery && (
-                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                                          <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-purple-50 border-purple-200 text-purple-700'}`}>
                                             <Truck className="w-3 h-3 mr-1" />
                                             Envío a Domicilio
                                           </Badge>
@@ -770,56 +828,64 @@ export default function OrderDetailPage() {
                                             Envío por Pagar
                                           </Badge>
                                         )}
-                                        {order.shipping === 0 && order.total > 0 && (
-                                          <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
-                                            Envío Gratis
-                                          </Badge>
-                                        )}
+                                        {/*  ELIMINADO: Envío Gratis para bodega */}
                                       </div>
 
-                                      {/* DETALLE DE SUCURSAL - SOLO PARA RETIRO EN SUCURSAL */}
+                                      {/*  DETALLE DE BODEGA - CORREGIDO */}
+                                      {isBodegaPickup && (
+                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
+                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-blue-700'} flex items-start gap-2`}>
+                                            <Store className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>Dirección de retiro:</strong><br />
+                                              Arcangel 1200, San Miguel
+                                            </span>
+                                          </p>
+                                          <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
+                                             Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                                          </p>
+                                        </div>
+                                      )}
+
                                       {isBranchPickup && selectedBranch && (
                                         <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
                                           <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-blue-700'} flex items-start gap-2`}>
                                             <Store className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
-                                              <strong>Sucursal de retiro:</strong><br />
+                                              <strong>Dirección de retiro:</strong><br />
                                               {selectedBranch.name}<br />
                                               {selectedBranch.address}
                                             </span>
                                           </p>
+                                          <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
+                                             Horario: Lunes a Viernes 12:00 - 18:00 hrs
+                                          </p>
                                         </div>
                                       )}
 
-                                      {/* DETALLE DE DOMICILIO - SOLO PARA ENVÍO A DOMICILIO */}
                                       {isHomeDelivery && order.shipping_address && (
-                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-green-50 border border-green-200'}`}>
-                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-green-700'} flex items-start gap-2`}>
+                                        <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-purple-50 border border-purple-200'}`}>
+                                          <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-purple-700'} flex items-start gap-2`}>
                                             <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
-                                              <strong>Dirección de entrega:</strong>
-                                              <br />
-                                              {order.shipping_address.street}
-                                              <br />
-                                              {order.shipping_address.commune_name},{" "}
-                                              {order.shipping_address.region_name}
+                                              <strong>Dirección de entrega:</strong><br />
+                                              {order.shipping_address.street}<br />
+                                              {order.shipping_address.commune_name}, {order.shipping_address.region_name}
                                               {order.shipping_address.department && (
                                                 <>
-                                                  <br />
-                                                  Depto: {order.shipping_address.department}
+                                                  <br />Depto: {order.shipping_address.department}
                                                 </>
                                               )}
                                             </span>
                                           </p>
                                           {order.shipping_details?.serviceName && (
-                                            <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-green-600'} mt-1 pl-6`}>
-                                              {order.shipping_details.serviceName}
+                                            <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-purple-600'} mt-1 pl-6`}>
+                                               {order.shipping_details.serviceName}
                                             </p>
                                           )}
                                         </div>
                                       )}
 
-                                      {/* DETALLE PARA ENVÍO POR PAGAR */}
                                       {isCashOnDelivery && (
                                         <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
                                           <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-amber-700'} flex items-start gap-2`}>
@@ -837,18 +903,25 @@ export default function OrderDetailPage() {
                                     </div>
                                   )}
 
-                                  {/* INFORMACIÓN DE DISPONIBILIDAD PARA RETIRO */}
                                   {step.key === "delivered" && (isActive || isCompleted) && (
                                     <div className="mt-3">
-                                      {isBranchPickup && selectedBranch && (
+                                      {(isBodegaPickup || isBranchPickup) && selectedBranch && (
                                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                                           <p className="text-sm text-green-700 flex items-start gap-2">
                                             <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
-                                              <strong>¡Pedido listo para retirar!</strong><br />
-                                              <span className="text-xs text-green-600">
-                                                Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs
-                                              </span>
+                                              <strong>¡Pedido retirado!</strong><br />
+                                              Retirado en: {selectedBranch?.name || 'nuestra bodega/sucursal'}
+                                            </span>
+                                          </p>
+                                        </div>
+                                      )}
+                                      {(isBodegaPickup || isBranchPickup) && !selectedBranch && (
+                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                          <p className="text-sm text-green-700 flex items-start gap-2">
+                                            <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                              <strong>¡Pedido retirado!</strong>
                                             </span>
                                           </p>
                                         </div>
@@ -859,9 +932,8 @@ export default function OrderDetailPage() {
                                             <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                             <span>
                                               <strong>¡Pedido entregado!</strong><br />
-                                              <span className="text-xs text-green-600">
-                                                Lunes a Viernes desde las 12:00 hrs hasta las 18:00 hrs
-                                              </span>
+                                              Entregado en: {order.shipping_address.street}<br />
+                                              {order.shipping_address.commune_name}, {order.shipping_address.region_name}
                                             </span>
                                           </p>
                                         </div>
@@ -1041,18 +1113,6 @@ export default function OrderDetailPage() {
                     </p>
                   )}
                 </div>
-
-                <Separator className="my-2" />
-
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <p>
-                    Teléfono: {order.customer_phone}
-                  </p>
-
-                  <p>
-                    Email: {order.customer_email}
-                  </p>
-                </div>
               </CardContent>
             </Card>
 
@@ -1094,6 +1154,14 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
+              {order.status === "delivered" && (
+                <Link href="/">
+                  <Button className="w-full">
+                    Comprar de nuevo
+                  </Button>
+                </Link>
+              )}
+
               <Button
                 variant="outline"
                 className="w-full"

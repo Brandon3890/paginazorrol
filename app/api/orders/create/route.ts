@@ -11,6 +11,18 @@ function generateOrderNumber(): string {
   return `ORD-${year}${month}${day}-${random}`
 }
 
+//  DIRECCIÓN DE LA BODEGA
+const BODEGA_ADDRESS = {
+  street: "Arcangel 1200, San Miguel",
+  hasNoNumber: false,
+  regionIso: 'CL-RM',
+  regionName: 'Región Metropolitana',
+  communeName: 'San Miguel',
+  postalCode: '8900000',
+  department: '',
+  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -80,39 +92,63 @@ export async function POST(request: NextRequest) {
 
     const orderNumber = generateOrderNumber()
 
-    // Validar dirección
-    if (!shippingAddress?.street || !shippingAddress?.communeName) {
+    // Validar dirección (solo si no es bodega pickup)
+    const isBodegaPickup = shippingType === 'bodega_pickup'
+    if (!isBodegaPickup && (!shippingAddress?.street || !shippingAddress?.communeName)) {
       return NextResponse.json(
         { error: 'Direccion de envio incompleta' },
         { status: 400 }
       )
     }
 
-    // Crear dirección
-    const addressResult = await query(
-      `INSERT INTO user_addresses 
-       (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        'Dirección de envío',
-        shippingAddress.street,
-        shippingAddress.hasNoNumber || 0,
-        shippingAddress.regionIso || 'CL-RM',
-        shippingAddress.regionName || 'Región Metropolitana',
-        shippingAddress.communeName,
-        shippingAddress.postalCode || '0000000',
-        shippingAddress.department || null,
-        shippingAddress.deliveryInstructions || null,
-        0
-      ]
-    ) as any
-    
-    const shippingAddressId = addressResult.insertId
-    console.log('Dirección creada')
+    let shippingAddressId = null
+
+    // Solo guardar dirección si no es bodega pickup
+    if (!isBodegaPickup && shippingAddress) {
+      // Verificar si ya existe una dirección igual para este usuario
+      const existingAddresses = await query(
+        `SELECT id FROM user_addresses 
+         WHERE user_id = ? 
+         AND street = ? 
+         AND commune_name = ?`,
+        [userId, shippingAddress.street, shippingAddress.communeName]
+      ) as any[]
+
+      if (existingAddresses.length > 0) {
+        shippingAddressId = existingAddresses[0].id
+      } else {
+        // Crear nueva dirección
+        const addressResult = await query(
+          `INSERT INTO user_addresses 
+           (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            'Dirección de envío',
+            shippingAddress.street,
+            shippingAddress.hasNoNumber || 0,
+            shippingAddress.regionIso || 'CL-RM',
+            shippingAddress.regionName || 'Región Metropolitana',
+            shippingAddress.communeName,
+            shippingAddress.postalCode || '0000000',
+            shippingAddress.department || null,
+            shippingAddress.deliveryInstructions || null,
+            0
+          ]
+        ) as any
+        
+        shippingAddressId = addressResult.insertId
+      }
+    }
 
     // Calcular impuestos
     const tax = Math.round(totals.total * 0.19)
+
+    //  USAR DIRECCIÓN DE BODEGA SI CORRESPONDE
+    let finalShippingAddress = shippingAddress
+    if (isBodegaPickup) {
+      finalShippingAddress = BODEGA_ADDRESS
+    }
 
     // Crear orden CON shipping_type y shipping_details
     const orderResult = await query(

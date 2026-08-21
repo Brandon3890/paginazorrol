@@ -169,6 +169,9 @@ export async function GET(
             shippingDetails.serviceName.toLowerCase().includes('envío')) {
           shippingType = 'home_delivery'
         }
+      } else if (shippingDetails.type === 'bodega_pickup') {
+        shippingType = 'bodega_pickup'
+        shippingMethodDisplay = 'Retiro en Bodega'
       }
     }
 
@@ -183,6 +186,9 @@ export async function GET(
           break
         case 'home_delivery':
           shippingMethodDisplay = 'Envío a Domicilio'
+          break
+        case 'bodega_pickup':
+          shippingMethodDisplay = 'Retiro en Bodega'
           break
         default:
           shippingMethodDisplay = 'Envío Estándar'
@@ -256,8 +262,12 @@ export async function PATCH(
     const body = await request.json()
     const { status } = body
 
-    if (!status || !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
-      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+    const validStatuses = ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'cancelled']
+    if (!status || !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: `Estado inválido. Debe ser uno de: ${validStatuses.join(', ')}` },
+        { status: 400 }
+      )
     }
 
     await query(

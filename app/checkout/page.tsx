@@ -23,7 +23,6 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useCheckoutTimer } from '@/hooks/use-checkout-timer'
 import { CheckoutTimer } from '@/components/checkout-timer'
-import { motion, AnimatePresence } from "framer-motion"
 
 interface ChilexpressOption {
   id?: string;
@@ -67,6 +66,35 @@ interface Region {
 
 interface RegionsResponse {
   regions: Region[];
+}
+
+//  OPCIÓN DE RETIRO EN BODEGA (GRATUITA) - CON DIRECCIÓN ACTUALIZADA
+const BODEGA_OPTION: ChilexpressOption = {
+  id: "bodega_pickup",
+  type: "bodega_pickup",
+  name: "Retiro en Bodega",
+  price: 0,
+  deliveryDescription: "Retira tu pedido en nuestra bodega sin costo de envío",
+  conditions: "Horario: Lunes a Viernes 10:00 - 18:00 hrs",
+  isBranchPickup: true,
+  branches: [{
+    id: 1,
+    name: "Bodega - Retiro en Tienda",
+    address: "Arcangel 1200, San Miguel",
+    telephone: "+56 2 1234 5678"
+  }]
+}
+
+//  DIRECCIÓN DE LA BODEGA PARA USAR EN LA ORDEN
+const BODEGA_ADDRESS = {
+  street: "Arcangel 1200, San Miguel",
+  hasNoNumber: false,
+  regionIso: 'CL-RM',
+  regionName: 'Región Metropolitana',
+  communeName: 'San Miguel',
+  postalCode: '8900000',
+  department: '',
+  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
 }
 
 const roundToInteger = (amount: number): number => Math.round(amount)
@@ -144,6 +172,11 @@ export default function CheckoutPage() {
 
   // Estado para términos y condiciones
   const [acceptedTerms, setAcceptedTerms] = useState(false)
+
+  //  Estado para controlar si se muestra el formulario de dirección
+  const [showAddressForm, setShowAddressForm] = useState(true)
+  //  Estado para saber si se seleccionó retiro en bodega
+  const [isBodegaSelected, setIsBodegaSelected] = useState(false)
 
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
@@ -287,38 +320,60 @@ export default function CheckoutPage() {
       
       const data = await response.json();
       
+      //  COMBINAR OPCIONES DE CHILEXPRESS CON LA OPCIÓN DE BODEGA
+      let allOptions: ChilexpressOption[] = []
+      
       if (data.success && data.options && data.options.length > 0) {
-        setChilexpressOptions(data.options);
-        setShippingError(null);
+        allOptions = data.options
+        setShippingError(null)
         
         const branchOption = data.options.find((o: any) => o.type === "branch_pickup");
         if (branchOption && branchOption.branches && branchOption.branches.length > 0) {
           setAvailableBranches(branchOption.branches);
         }
-        
-        let defaultOption = data.options[0];
-        const cashOnDeliveryOption = data.options.find((o: any) => o.isCashOnDelivery);
-        if (cashOnDeliveryOption) {
-          defaultOption = cashOnDeliveryOption;
-        }
-        
-        setSelectedChilexpressOption(defaultOption);
-        setShippingCost(defaultOption.price);
-        
-        const isExpress = defaultOption.serviceTypeCode === 2 || defaultOption.serviceTypeCode === 3;
-        setShippingMethod(isExpress ? "express" : "standard");
-        
-        if (defaultOption.type === "branch_pickup" && defaultOption.branches && defaultOption.branches.length > 0) {
-          setShowBranchSelector(true);
-        }
       } else {
-        setShippingError(data.error || "No se encontraron tarifas de envio");
+        setShippingError(data.error || "No se encontraron tarifas de envio")
       }
+      
+      //  SIEMPRE AGREGAR LA OPCIÓN DE RETIRO EN BODEGA
+      const hasBodegaOption = allOptions.some((o: any) => o.type === "bodega_pickup")
+      if (!hasBodegaOption) {
+        allOptions.push(BODEGA_OPTION)
+      }
+      
+      setChilexpressOptions(allOptions)
+      
+      // Seleccionar opción por defecto (bodega si existe, o la primera)
+      const defaultOption = allOptions.find((o: any) => o.type === "bodega_pickup") || allOptions[0]
+      if (defaultOption) {
+        setSelectedChilexpressOption(defaultOption)
+        setShippingCost(defaultOption.price)
+        
+        if (defaultOption.type === "bodega_pickup") {
+          setShippingMethod("bodega_pickup" as any)
+          setShowBranchSelector(false)
+          setSelectedBranch(null)
+          setIsBodegaSelected(true)
+          setShowAddressForm(false)
+        } else {
+          setShippingMethod(defaultOption.serviceTypeCode === 2 || defaultOption.serviceTypeCode === 3 ? "express" : "standard")
+          setIsBodegaSelected(false)
+          setShowAddressForm(true)
+        }
+      }
+      
     } catch (error) {
-      console.error("Error fetching shipping rates:", error);
-      setShippingError("Error al calcular el costo de envio");
+      console.error("Error fetching shipping rates:", error)
+      setShippingError("Error al calcular el costo de envio")
+      //  Incluso en error, mostrar la opción de bodega
+      setChilexpressOptions([BODEGA_OPTION])
+      setSelectedChilexpressOption(BODEGA_OPTION)
+      setShippingCost(0)
+      setShippingMethod("bodega_pickup" as any)
+      setIsBodegaSelected(true)
+      setShowAddressForm(false)
     } finally {
-      setIsLoadingShipping(false);
+      setIsLoadingShipping(false)
     }
   }, [items, getTotalPrice, setShippingCost, setShippingMethod]);
 
@@ -358,11 +413,11 @@ export default function CheckoutPage() {
   }, [isAuthenticated, user, loadUserAddresses, addressLoadAttempts, isGuestMode])
 
   useEffect(() => {
-    if (user?.addresses && user.addresses.length > 0 && !selectedAddress && !isGuestMode) {
+    if (user?.addresses && user.addresses.length > 0 && !selectedAddress && !isGuestMode && !isBodegaSelected) {
       const defaultAddress = user.addresses.find(addr => addr.isDefault) || user.addresses[0]
       setSelectedAddress(defaultAddress)
     }
-  }, [user?.addresses, selectedAddress, isGuestMode])
+  }, [user?.addresses, selectedAddress, isGuestMode, isBodegaSelected])
 
   // Validar formulario de invitado
   const validateGuestForm = () => {
@@ -507,8 +562,20 @@ export default function CheckoutPage() {
     const price = option.price ?? 0;
     setShippingCost(price);
     
+    //  DETERMINAR EL TIPO DE ENVÍO
+    if (option.type === "bodega_pickup") {
+      setShippingMethod("bodega_pickup" as any)
+      setIsBodegaSelected(true)
+      setShowAddressForm(false)
+      setShowBranchSelector(false)
+      setSelectedBranch(null)
+      return
+    }
+    
+    setIsBodegaSelected(false)
     const isExpress = option.serviceTypeCode === 2 || option.serviceTypeCode === 3;
     setShippingMethod(isExpress ? "express" : "standard");
+    setShowAddressForm(true)
     
     if (option.type === "branch_pickup" && option.branches && option.branches.length > 0) {
       setAvailableBranches(option.branches);
@@ -521,6 +588,20 @@ export default function CheckoutPage() {
     }
   };
 
+  //  Función para obtener direcciones únicas (evitar duplicados)
+  const getUniqueAddresses = (addresses: any[]) => {
+    const seen = new Set()
+    return addresses.filter(addr => {
+      const key = `${addr.street}-${addr.communeName}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
+  //  Obtener direcciones únicas para mostrar
+  const uniqueAddresses = user?.addresses ? getUniqueAddresses(user.addresses) : []
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -530,7 +611,10 @@ export default function CheckoutPage() {
       return
     }
     
-    if (!selectedAddress) {
+    //  VALIDACIÓN: Si no es retiro en bodega, debe tener dirección
+    const isBodegaPickupSelected = selectedChilexpressOption?.type === "bodega_pickup"
+    
+    if (!isBodegaPickupSelected && !selectedAddress) {
       toast({ title: "Error", description: "Selecciona o ingresa una dirección de envío", variant: "destructive" })
       return
     }
@@ -560,9 +644,12 @@ export default function CheckoutPage() {
       const isGuestUser = isGuestMode && !isAuthenticated
       const apiEndpoint = isGuestUser ? '/api/orders/create-guest' : '/api/orders/create'
       
-      // Determinar el tipo de envío
+      //  DETERMINAR EL TIPO DE ENVÍO
       let shippingType = 'standard'
-      if (selectedBranch) {
+      
+      if (isBodegaPickupSelected) {
+        shippingType = 'bodega_pickup'
+      } else if (selectedBranch) {
         shippingType = 'branch_pickup'
       } else if (selectedChilexpressOption?.isCashOnDelivery) {
         shippingType = 'cash_on_delivery'
@@ -570,6 +657,59 @@ export default function CheckoutPage() {
         shippingType = 'home_delivery'
       } else if (selectedChilexpressOption?.type === 'branch_pickup') {
         shippingType = 'branch_pickup'
+      }
+      
+      //  DIRECCIÓN DE ENVÍO: Si es retiro en bodega, usar dirección de la bodega
+      let shippingAddressData
+      if (isBodegaPickupSelected) {
+        shippingAddressData = BODEGA_ADDRESS
+      } else {
+        shippingAddressData = {
+          street: selectedAddress.street,
+          hasNoNumber: selectedAddress.hasNoNumber || false,
+          regionIso: selectedAddress.regionIso || 'CL-RM',
+          regionName: selectedAddress.regionName,
+          communeName: selectedAddress.communeName,
+          postalCode: selectedAddress.postalCode,
+          department: selectedAddress.department,
+          deliveryInstructions: selectedAddress.deliveryInstructions
+        }
+      }
+      
+      //  SHIPPING DETAILS
+      let shippingDetailsData
+      if (isBodegaPickupSelected) {
+        shippingDetailsData = {
+          type: 'bodega_pickup',
+          carrier: "Bodega",
+          serviceName: "Retiro en Bodega",
+          serviceCode: null,
+          finalWeight: null,
+          selectedBranch: {
+            id: 1,
+            name: "Bodega - Retiro en Tienda",
+            address: "Arcangel 1200, San Miguel",
+            telephone: "+56 2 1234 5678"
+          },
+          isCashOnDelivery: false,
+          actualShippingCost: 0,
+        }
+      } else {
+        shippingDetailsData = {
+          type: shippingType,
+          carrier: "Chilexpress",
+          serviceName: selectedChilexpressOption?.name || null,
+          serviceCode: selectedChilexpressOption?.typeCode || selectedChilexpressOption?.serviceTypeCode || null,
+          finalWeight: selectedChilexpressOption?.finalWeight || null,
+          selectedBranch: selectedBranch ? {
+            id: selectedBranch.id,
+            name: selectedBranch.name,
+            address: selectedBranch.address,
+            telephone: selectedBranch.telephone || null,
+          } : null,
+          isCashOnDelivery: selectedChilexpressOption?.isCashOnDelivery || false,
+          actualShippingCost: selectedChilexpressOption?.actualShippingCost || selectedChilexpressOption?.price || 0,
+        }
       }
       
       const orderPayload: any = {
@@ -588,42 +728,19 @@ export default function CheckoutPage() {
           phone: formData.phone,
           rut: isGuestUser ? guestData.rut : user?.rut
         },
-        shippingAddress: {
-          street: selectedAddress.street,
-          hasNoNumber: selectedAddress.hasNoNumber || false,
-          regionIso: selectedAddress.regionIso || 'CL-RM',
-          regionName: selectedAddress.regionName,
-          communeName: selectedAddress.communeName,
-          postalCode: selectedAddress.postalCode,
-          department: selectedAddress.department,
-          deliveryInstructions: selectedAddress.deliveryInstructions
-        },
+        shippingAddress: shippingAddressData,
         totals: {
           subtotal: subtotalBeforeDiscount,
           discount: discountAmount,
-          shipping,
-          total: finalTotal
+          shipping: isBodegaPickupSelected ? 0 : shipping,
+          total: isBodegaPickupSelected ? totalAfterDiscount : finalTotal
         },
         notes: formData.notes,
         couponId: appliedCoupon ? couponDetails?.id : null,
         couponCode: appliedCoupon,
-        shippingMethod: shippingMethod,
+        shippingMethod: isBodegaPickupSelected ? "bodega_pickup" : shippingMethod,
         shippingType: shippingType,
-        shippingDetails: {
-          type: shippingType,
-          carrier: "Chilexpress",
-          serviceName: selectedChilexpressOption?.name || null,
-          serviceCode: selectedChilexpressOption?.typeCode || selectedChilexpressOption?.serviceTypeCode || null,
-          finalWeight: selectedChilexpressOption?.finalWeight || null,
-          selectedBranch: selectedBranch ? {
-            id: selectedBranch.id,
-            name: selectedBranch.name,
-            address: selectedBranch.address,
-            telephone: selectedBranch.telephone || null,
-          } : null,
-          isCashOnDelivery: selectedChilexpressOption?.isCashOnDelivery || false,
-          actualShippingCost: selectedChilexpressOption?.actualShippingCost || selectedChilexpressOption?.price || 0,
-        },
+        shippingDetails: shippingDetailsData,
         acceptedTerms: acceptedTerms
       }
       
@@ -646,15 +763,15 @@ export default function CheckoutPage() {
       addOrder({
         userId: orderData.userId,
         items: items.map((item) => ({ ...item, id: item.id.toString() })),
-        customerInfo: { ...formData, address: selectedAddress.street, city: selectedAddress.communeName, region: selectedAddress.regionName, postalCode: selectedAddress.postalCode },
+        customerInfo: { ...formData, address: selectedAddress?.street || 'Retiro en bodega', city: selectedAddress?.communeName || 'San Miguel', region: selectedAddress?.regionName || 'Región Metropolitana', postalCode: selectedAddress?.postalCode || '8900000' },
         shippingAddress: selectedAddress,
         paymentInfo: { method: "transbank", status: "pending" },
-        totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping, tax: 0, total: finalTotal },
+        totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping: isBodegaPickupSelected ? 0 : shipping, tax: 0, total: isBodegaPickupSelected ? totalAfterDiscount : finalTotal },
         status: "pending",
         notes: formData.notes,
         couponId: appliedCoupon ? couponDetails?.id : null,
         couponCode: appliedCoupon,
-        shippingMethod: shippingMethod,
+        shippingMethod: isBodegaPickupSelected ? "bodega_pickup" : shippingMethod,
       })
 
       const paymentResponse = await fetch('/api/payment/create', {
@@ -662,7 +779,7 @@ export default function CheckoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           orderId: orderData.orderId, 
-          amount: finalTotal,
+          amount: isBodegaPickupSelected ? totalAfterDiscount : finalTotal,
           isGuest: isGuestUser,
           guestEmail: isGuestUser ? formData.email : undefined
         }),
@@ -975,26 +1092,70 @@ export default function CheckoutPage() {
           <Card>
             <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
             <CardContent>
-              {isAuthenticated && !isGuestMode ? (
+              {/*  SI ES RETIRO EN BODEGA, NO MOSTRAR FORMULARIO DE DIRECCIÓN */}
+              {isBodegaSelected ? (
+                <div className="p-4  border  rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <Store className="w-5 h-5  mt-0.5" />
+                    <div>
+                      <p className="font-medium ">Retiro en Bodega</p>
+                      <p className="text-sm  mt-1">
+                        Arcangel 1200, San Miguel
+                      </p>
+                      <p className="text-xs  mt-1">
+                         Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : isAuthenticated && !isGuestMode ? (
                 <>
                   {loadingAddresses ? (
                     <div className="text-center py-6">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                       <p className="mt-2">Cargando direcciones...</p>
                     </div>
-                  ) : user?.addresses && user.addresses.length > 0 ? (
+                  ) : uniqueAddresses.length > 0 ? (
                     <>
                       <Select value={selectedAddress?.id?.toString()} onValueChange={(value) => {
-                        const address = user.addresses!.find(addr => addr.id.toString() === value)
-                        setSelectedAddress(address)
+                        if (value === "bodega_pickup") {
+                          setIsBodegaSelected(true)
+                          setSelectedAddress(null)
+                          // Seleccionar la opción de bodega en el método de envío
+                          const bodegaOption = chilexpressOptions.find(o => o.type === "bodega_pickup")
+                          if (bodegaOption) {
+                            handleSelectShippingOption(bodegaOption)
+                          }
+                          return
+                        }
+                        setIsBodegaSelected(false)
+                        //  CORREGIDO: Verificar que user no sea null
+                        if (user && user.addresses) {
+                          const address = user.addresses.find(addr => addr.id.toString() === value)
+                          if (address) {
+                            setSelectedAddress(address)
+                          }
+                        }
                       }}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona una dirección" />
                         </SelectTrigger>
                         <SelectContent>
-                          {user.addresses.map((address) => (
+                          {/*  OPCIÓN DE RETIRO EN BODEGA */}
+                          <SelectItem value="bodega_pickup" className="text-green-600 font-medium">
+                            <div className="flex items-center gap-2">
+                              <Store className="w-4 h-4" />
+                              Retiro en Bodega (Sin costo)
+                            </div>
+                          </SelectItem>
+                          
+                          <Separator className="my-1" />
+                          
+                          {/*  DIRECCIONES ÚNICAS (sin duplicados) */}
+                          {uniqueAddresses.map((address) => (
                             <SelectItem key={address.id} value={address.id.toString()}>
                               {address.title} - {address.street}, {address.communeName}
+                              {address.isDefault && " (Predeterminada)"}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1131,7 +1292,7 @@ export default function CheckoutPage() {
                     Guardar dirección
                   </Button>
                 </form>
-              ) : selectedAddress && (
+              ) : selectedAddress && !isBodegaSelected && (
                 <div className="p-3 bg-muted rounded-lg">
                   <p className="font-medium">{selectedAddress.street}</p>
                   <p className="text-sm text-muted-foreground">
@@ -1157,7 +1318,7 @@ export default function CheckoutPage() {
             </CardContent>
           </Card>
 
-          {(isAuthenticated || isGuestMode) && selectedAddress && (
+          {(isAuthenticated || isGuestMode) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1171,26 +1332,18 @@ export default function CheckoutPage() {
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Calculando opciones de envío...</p>
                   </div>
-                ) : shippingError ? (
-                  <div className="text-center py-6 text-red-600">
-                    <p className="text-sm">{shippingError}</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => fetchShippingRates(selectedAddress?.communeName)} 
-                      className="mt-2"
-                    >
-                      Reintentar
-                    </Button>
+                ) : shippingError && chilexpressOptions.length === 1 && chilexpressOptions[0]?.type === "bodega_pickup" ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-muted-foreground">{shippingError}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Puedes retirar tu pedido en nuestra bodega sin costo</p>
                   </div>
                 ) : chilexpressOptions.length > 0 ? (
                   <div className="space-y-4">
                     <RadioGroup 
-                      value={selectedChilexpressOption?.id || selectedChilexpressOption?.serviceTypeCode?.toString() || selectedChilexpressOption?.type} 
+                      value={selectedChilexpressOption?.id || selectedChilexpressOption?.type} 
                       onValueChange={(value) => {
                         const option = chilexpressOptions.find(o => 
                           o.id === value || 
-                          o.serviceTypeCode?.toString() === value ||
                           o.type === value
                         );
                         if (option) handleSelectShippingOption(option);
@@ -1198,7 +1351,8 @@ export default function CheckoutPage() {
                     >
                       <div className="space-y-3">
                         {chilexpressOptions.map((option) => {
-                          const uniqueId = option.id || `${option.type}_${option.serviceTypeCode || Math.random()}`;
+                          const uniqueId = option.id || option.type || `option_${Math.random()}`;
+                          const isBodegaPickup = option.type === "bodega_pickup";
                           const isCashOnDelivery = option.isCashOnDelivery || option.type === "cash_on_delivery";
                           const isBranchPickup = option.type === "branch_pickup";
                           const price = option.price ?? 0;
@@ -1207,6 +1361,7 @@ export default function CheckoutPage() {
                             <div
                               key={uniqueId}
                               className={`flex items-start space-x-3 border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                                isBodegaPickup ? "bg-green-50 border-green-200" :
                                 isCashOnDelivery ? "bg-amber-50 border-amber-200" : 
                                 isBranchPickup ? "bg-blue-50 border-blue-200" : ""
                               }`}
@@ -1215,7 +1370,8 @@ export default function CheckoutPage() {
                               <Label htmlFor={uniqueId} className="flex-1 cursor-pointer">
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
-                                    <div className="font-medium">
+                                    <div className="font-medium flex items-center gap-2">
+                                      {isBodegaPickup && <Store className="w-4 h-4 text-green-600" />}
                                       {option.name}
                                     </div>
                                     <div className="text-sm text-muted-foreground mt-1">
@@ -1309,7 +1465,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {(isAuthenticated || isGuestMode) && selectedAddress && (
+          {(isAuthenticated || isGuestMode) && selectedChilexpressOption && (
             <Card>
               <CardHeader><CardTitle>Método de Pago</CardTitle></CardHeader>
               <CardContent>
@@ -1321,7 +1477,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {(isAuthenticated || isGuestMode) && selectedAddress && (
+          {(isAuthenticated || isGuestMode) && selectedChilexpressOption && (
             <Card>
               <CardHeader><CardTitle>Notas del Pedido</CardTitle></CardHeader>
               <CardContent>
@@ -1402,7 +1558,7 @@ export default function CheckoutPage() {
                   </div>
                 )}
                 
-                {selectedChilexpressOption?.isBranchPickup && selectedBranch && (
+                {(selectedChilexpressOption?.isBranchPickup || selectedChilexpressOption?.type === "bodega_pickup") && selectedBranch && (
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 flex items-start gap-2">
                       <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
@@ -1448,12 +1604,12 @@ export default function CheckoutPage() {
                 size="lg" 
                 disabled={
                   isProcessing || 
-                  !selectedAddress || 
-                  !selectedChilexpressOption || 
+                  (!selectedChilexpressOption) || 
                   isLoadingShipping || 
                   (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch) || 
                   (!isAuthenticated && !isGuestMode) ||
-                  !acceptedTerms
+                  !acceptedTerms ||
+                  (!isBodegaSelected && !selectedAddress)
                 } 
                 onClick={handleSubmit}
               >
@@ -1465,6 +1621,8 @@ export default function CheckoutPage() {
                   "Selecciona una opción arriba"
                 ) : !acceptedTerms ? (
                   "Acepta los Términos y Condiciones"
+                ) : (!isBodegaSelected && !selectedAddress) ? (
+                  "Ingresa una dirección de envío"
                 ) : (
                   `Pagar $${formatCLP(finalTotal)}`
                 )}
@@ -1476,10 +1634,17 @@ export default function CheckoutPage() {
                 </p>
               )}
               
-              {!acceptedTerms && (isAuthenticated || isGuestMode) && selectedAddress && selectedChilexpressOption && (
+              {!acceptedTerms && (isAuthenticated || isGuestMode) && selectedChilexpressOption && (
                 <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   Debes aceptar los Términos y Condiciones para continuar
+                </p>
+              )}
+              
+              {(!isBodegaSelected && !selectedAddress) && (
+                <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Debes ingresar una dirección de envío para continuar
                 </p>
               )}
               

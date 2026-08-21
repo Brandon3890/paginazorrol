@@ -21,11 +21,13 @@ import {
   User,
   Circle,
   Store,
-  CreditCard
+  CreditCard,
+  AlertCircle
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 interface OrderItem {
   id: number
@@ -50,7 +52,7 @@ interface Order {
   notes?: string
   coupon_code?: string
   shipping_method?: string
-  shipping_type?: 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'standard'
+  shipping_type?: 'home_delivery' | 'branch_pickup' | 'cash_on_delivery' | 'standard' | 'bodega_pickup'
   shipping_details?: {
     type?: string
     carrier?: string
@@ -83,31 +85,45 @@ interface Order {
   }
 }
 
-//  ESTADOS
+//  NUEVOS ESTADOS - Coinciden con el flujo de seguimiento
 const statusConfig = {
-  pending: { label: "Pago Recibido", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 0 },
-  processing: { label: "Validando Compra", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
-  shipped: { label: "En Camino", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
-  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 3 },
+  pending: { label: "Pago Recibido", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 0 },
+  processing: { label: "Validando Compra", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 1 },
+  confirmed: { label: "Compra Confirmada", icon: Package, color: "bg-blue-100 text-blue-800 border-blue-200", step: 2 },
+  shipped: { label: "En Camino", icon: Truck, color: "bg-purple-100 text-purple-800 border-purple-200", step: 3 },
+  delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 4 },
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-// FLUJO DE ESTADOS
+//  NUEVO FLUJO DE ESTADOS - Coincide con el orden de seguimiento
 const orderSteps = [
   { key: "pending", label: "Pago Recibido", description: "Pago confirmado correctamente." },
-  { key: "processing", label: "Validando Compra", description: "Emisión de boleta y preparación." },
+  { key: "processing", label: "Validando Compra", description: "Revisando detalles del pedido." },
+  { key: "confirmed", label: "Compra Confirmada", description: "Emisión de boleta y preparación." },
   { key: "shipped", label: "En Camino", description: "Pedido en ruta hacia el destino." },
-  { key: "delivered", label: "Disponible para Retiro", description: "Lunes a Viernes 12:00-18:00" },
+  { key: "delivered", label: "Entregado", description: "Pedido recibido por el cliente." },
 ]
 
+//  OPCIONES DE ESTADOS PARA EL ADMIN
 const statusOptions = [
   { value: "all", label: "Todos los estados" },
   { value: "pending", label: "Pago Recibido" },
   { value: "processing", label: "Validando Compra" },
+  { value: "confirmed", label: "Compra Confirmada" },
   { value: "shipped", label: "En Camino" },
-  { value: "delivered", label: "Disponible para Retiro" },
+  { value: "delivered", label: "Entregado" },
   { value: "cancelled", label: "Cancelado" },
 ]
+
+//  MAPEO DE PASOS PARA EL TIMELINE
+const statusToStepMap: Record<string, number> = {
+  'pending': 0,
+  'processing': 1,
+  'confirmed': 2,
+  'shipped': 3,
+  'delivered': 4,
+  'cancelled': -1,
+}
 
 // Función para calcular Neto e IVA desde un monto que ya incluye IVA
 const calculateTaxBreakdown = (amountWithIVA: number) => {
@@ -116,25 +132,29 @@ const calculateTaxBreakdown = (amountWithIVA: number) => {
   return { neto, iva }
 }
 
-// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
+//  FUNCIÓN MEJORADA PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
 const getShippingMethodDisplay = (order: Order | null) => {
   if (!order) return 'Método no especificado'
   
   const shippingDetails = order.shipping_details
   const shippingType = order.shipping_type || ''
   
-  if (shippingDetails?.selectedBranch) {
+  // 1. Si tiene sucursal seleccionada en detalles (NO bodega)
+  if (shippingDetails?.selectedBranch && shippingType !== 'bodega_pickup') {
     return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
   }
   
+  // 2. Si es envío por pagar
   if (shippingDetails?.isCashOnDelivery) {
     return 'Envío por Pagar'
   }
   
+  // 3. Si tiene nombre del servicio
   if (shippingDetails?.serviceName) {
     return shippingDetails.serviceName
   }
   
+  // 4. Determinar por shipping_type
   if (shippingType) {
     switch (shippingType) {
       case 'branch_pickup':
@@ -143,15 +163,21 @@ const getShippingMethodDisplay = (order: Order | null) => {
         return 'Envío por Pagar'
       case 'home_delivery':
         return 'Envío a Domicilio'
+      case 'standard':
+        return 'Envío Estándar'
+      case 'bodega_pickup':
+        return 'Retiro en Bodega'
       default:
         break
     }
   }
   
+  // 5. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
   
+  // 6. Si tiene costo de envío, asumimos que es a domicilio (fallback)
   if (order.shipping > 0) {
     return 'Envío a Domicilio'
   }
@@ -159,9 +185,42 @@ const getShippingMethodDisplay = (order: Order | null) => {
   return 'Método no especificado'
 }
 
+//  FUNCIÓN PARA DETERMINAR SI ES RETIRO EN BODEGA
+const isBodegaPickup = (order: Order | null) => {
+  if (!order) return false
+  return order.shipping_type === 'bodega_pickup'
+}
+
+//  FUNCIÓN PARA DETERMINAR SI ES RETIRO EN SUCURSAL
+const isBranchPickup = (order: Order | null) => {
+  if (!order) return false
+  return order.shipping_type === 'branch_pickup' || 
+         order.shipping_details?.selectedBranch !== undefined
+}
+
+//  FUNCIÓN PARA DETERMINAR SI ES ENVÍO A DOMICILIO
+const isHomeDelivery = (order: Order | null) => {
+  if (!order) return false
+  return order.shipping_type === 'home_delivery'
+}
+
+//  FUNCIÓN PARA DETERMINAR SI ES ENVÍO POR PAGAR
+const isCashOnDelivery = (order: Order | null) => {
+  if (!order) return false
+  return order.shipping_type === 'cash_on_delivery' || 
+         order.shipping_details?.isCashOnDelivery === true
+}
+
+//  FUNCIÓN PARA OBTENER LA SUCURSAL SELECCIONADA
+const getSelectedBranch = (order: Order | null) => {
+  if (!order) return null
+  return order.shipping_details?.selectedBranch || null
+}
+
 export default function AdminOrdersPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuthStore()
   const router = useRouter()
+  const { toast } = useToast()
   
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -228,16 +287,20 @@ export default function AdminOrdersPage() {
   }
 
   const updateOrderStatus = async (orderId: number, newStatus: string) => {
-    // Validar que el estado sea válido
-    const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+    const validStatuses = ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'cancelled']
     if (!validStatuses.includes(newStatus)) {
-      setError('Estado no válido')
+      toast({
+        title: "Error",
+        description: "Estado no válido",
+        variant: "destructive",
+        duration: 3000,
+      })
       return
     }
 
     setUpdatingStatus(orderId)
     try {
-      const response = await fetch(`/api/admin/orders/${orderId}`, {
+      const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -254,14 +317,25 @@ export default function AdminOrdersPage() {
         setEditingOrderId(null)
         setSelectedStatus("")
         setError(null)
+        
+        const statusLabel = statusConfig[newStatus as keyof typeof statusConfig]?.label || newStatus
+        toast({
+          title: " Estado actualizado",
+          description: `Pedido #${orderId} actualizado a: ${statusLabel}`,
+          duration: 3000,
+        })
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Error al actualizar el estado')
       }
     } catch (error) {
       console.error('Error updating order status:', error)
-      setError(error instanceof Error ? error.message : 'Error al actualizar el estado del pedido')
-      // Revertir la selección
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Error al actualizar el estado del pedido',
+        variant: "destructive",
+        duration: 5000,
+      })
       setEditingOrderId(null)
       setSelectedStatus("")
     } finally {
@@ -278,10 +352,8 @@ export default function AdminOrdersPage() {
   }
 
   const getCurrentStep = (order: Order) => {
-    const status = order.status as keyof typeof statusConfig
-    const config = statusConfig[status]
-    if (!config || status === 'cancelled') return -1
-    return config.step
+    if (order.status === 'cancelled') return -1
+    return statusToStepMap[order.status] ?? 0
   }
 
   const filteredOrders = orders.filter(order => {
@@ -302,6 +374,10 @@ export default function AdminOrdersPage() {
   const totalOrders = orders.length
   const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0)
   const pendingOrders = orders.filter(order => order.status === 'pending').length
+  const processingOrders = orders.filter(order => order.status === 'processing').length
+  const confirmedOrders = orders.filter(order => order.status === 'confirmed').length
+  const shippedOrders = orders.filter(order => order.status === 'shipped').length
+  const deliveredOrders = orders.filter(order => order.status === 'delivered').length
   const paidOrders = orders.filter(order => order.payment_status === 'paid').length
 
   if (authLoading) {
@@ -349,7 +425,6 @@ export default function AdminOrdersPage() {
     )
   }
 
-  // Error 
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -412,48 +487,71 @@ export default function AdminOrdersPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* ESTADÍSTICAS */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Pedidos</p>
-                  <p className="text-2xl font-bold">{totalOrders}</p>
+                  <p className="text-xs font-medium text-muted-foreground">Pagos Recibidos</p>
+                  <p className="text-xl font-bold text-green-600">{pendingOrders}</p>
                 </div>
-                <Package className="w-8 h-8 text-blue-500" />
+                <CheckCircle className="w-5 h-5 text-green-500" />
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Ingresos Totales</p>
-                  <p className="text-2xl font-bold">{formatPrice(totalRevenue)}</p>
+                  <p className="text-xs font-medium text-muted-foreground">Validando</p>
+                  <p className="text-xl font-bold text-yellow-600">{processingOrders}</p>
                 </div>
-                <Users className="w-8 h-8 text-green-500" />
+                <Clock className="w-5 h-5 text-yellow-500" />
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Pendientes</p>
-                  <p className="text-2xl font-bold">{pendingOrders}</p>
+                  <p className="text-xs font-medium text-muted-foreground">Confirmados</p>
+                  <p className="text-xl font-bold text-blue-600">{confirmedOrders}</p>
                 </div>
-                <Clock className="w-8 h-8 text-yellow-500" />
+                <Package className="w-5 h-5 text-blue-500" />
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Pagados</p>
-                  <p className="text-2xl font-bold">{paidOrders}</p>
+                  <p className="text-xs font-medium text-muted-foreground">En Camino</p>
+                  <p className="text-xl font-bold text-purple-600">{shippedOrders}</p>
                 </div>
-                <CheckCircle className="w-8 h-8 text-green-500" />
+                <Truck className="w-5 h-5 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Entregados</p>
+                  <p className="text-xl font-bold text-green-600">{deliveredOrders}</p>
+                </div>
+                <CheckCircle className="w-5 h-5 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Total Ingresos</p>
+                  <p className="text-xl font-bold">{formatPrice(totalRevenue)}</p>
+                </div>
+                <Users className="w-5 h-5 text-blue-500" />
               </div>
             </CardContent>
           </Card>
@@ -527,12 +625,13 @@ export default function AdminOrdersPage() {
               const currentStep = getCurrentStep(order)
               const isCancelled = order.status === 'cancelled'
 
-              // Obtener método de envío
+              //  USAR LAS NUEVAS FUNCIONES PARA OBTENER LA INFORMACIÓN DE ENVÍO
               const shippingMethodDisplay = getShippingMethodDisplay(order)
-              const isBranchPickup = order.shipping_type === 'branch_pickup' || order.shipping_details?.selectedBranch !== undefined
-              const isHomeDelivery = order.shipping_type === 'home_delivery'
-              const isCashOnDelivery = order.shipping_type === 'cash_on_delivery' || order.shipping_details?.isCashOnDelivery === true
-              const selectedBranch = order.shipping_details?.selectedBranch
+              const bodegaPickup = isBodegaPickup(order)
+              const branchPickup = isBranchPickup(order)
+              const homeDelivery = isHomeDelivery(order)
+              const cashOnDelivery = isCashOnDelivery(order)
+              const selectedBranch = getSelectedBranch(order)
 
               return (
                 <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -591,15 +690,14 @@ export default function AdminOrdersPage() {
                   </CardHeader>
                   
                   <CardContent className="pt-0 space-y-4 lg:space-y-6">
-                    {/* Timeline de estados con descripciones */}
+                    {/* TIMELINE DE ESTADOS */}
                     {!isCancelled ? (
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex items-center justify-between relative">
+                      <div className="bg-gray-50 rounded-lg p-3 overflow-x-auto">
+                        <div className="flex items-center justify-between relative min-w-[600px]">
                           {orderSteps.map((step, index) => {
-                            const isCompleted = currentStep === 3 ? index <= currentStep : currentStep > index
-                            const isActive = currentStep === index && currentStep !== 3
-                            const isLast = index === orderSteps.length - 1
-                            
+                            const isCompleted = currentStep > index
+                            const isActive = currentStep === index
+
                             let stepStatus = 'pending'
                             if (isCompleted) stepStatus = 'completed'
                             else if (isActive) stepStatus = 'active'
@@ -616,8 +714,34 @@ export default function AdminOrdersPage() {
                             }
 
                             let stepDescription = step.description
-                            if (step.key === 'shipped' && (isCompleted || isActive)) {
-                              stepDescription = shippingMethodDisplay
+                            if (step.key === 'pending' && (isActive || isCompleted)) {
+                              if (order.payment_status === 'paid') {
+                                stepDescription = ' Pago aprobado'
+                              } else if (order.payment_status === 'failed') {
+                                stepDescription = '❌ Pago rechazado'
+                              }
+                            }
+                            if (step.key === 'shipped' && (isActive || isCompleted)) {
+                              if (bodegaPickup) {
+                                stepDescription = ' Listo para retirar en bodega'
+                              } else if (branchPickup) {
+                                stepDescription = ' Listo para retirar'
+                              } else if (homeDelivery) {
+                                stepDescription = ' En ruta'
+                              } else {
+                                stepDescription = shippingMethodDisplay
+                              }
+                            }
+                            if (step.key === 'delivered' && (isActive || isCompleted)) {
+                              if (bodegaPickup) {
+                                stepDescription = ' Retirado por cliente'
+                              } else if (branchPickup) {
+                                stepDescription = ' Retirado por cliente'
+                              } else if (homeDelivery) {
+                                stepDescription = ' Entregado en domicilio'
+                              } else {
+                                stepDescription = ' Entregado con éxito'
+                              }
                             }
 
                             return (
@@ -646,7 +770,7 @@ export default function AdminOrdersPage() {
                                     {step.label}
                                   </span>
                                   <span className={`
-                                    text-[8px] text-center mt-0.5 max-w-[80px]
+                                    text-[8px] text-center mt-0.5 max-w-[80px] leading-tight
                                     ${stepStatus === 'completed' ? 'text-green-500' :
                                       stepStatus === 'active' ? 'text-blue-500' :
                                       'text-gray-400'}
@@ -654,7 +778,7 @@ export default function AdminOrdersPage() {
                                     {stepDescription}
                                   </span>
                                 </div>
-                                {!isLast && (
+                                {index < orderSteps.length - 1 && (
                                   <div className={`flex-1 h-0.5 ${getLineColor()} transition-colors duration-300`} />
                                 )}
                               </div>
@@ -727,28 +851,45 @@ export default function AdminOrdersPage() {
                             <p>{order.customer_email}</p>
                             <p>{order.customer_phone}</p>
                             
-                            {/* Mostrar método de envío */}
+                            {/*  MOSTRAR EL MÉTODO DE ENVÍO CORRECTO */}
                             <p className="text-xs font-medium text-foreground mt-2">
                               Método: {shippingMethodDisplay}
                             </p>
                             
-                            {/* Mostrar tipo de envío */}
-                            {isBranchPickup && selectedBranch && (
-                              <div className="bg-blue-50 border border-blue-200 rounded p-2 mt-2">
-                                <p className="text-xs text-blue-700 flex items-start gap-1.5">
+                            {/* 🔥 DETALLE DE RETIRO EN BODEGA */}
+                            {bodegaPickup && (
+                              <div className="border rounded p-2 mt-2">
+                                <p className="text-xs flex items-start gap-1.5">
                                   <Store className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                   <span>
-                                    <strong>Retiro en Sucursal:</strong><br />
-                                    {selectedBranch.name}<br />
-                                    {selectedBranch.address}
+                                    <strong>Retiro en Bodega:</strong><br />
+                                    Arcangel 1200, San Miguel
                                   </span>
                                 </p>
                               </div>
                             )}
                             
-                            {isHomeDelivery && order.shipping_address && (
-                              <div className="bg-green-50 border border-green-200 rounded p-2 mt-2">
-                                <p className="text-xs text-green-700 flex items-start gap-1.5">
+                            {/*  DETALLE DE RETIRO EN SUCURSAL */}
+                            {branchPickup && selectedBranch && !bodegaPickup && (
+                              <div className="border rounded p-2 mt-2">
+                                <p className="text-xs flex items-start gap-1.5">
+                                  <Store className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>
+                                    <strong>Retiro en Sucursal:</strong><br />
+                                    {selectedBranch.name}<br />
+                                    {selectedBranch.address}
+                                    {selectedBranch.telephone && (
+                                      <> <br /> {selectedBranch.telephone}</>
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
+                            )}
+                            
+                            {/*  DETALLE DE ENVÍO A DOMICILIO */}
+                            {homeDelivery && order.shipping_address && (
+                              <div className="border rounded p-2 mt-2">
+                                <p className="text-xs flex items-start gap-1.5">
                                   <Truck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                   <span>
                                     <strong>Envío a Domicilio:</strong><br />
@@ -762,7 +903,8 @@ export default function AdminOrdersPage() {
                               </div>
                             )}
                             
-                            {isCashOnDelivery && (
+                            {/*  DETALLE DE ENVÍO POR PAGAR */}
+                            {cashOnDelivery && (
                               <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2">
                                 <p className="text-xs text-amber-700 flex items-start gap-1.5">
                                   <CreditCard className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />

@@ -147,13 +147,22 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  // 🔥 FUNCIÓN CORREGIDA - Misma que usa el panel de usuario
-  const getImageUrl = (url?: string) => {
-    if (!url) return "/placeholder.svg"
-    if (url.startsWith("http")) return url
-    if (url.startsWith("/")) return url
-    if (url.startsWith("uploads/")) return `/${url}`
-    return `/uploads/products/${url}`
+  const getImageUrl = (imagePath: string | undefined) => {
+    if (!imagePath) return "/placeholder.svg"
+    
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    if (imagePath.startsWith('/uploads/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    if (imagePath.startsWith('/')) {
+      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+    }
+    
+    return "/placeholder.svg"
   }
 
   const formatPaymentMethod = (method: string) => {
@@ -488,6 +497,8 @@ export default function AdminOrderDetailPage() {
                                 {item.category || "General"}
                               </Badge>
                               <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
                             </div>
                           </div>
                           <div className="text-right">

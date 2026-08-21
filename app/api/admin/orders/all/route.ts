@@ -1,3 +1,4 @@
+// app/api/admin/orders/all/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -22,9 +23,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para ver todos los pedidos' }, { status: 403 })
     }
 
-    // Obtener todas las órdenes de todos los usuarios incluyendo is_guest
     const orders = await query(
-      `SELECT o.*, u.email, u.first_name, u.last_name, u.phone, u.is_guest 
+      `SELECT 
+        o.*, 
+        u.email, 
+        u.first_name, 
+        u.last_name, 
+        u.phone, 
+        u.is_guest,
+        o.shipping_type,
+        o.shipping_details
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        ORDER BY o.created_at DESC`
@@ -78,6 +86,18 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // 🔥 PARSEAR shipping_details
+        let shippingDetails = null
+        if (order.shipping_details) {
+          try {
+            shippingDetails = typeof order.shipping_details === 'string' 
+              ? JSON.parse(order.shipping_details) 
+              : order.shipping_details
+          } catch (e) {
+            console.error('Error parsing shipping_details:', e)
+          }
+        }
+
         return {
           id: order.id,
           order_number: order.order_number,
@@ -91,6 +111,8 @@ export async function GET(request: NextRequest) {
           notes: order.notes || '',
           coupon_code: order.coupon_code || '',
           shipping_method: order.payment_method || '',
+          shipping_type: order.shipping_type || '',
+          shipping_details: shippingDetails,
           created_at: order.created_at,
           updated_at: order.updated_at,
           items: itemsWithImages.map((item: any) => ({
