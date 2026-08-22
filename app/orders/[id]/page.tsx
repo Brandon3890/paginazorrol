@@ -113,7 +113,6 @@ const getOrderSteps = (shippingType: string | undefined) => {
     shippedLabel = "Retiro disponible"
     shippedDescription = "Tu pedido está disponible para retiro en sucursal."
   } else if (shippingType === 'bodega_pickup') {
-    //  PARA BODEGA: "Disponible en bodega"
     shippedLabel = "Disponible en bodega"
     shippedDescription = "Tu pedido está disponible para retiro en nuestra bodega."
   }
@@ -162,6 +161,22 @@ const statusToStepMap: Record<string, number> = {
   'cancelled': -1,
 }
 
+//  FUNCIÓN PARA OBTENER EL ESTADO DEL PAGO MOSTRADO
+const getPaymentStatusDisplay = (paymentStatus: string) => {
+  switch (paymentStatus) {
+    case 'paid':
+      return 'Pago verificado y confirmado'
+    case 'pending':
+      return 'Pago pendiente'
+    case 'failed':
+      return 'Pago rechazado'
+    case 'refunded':
+      return 'Reembolsado'
+    default:
+      return 'Estado del pago'
+  }
+}
+
 //  FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
 const getShippingMethodDisplay = (order: Order | null): string => {
   if (!order) return 'Método no especificado'
@@ -174,17 +189,22 @@ const getShippingMethodDisplay = (order: Order | null): string => {
     return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
   }
   
-  // 2. Si tiene detalles de envío con envío por pagar
+  // 2. Si es bodega pickup
+  if (shippingType === 'bodega_pickup') {
+    return 'Retiro en Bodega'
+  }
+  
+  // 3. Si tiene detalles de envío con envío por pagar
   if (shippingDetails?.isCashOnDelivery) {
     return 'Envío por Pagar - Paga al momento de la entrega'
   }
   
-  // 3. Si tiene nombre del servicio en detalles
+  // 4. Si tiene nombre del servicio en detalles
   if (shippingDetails?.serviceName) {
     return shippingDetails.serviceName
   }
   
-  // 4. Usando un objeto de mapeo
+  // 5. Usando un objeto de mapeo
   const shippingTypeMap: Record<string, string> = {
     'branch_pickup': 'Retiro en Sucursal',
     'cash_on_delivery': 'Envío por Pagar - Paga al momento de la entrega',
@@ -200,12 +220,12 @@ const getShippingMethodDisplay = (order: Order | null): string => {
     return shippingTypeMap[shippingType]
   }
   
-  // 5. Si tiene shipping_method y no es "transbank"
+  // 6. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
   
-  // 6. Si tiene costo de envío, asumimos que es a domicilio
+  // 7. Si tiene costo de envío, asumimos que es a domicilio
   if (order.shipping > 0) {
     if (order.shipping_address?.street) {
       return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
@@ -517,6 +537,10 @@ export default function OrderDetailPage() {
   //  DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
   const isDelivered = order.status === 'delivered'
 
+  //  ESTADO DEL PAGO CORREGIDO
+  const paymentStatusDisplay = getPaymentStatusDisplay(order?.payment_status || '')
+  const isPaymentRejected = order?.payment_status === 'failed'
+
   //  OBTENER LOS PASOS CON ETIQUETAS DINÁMICAS
   const orderSteps = getOrderSteps(order?.shipping_type)
 
@@ -676,7 +700,7 @@ export default function OrderDetailPage() {
                           if (order.payment_status === 'paid') {
                             stepDescription = ' Tu pago ha sido aprobado y recibido correctamente.'
                           } else if (order.payment_status === 'failed') {
-                            stepDescription = '❌ Tu pago ha sido rechazado. Por favor, contacta con soporte.'
+                            stepDescription = ' Tu pago ha sido rechazado. Por favor, contacta con soporte.'
                           } else {
                             stepDescription = 'Tu pago ha sido recibido exitosamente.'
                           }
@@ -803,7 +827,6 @@ export default function OrderDetailPage() {
                                   {step.key === "shipped" && (isActive || isCompleted) && (
                                     <div className="mt-3 space-y-2">
                                       <div className="flex flex-wrap gap-2">
-                                        {/*  SOLO RETIRO EN BODEGA - SIN ENVÍO GRATIS */}
                                         {isBodegaPickup && (
                                           <Badge variant="outline" className={`text-xs ${isDelivered ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
                                             <Store className="w-3 h-3 mr-1" />
@@ -828,10 +851,13 @@ export default function OrderDetailPage() {
                                             Envío por Pagar
                                           </Badge>
                                         )}
-                                        {/*  ELIMINADO: Envío Gratis para bodega */}
+                                        {order.shipping === 0 && order.total > 0 && !isBodegaPickup && (
+                                          <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
+                                             Envío Gratis
+                                          </Badge>
+                                        )}
                                       </div>
 
-                                      {/*  DETALLE DE BODEGA - CORREGIDO */}
                                       {isBodegaPickup && (
                                         <div className={`p-3 rounded-lg ${isDelivered ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
                                           <p className={`text-sm ${isDelivered ? 'text-green-700' : 'text-blue-700'} flex items-start gap-2`}>
@@ -1127,7 +1153,10 @@ export default function OrderDetailPage() {
 
               <CardContent className="pt-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 ">
+                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 bg-blue-600">
+                    <span className="text-white text-xs font-bold">
+                      TB
+                    </span>
                   </div>
 
                   <div>
@@ -1135,14 +1164,9 @@ export default function OrderDetailPage() {
                       Transbank Webpay
                     </div>
 
-                    <div className="text-xs text-muted-foreground">
-                      {order.payment_status === "paid"
-                        ? "Pago verificado y confirmado"
-                        : order.payment_status === "pending"
-                        ? "Pago pendiente"
-                        : order.payment_status === "failed"
-                        ? "Pago fallido"
-                        : "Estado del pago"}
+                    {/*  ESTADO DEL PAGO CORREGIDO */}
+                    <div className={`text-xs ${isPaymentRejected ? 'text-red-600' : 'text-muted-foreground'}`}>
+                      {paymentStatusDisplay}
                     </div>
                   </div>
                 </div>
@@ -1151,6 +1175,14 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
+              {order.status === "delivered" && (
+                <Link href="/">
+                  <Button className="w-full">
+                    Comprar de nuevo
+                  </Button>
+                </Link>
+              )}
+
               <Button
                 variant="outline"
                 className="w-full"
@@ -1197,6 +1229,13 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               )}
+
+              <Link href="/orders">
+                <Button variant="ghost" className="w-full">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Ver todos mis pedidos
+                </Button>
+              </Link>
             </div>
 
           </div>

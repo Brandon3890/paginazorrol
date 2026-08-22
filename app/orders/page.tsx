@@ -105,6 +105,22 @@ const getShippingTitle = (order: Order) => {
   }
 }
 
+//  Función para obtener el estado del pago mostrado
+const getPaymentStatusDisplay = (paymentStatus: string) => {
+  switch (paymentStatus) {
+    case 'paid':
+      return 'Pagado'
+    case 'pending':
+      return 'Pago pendiente'
+    case 'failed':
+      return 'Pago rechazado'
+    case 'refunded':
+      return 'Reembolsado'
+    default:
+      return paymentStatus
+  }
+}
+
 // Función para calcular Neto e IVA desde un monto que ya incluye IVA
 const calculateTaxBreakdown = (amountWithIVA: number) => {
   const neto = Math.round(amountWithIVA / 1.19)
@@ -258,6 +274,10 @@ export default function OrdersPage() {
               const isBodega = order.shipping_type === 'bodega_pickup'
               const isBranch = order.shipping_type === 'branch_pickup'
               const isHomeDelivery = order.shipping_type === 'home_delivery'
+              
+              //  ESTADO DEL PAGO CORREGIDO
+              const paymentStatusDisplay = getPaymentStatusDisplay(order.payment_status)
+              const isPaymentRejected = order.payment_status === 'failed'
 
               return (
                 <Card key={order.id} className="overflow-hidden">
@@ -288,12 +308,6 @@ export default function OrdersPage() {
                         <Badge className={`${statusInfo.color} border`}>
                           <StatusIcon className="w-3 h-3 mr-1" />
                           {statusInfo.label}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {order.payment_status === 'paid' ? 'Pagado' : 
-                           order.payment_status === 'pending' ? 'Pago pendiente' :
-                           order.payment_status === 'failed' ? 'Pago fallido' : 
-                           order.payment_status}
                         </Badge>
                       </div>
                     </div>
@@ -355,13 +369,12 @@ export default function OrdersPage() {
                           
                           {/*  MOSTRAR MÉTODO DE ENVÍO */}
                           <p className="text-xs text-muted-foreground">
-                             {shippingMethodDisplay}
+                            Método: {shippingMethodDisplay}
                           </p>
                           
                           {order.shipping_address ? (
                             <>
                               {isBodega ? (
-                                //  DIRECCIÓN DE BODEGA - MISMO FORMATO
                                 <>
                                   <p>Arcangel 1200, San Miguel</p>
                                   <p>San Miguel, Región Metropolitana</p>
@@ -369,7 +382,6 @@ export default function OrdersPage() {
                                   <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
                                 </>
                               ) : isBranch ? (
-                                //  DIRECCIÓN DE SUCURSAL - MISMO FORMATO
                                 <>
                                   <p>{order.shipping_address.street}</p>
                                   <p>
@@ -378,7 +390,6 @@ export default function OrdersPage() {
                                   <p>Código Postal: {order.shipping_address.postal_code}</p>
                                 </>
                               ) : (
-                                //  DIRECCIÓN NORMAL - MISMO FORMATO
                                 <>
                                   <p>{order.shipping_address.street}</p>
                                   <p>
