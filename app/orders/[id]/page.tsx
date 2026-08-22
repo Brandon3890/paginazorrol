@@ -133,13 +133,11 @@ const getOrderSteps = (order: Order | null) => {
     shippedDescription = "Tu pedido está disponible para retiro en nuestra bodega."
   }
   
-  //  SI EL PAGO ES RECHAZADO, EL PRIMER PASO ES "PAGO RECHAZADO"
   const pendingLabel = isPaymentFailed ? "Pago Rechazado" : "Pago Recibido"
   const pendingDescription = isPaymentFailed 
     ? " Tu pago ha sido rechazado. Por favor, contacta con soporte."
     : "Tu pago ha sido recibido exitosamente."
   
-  //  SI EL PAGO ES RECHAZADO, SOLO MOSTRAMOS EL PRIMER PASO
   if (isPaymentFailed) {
     return [
       {
@@ -461,7 +459,6 @@ export default function OrderDetailPage() {
   const getCurrentStep = () => {
     if (!order) return -1
     if (order.status === 'cancelled') return -1
-    //  SI EL PAGO ES FALLIDO, EL PASO ACTUAL ES -1 (NO MOSTRAR TIMELINE)
     if (order.payment_status === 'failed') return -1
     return statusToStepMap[order.status] ?? 0
   }
@@ -547,17 +544,17 @@ export default function OrderDetailPage() {
   const shippingMethodDisplay = getShippingMethodDisplay(order)
   const shippingCategory = getShippingCategory(order)
   
-  //  DETERMINAR TIPOS DE ENVÍO
-  const isBodegaPickup = shippingCategory === 'bodega_pickup'
-  const isBranchPickup = shippingCategory === 'branch_pickup'
-  const isHomeDelivery = shippingCategory === 'home_delivery'
-  const isCashOnDelivery = shippingCategory === 'cash_on_delivery'
+  //  DETERMINAR TIPOS DE ENVÍO - USAR DIRECTAMENTE order.shipping_type
+  const isBodegaPickup = order?.shipping_type === 'bodega_pickup'
+  const isBranchPickup = order?.shipping_type === 'branch_pickup'
+  const isHomeDelivery = order?.shipping_type === 'home_delivery'
+  const isCashOnDelivery = order?.shipping_type === 'cash_on_delivery'
 
   //  OBTENER LA SUCURSAL SELECCIONADA
-  const selectedBranch = order.shipping_details?.selectedBranch
+  const selectedBranch = order?.shipping_details?.selectedBranch
 
   //  DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
-  const isDelivered = order.status === 'delivered'
+  const isDelivered = order?.status === 'delivered'
 
   //  ESTADO DEL PAGO
   const paymentStatusDisplay = getPaymentStatusDisplay(order?.payment_status || '')
@@ -698,8 +695,6 @@ export default function OrderDetailPage() {
                   <div className="relative">
                     <div className="relative">
                       {orderSteps.map((step, index) => {
-                        //  DETERMINAR SI EL PASO ESTÁ COMPLETADO O ACTIVO
-                        // Para el paso "pending" (Pago Recibido), si el pago es exitoso, está completado
                         const isStepCompleted = currentStep > index || (step.key === "pending" && order.payment_status === 'paid')
                         const isStepActive = currentStep === index && !(step.key === "pending" && order.payment_status === 'paid')
 
@@ -710,12 +705,10 @@ export default function OrderDetailPage() {
                           stepStatus = "active"
                         }
 
-                        //  PARA PASO "PENDING" CON PAGO EXITOSO - FORZAR COMPLETADO
                         if (step.key === "pending" && order.payment_status === 'paid') {
                           stepStatus = "completed"
                         }
 
-                        //  SI ES PAGO RECHAZADO, NO SE MUESTRA (ya manejado arriba)
                         if (step.isRejected) {
                           return null
                         }
@@ -1147,46 +1140,60 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* DIRECCIÓN DE ENVÍO */}
+            {/*  DIRECCIÓN DE ENVÍO / RETIRO EN BODEGA - CORREGIDO */}
             <Card className="shadow-sm gap-1">
               <CardHeader className="pb-1">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <MapPin className="w-5 h-5" />
-                  Dirección de envío
+                  {isBodegaPickup ? (
+                    <>
+                      <Store className="w-5 h-5" />
+                      Retiro en Bodega
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-5 h-5" />
+                      Dirección de envío
+                    </>
+                  )}
                 </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-2 text-sm pt-0">
                 <div className="font-medium">
-                  {order.customer_first_name}{" "}
-                  {order.customer_last_name}
+                  {order.customer_first_name} {order.customer_last_name}
                 </div>
 
                 <div className="text-muted-foreground space-y-1">
-                  <p>{addressInfo.street}</p>
-
-                  <p>
-                    {addressInfo.commune_name},{" "}
-                    {addressInfo.region_name}
-                  </p>
-
-                  <p>
-                    Código postal: {addressInfo.postal_code}
-                  </p>
-
-                  {addressInfo.department && (
-                    <p>
-                      Departamento: {addressInfo.department}
-                    </p>
-                  )}
-
-                  {addressInfo.delivery_instructions && (
-                    <p className="text-sm mt-2 text-foreground">
-                      <span className="font-medium">
-                        Instrucciones:
-                      </span>{" "}
-                      {addressInfo.delivery_instructions}
-                    </p>
+                  {isBodegaPickup ? (
+                    //  DIRECCIÓN DE BODEGA - SIEMPRE SE MUESTRA
+                    <>
+                      <p>Arcangel 1200, San Miguel</p>
+                      <p>San Miguel, Región Metropolitana</p>
+                      <p>Código Postal: 8900000</p>
+                      <p className="text-xs text-muted-foreground mt-1"> Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
+                    </>
+                  ) : (
+                    //  DIRECCIÓN NORMAL
+                    order.shipping_address ? (
+                      <>
+                        <p>{order.shipping_address.street}</p>
+                        <p>
+                          {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                        </p>
+                        <p>Código postal: {order.shipping_address.postal_code}</p>
+                        {order.shipping_address.department && (
+                          <p>Departamento: {order.shipping_address.department}</p>
+                        )}
+                        {order.shipping_address.delivery_instructions && (
+                          <p className="text-sm mt-2 text-foreground">
+                            <span className="font-medium">Instrucciones:</span>{" "}
+                            {order.shipping_address.delivery_instructions}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-yellow-600">Dirección no especificada</p>
+                    )
                   )}
                 </div>
               </CardContent>
@@ -1269,6 +1276,7 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               )}
+
             </div>
 
           </div>

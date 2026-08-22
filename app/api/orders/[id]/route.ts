@@ -73,16 +73,34 @@ export async function GET(
       })
     )
 
-    // Construir dirección de envío
-    const shippingAddress = order.shipping_street ? {
-      street: order.shipping_street || 'Dirección no especificada',
-      commune_name: order.shipping_commune || 'Comuna no especificada',
-      region_name: order.shipping_region || 'Región no especificada',
-      postal_code: order.shipping_postal_code || '000000',
-      department: order.shipping_department || '',
-      delivery_instructions: order.shipping_delivery_instructions || '',
-      title: order.shipping_title || 'Dirección de envío'
-    } : null
+    //  CONSTRUIR DIRECCIÓN DE ENVÍO 
+    let shippingAddress = null
+    const isBodegaPickup = order.shipping_type === 'bodega_pickup'
+
+    if (isBodegaPickup) {
+      //  DIRECCIÓN DE BODEGA FIJA 
+      shippingAddress = {
+        street: 'Arcangel 1200, San Miguel',
+        commune_name: 'San Miguel',
+        region_name: 'Región Metropolitana',
+        postal_code: '8900000',
+        department: '',
+        delivery_instructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs',
+        title: 'Retiro en Bodega',
+        isBodega: true
+      }
+    } else if (order.shipping_street) {
+      shippingAddress = {
+        street: order.shipping_street || 'Dirección no especificada',
+        commune_name: order.shipping_commune || 'Comuna no especificada',
+        region_name: order.shipping_region || 'Región no especificada',
+        postal_code: order.shipping_postal_code || '000000',
+        department: order.shipping_department || '',
+        delivery_instructions: order.shipping_delivery_instructions || '',
+        title: order.shipping_title || 'Dirección de envío',
+        isBodega: false
+      }
+    }
 
     // Obtener información de la boleta
     let boletaInfo = null
@@ -130,7 +148,6 @@ export async function GET(
           razon_social: boletas[0].razon_social_receptor
         }
         
-        // Actualizar la orden con el boleta_id si no lo tiene
         if (!order.boleta_id) {
           await query(
             `UPDATE orders SET boleta_id = ?, boleta_emitida = 1 WHERE id = ?`,
@@ -175,7 +192,6 @@ export async function GET(
       }
     }
 
-    // Si no hay shippingDetails pero hay shipping_type
     if (!shippingDetails && order.shipping_type) {
       switch (order.shipping_type) {
         case 'branch_pickup':
