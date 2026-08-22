@@ -272,8 +272,6 @@ export default function OrdersPage() {
               const shippingMethodDisplay = getShippingMethodDisplay(order)
               const shippingTitle = getShippingTitle(order)
               const isBodega = order.shipping_type === 'bodega_pickup'
-              const isBranch = order.shipping_type === 'branch_pickup'
-              const isHomeDelivery = order.shipping_type === 'home_delivery'
               
               //  ESTADO DEL PAGO CORREGIDO
               const paymentStatusDisplay = getPaymentStatusDisplay(order.payment_status)
@@ -309,6 +307,7 @@ export default function OrdersPage() {
                           <StatusIcon className="w-3 h-3 mr-1" />
                           {statusInfo.label}
                         </Badge>
+                        
                       </div>
                     </div>
                   </CardHeader>
@@ -380,14 +379,6 @@ export default function OrdersPage() {
                                   <p>San Miguel, Región Metropolitana</p>
                                   <p>Código Postal: 8900000</p>
                                   <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
-                                </>
-                              ) : isBranch ? (
-                                <>
-                                  <p>{order.shipping_address.street}</p>
-                                  <p>
-                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
-                                  </p>
-                                  <p>Código Postal: {order.shipping_address.postal_code}</p>
                                 </>
                               ) : (
                                 <>

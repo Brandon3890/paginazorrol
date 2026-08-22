@@ -104,8 +104,24 @@ const statusConfig = {
   cancelled: { label: "Rechazado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-//  PASOS DE SEGUIMIENTO CON ETIQUETAS DINÁMICAS
-const getOrderSteps = (shippingType: string | undefined) => {
+//  MAPEO DE ESTADOS DE LA ORDEN A PASOS
+const statusToStepMap: Record<string, number> = {
+  'pending': 0,
+  'processing': 1,
+  'confirmed': 2,
+  'shipped': 3,
+  'delivered': 4,
+  'cancelled': -1,
+}
+
+//  FUNCIÓN PARA OBTENER LOS PASOS DE SEGUIMIENTO
+const getOrderSteps = (order: Order | null) => {
+  if (!order) return []
+  
+  const shippingType = order.shipping_type || ''
+  const paymentStatus = order.payment_status || ''
+  const isPaymentFailed = paymentStatus === 'failed'
+  
   let shippedLabel = "En Camino"
   let shippedDescription = "Tu pedido está en camino."
   
@@ -117,12 +133,32 @@ const getOrderSteps = (shippingType: string | undefined) => {
     shippedDescription = "Tu pedido está disponible para retiro en nuestra bodega."
   }
   
+  //  SI EL PAGO ES RECHAZADO, EL PRIMER PASO ES "PAGO RECHAZADO"
+  const pendingLabel = isPaymentFailed ? "Pago Rechazado" : "Pago Recibido"
+  const pendingDescription = isPaymentFailed 
+    ? " Tu pago ha sido rechazado. Por favor, contacta con soporte."
+    : "Tu pago ha sido recibido exitosamente."
+  
+  //  SI EL PAGO ES RECHAZADO, SOLO MOSTRAMOS EL PRIMER PASO
+  if (isPaymentFailed) {
+    return [
+      {
+        key: "pending",
+        label: pendingLabel,
+        description: pendingDescription,
+        icon: X,
+        isRejected: true,
+      }
+    ]
+  }
+  
   return [
     {
       key: "pending",
-      label: "Pago Recibido",
-      description: "Tu pago ha sido recibido exitosamente.",
+      label: pendingLabel,
+      description: pendingDescription,
       icon: CheckCircle,
+      isRejected: false,
     },
     {
       key: "processing",
@@ -151,16 +187,6 @@ const getOrderSteps = (shippingType: string | undefined) => {
   ]
 }
 
-//  MAPEO DE ESTADOS DE LA ORDEN A PASOS
-const statusToStepMap: Record<string, number> = {
-  'pending': 0,
-  'processing': 1,
-  'confirmed': 2,
-  'shipped': 3,
-  'delivered': 4,
-  'cancelled': -1,
-}
-
 //  FUNCIÓN PARA OBTENER EL ESTADO DEL PAGO MOSTRADO
 const getPaymentStatusDisplay = (paymentStatus: string) => {
   switch (paymentStatus) {
@@ -184,27 +210,22 @@ const getShippingMethodDisplay = (order: Order | null): string => {
   const shippingDetails = order.shipping_details
   const shippingType = order.shipping_type as string || ''
   
-  // 1. Si tiene detalles de envío con sucursal seleccionada
   if (shippingDetails?.selectedBranch) {
     return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
   }
   
-  // 2. Si es bodega pickup
   if (shippingType === 'bodega_pickup') {
     return 'Retiro en Bodega'
   }
   
-  // 3. Si tiene detalles de envío con envío por pagar
   if (shippingDetails?.isCashOnDelivery) {
     return 'Envío por Pagar - Paga al momento de la entrega'
   }
   
-  // 4. Si tiene nombre del servicio en detalles
   if (shippingDetails?.serviceName) {
     return shippingDetails.serviceName
   }
   
-  // 5. Usando un objeto de mapeo
   const shippingTypeMap: Record<string, string> = {
     'branch_pickup': 'Retiro en Sucursal',
     'cash_on_delivery': 'Envío por Pagar - Paga al momento de la entrega',
@@ -220,12 +241,10 @@ const getShippingMethodDisplay = (order: Order | null): string => {
     return shippingTypeMap[shippingType]
   }
   
-  // 6. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
   
-  // 7. Si tiene costo de envío, asumimos que es a domicilio
   if (order.shipping > 0) {
     if (order.shipping_address?.street) {
       return `Envío a Domicilio - ${order.shipping_address.street}, ${order.shipping_address.commune_name}`
@@ -442,11 +461,14 @@ export default function OrderDetailPage() {
   const getCurrentStep = () => {
     if (!order) return -1
     if (order.status === 'cancelled') return -1
+    //  SI EL PAGO ES FALLIDO, EL PASO ACTUAL ES -1 (NO MOSTRAR TIMELINE)
+    if (order.payment_status === 'failed') return -1
     return statusToStepMap[order.status] ?? 0
   }
 
   const currentStep = getCurrentStep()
   const isCancelled = order?.status === 'cancelled'
+  const isPaymentFailed = order?.payment_status === 'failed'
 
   if (authLoading) {
     return (
@@ -537,12 +559,11 @@ export default function OrderDetailPage() {
   //  DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
   const isDelivered = order.status === 'delivered'
 
-  //  ESTADO DEL PAGO CORREGIDO
+  //  ESTADO DEL PAGO
   const paymentStatusDisplay = getPaymentStatusDisplay(order?.payment_status || '')
-  const isPaymentRejected = order?.payment_status === 'failed'
 
   //  OBTENER LOS PASOS CON ETIQUETAS DINÁMICAS
-  const orderSteps = getOrderSteps(order?.shipping_type)
+  const orderSteps = getOrderSteps(order)
 
   //  OBTENER EL ICONO PARA EL PASO "EN CAMINO" SEGÚN EL TIPO
   const getShippedIcon = () => {
@@ -664,7 +685,7 @@ export default function OrderDetailPage() {
             </Card>
 
             {/* SEGUIMIENTO DEL PEDIDO */}
-            {!isCancelled && (
+            {!isCancelled && !isPaymentFailed && (
               <Card className="shadow-sm">
                 <CardHeader className="pb-0">
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -677,16 +698,26 @@ export default function OrderDetailPage() {
                   <div className="relative">
                     <div className="relative">
                       {orderSteps.map((step, index) => {
-                        const isCompleted = currentStep > index
-                        const isActive = currentStep === index
+                        //  DETERMINAR SI EL PASO ESTÁ COMPLETADO O ACTIVO
+                        // Para el paso "pending" (Pago Recibido), si el pago es exitoso, está completado
+                        const isStepCompleted = currentStep > index || (step.key === "pending" && order.payment_status === 'paid')
+                        const isStepActive = currentStep === index && !(step.key === "pending" && order.payment_status === 'paid')
 
                         let stepStatus = "pending"
-                        if (step.key === "delivered" && isActive) {
+                        if (isStepCompleted) {
                           stepStatus = "completed"
-                        } else if (isCompleted) {
-                          stepStatus = "completed"
-                        } else if (isActive) {
+                        } else if (isStepActive) {
                           stepStatus = "active"
+                        }
+
+                        //  PARA PASO "PENDING" CON PAGO EXITOSO - FORZAR COMPLETADO
+                        if (step.key === "pending" && order.payment_status === 'paid') {
+                          stepStatus = "completed"
+                        }
+
+                        //  SI ES PAGO RECHAZADO, NO SE MUESTRA (ya manejado arriba)
+                        if (step.isRejected) {
+                          return null
                         }
 
                         let StepIcon = step.icon
@@ -696,7 +727,7 @@ export default function OrderDetailPage() {
 
                         let stepDescription = step.description
 
-                        if (step.key === "pending" && (isActive || isCompleted)) {
+                        if (step.key === "pending" && (stepStatus === "completed" || stepStatus === "active")) {
                           if (order.payment_status === 'paid') {
                             stepDescription = ' Tu pago ha sido aprobado y recibido correctamente.'
                           } else if (order.payment_status === 'failed') {
@@ -706,15 +737,15 @@ export default function OrderDetailPage() {
                           }
                         }
 
-                        if (step.key === "processing" && (isActive || isCompleted)) {
+                        if (step.key === "processing" && (stepStatus === "active" || stepStatus === "completed")) {
                           stepDescription = 'Estamos revisando los detalles de tu pedido. Este proceso puede tomar unos momentos.'
                         }
 
-                        if (step.key === "confirmed" && (isActive || isCompleted)) {
+                        if (step.key === "confirmed" && (stepStatus === "active" || stepStatus === "completed")) {
                           stepDescription = 'Estamos emitiendo tu boleta y preparando tu pedido.'
                         }
 
-                        if (step.key === "shipped" && (isActive || isCompleted)) {
+                        if (step.key === "shipped" && (stepStatus === "active" || stepStatus === "completed")) {
                           if (isBodegaPickup) {
                             stepDescription = ' Tu pedido está disponible para retiro en nuestra bodega.'
                           } else if (isBranchPickup) {
@@ -726,7 +757,7 @@ export default function OrderDetailPage() {
                           }
                         }
 
-                        if (step.key === "delivered" && (isActive || isCompleted)) {
+                        if (step.key === "delivered" && (stepStatus === "active" || stepStatus === "completed")) {
                           if (isBodegaPickup || isBranchPickup) {
                             stepDescription = ' Pedido retirado por el cliente'
                           } else if (isHomeDelivery) {
@@ -824,7 +855,7 @@ export default function OrderDetailPage() {
                                     {stepDescription}
                                   </p>
 
-                                  {step.key === "shipped" && (isActive || isCompleted) && (
+                                  {step.key === "shipped" && (stepStatus === "active" || stepStatus === "completed") && (
                                     <div className="mt-3 space-y-2">
                                       <div className="flex flex-wrap gap-2">
                                         {isBodegaPickup && (
@@ -929,7 +960,7 @@ export default function OrderDetailPage() {
                                     </div>
                                   )}
 
-                                  {step.key === "delivered" && (isActive || isCompleted) && (
+                                  {step.key === "delivered" && (stepStatus === "active" || stepStatus === "completed") && (
                                     <div className="mt-3">
                                       {(isBodegaPickup || isBranchPickup) && selectedBranch && (
                                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -991,6 +1022,25 @@ export default function OrderDetailPage() {
                           </motion.div>
                         )
                       })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/*  MENSAJE DE PAGO RECHAZADO */}
+            {isPaymentFailed && (
+              <Card className="shadow-sm border-red-200 bg-red-50">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                      <X className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-red-800">Pago Rechazado</h3>
+                      <p className="text-sm text-red-600 mt-1">
+                        Tu pago ha sido rechazado. Por favor, contacta con soporte para más información.
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -1153,10 +1203,8 @@ export default function OrderDetailPage() {
 
               <CardContent className="pt-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 bg-blue-600">
-                    <span className="text-white text-xs font-bold">
-                      TB
-                    </span>
+                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 ">
+
                   </div>
 
                   <div>
@@ -1164,8 +1212,7 @@ export default function OrderDetailPage() {
                       Transbank Webpay
                     </div>
 
-                    {/*  ESTADO DEL PAGO CORREGIDO */}
-                    <div className={`text-xs ${isPaymentRejected ? 'text-red-600' : 'text-muted-foreground'}`}>
+                    <div className={`text-xs ${isPaymentFailed ? 'text-red-600' : 'text-muted-foreground'}`}>
                       {paymentStatusDisplay}
                     </div>
                   </div>
@@ -1175,13 +1222,6 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
-              {order.status === "delivered" && (
-                <Link href="/">
-                  <Button className="w-full">
-                    Comprar de nuevo
-                  </Button>
-                </Link>
-              )}
 
               <Button
                 variant="outline"
@@ -1229,13 +1269,6 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               )}
-
-              <Link href="/orders">
-                <Button variant="ghost" className="w-full">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Ver todos mis pedidos
-                </Button>
-              </Link>
             </div>
 
           </div>
