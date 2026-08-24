@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store } from "lucide-react"
+import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store, AlertTriangle } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -68,7 +68,7 @@ interface RegionsResponse {
   regions: Region[];
 }
 
-//  OPCIÓN DE RETIRO EN BODEGA (GRATUITA) - CON DIRECCIÓN ACTUALIZADA
+//  OPCIÓN DE RETIRO EN BODEGA (GRATUITA)
 const BODEGA_OPTION: ChilexpressOption = {
   id: "bodega_pickup",
   type: "bodega_pickup",
@@ -85,7 +85,7 @@ const BODEGA_OPTION: ChilexpressOption = {
   }]
 }
 
-//  DIRECCIÓN DE LA BODEGA PARA USAR EN LA ORDEN
+//  DIRECCIÓN DE LA BODEGA
 const BODEGA_ADDRESS = {
   street: "Arcangel 1200, San Miguel",
   hasNoNumber: false,
@@ -177,6 +177,36 @@ export default function CheckoutPage() {
   const [showAddressForm, setShowAddressForm] = useState(true)
   //  Estado para saber si se seleccionó retiro en bodega
   const [isBodegaSelected, setIsBodegaSelected] = useState(false)
+
+  //  ESTADO PARA LA TIENDA (PÁNICO)
+  const [storeOpen, setStoreOpen] = useState(true)
+  const [maintenanceMessage, setMaintenanceMessage] = useState("")
+
+  //  EFECTO PARA VERIFICAR EL ESTADO DE LA TIENDA
+  useEffect(() => {
+    const fetchStoreStatus = async () => {
+      try {
+        const response = await fetch('/api/store/status')
+        if (response.ok) {
+          const data = await response.json()
+          setStoreOpen(data.storeOpen)
+          setMaintenanceMessage(data.maintenanceMessage || '')
+          if (!data.storeOpen) {
+            toast({
+              title: "Tienda en mantenimiento",
+              description: data.maintenanceMessage || "No se pueden realizar compras en este momento",
+              variant: "destructive",
+              duration: 5000,
+            })
+            router.push('/')
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching store status:', error)
+      }
+    }
+    fetchStoreStatus()
+  }, [router, toast])
 
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
@@ -763,7 +793,7 @@ export default function CheckoutPage() {
       addOrder({
         userId: orderData.userId,
         items: items.map((item) => ({ ...item, id: item.id.toString() })),
-        customerInfo: { ...formData, address: selectedAddress?.street || 'Retiro en bodega', city: selectedAddress?.communeName || 'San Miguel', region: selectedAddress?.regionName || 'Región Metropolitana', postalCode: selectedAddress?.postalCode || '8900000' },
+        customerInfo: { ...formData, address: selectedAddress?.street || 'Retiro en bodega', city: selectedAddress?.communeName || 'Santiago', region: selectedAddress?.regionName || 'Región Metropolitana', postalCode: selectedAddress?.postalCode || '8900000' },
         shippingAddress: selectedAddress,
         paymentInfo: { method: "transbank", status: "pending" },
         totals: { subtotal: subtotalBeforeDiscount, discount: discountAmount, shipping: isBodegaPickupSelected ? 0 : shipping, tax: 0, total: isBodegaPickupSelected ? totalAfterDiscount : finalTotal },
@@ -1094,7 +1124,7 @@ export default function CheckoutPage() {
             <CardContent>
               {/*  SI ES RETIRO EN BODEGA, NO MOSTRAR FORMULARIO DE DIRECCIÓN */}
               {isBodegaSelected ? (
-                <div className="p-4  border  rounded-lg">
+                <div className="p-4 border  rounded-lg">
                   <div className="flex items-start gap-3">
                     <Store className="w-5 h-5  mt-0.5" />
                     <div>
@@ -1373,6 +1403,9 @@ export default function CheckoutPage() {
                                     <div className="font-medium flex items-center gap-2">
                                       {isBodegaPickup && <Store className="w-4 h-4 text-green-600" />}
                                       {option.name}
+                                      {isBodegaPickup && (
+                                        <Badge className="bg-green-600 text-white text-xs">Sin costo</Badge>
+                                      )}
                                     </div>
                                     <div className="text-sm text-muted-foreground mt-1">
                                       {option.deliveryDescription}

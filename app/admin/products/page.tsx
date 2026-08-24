@@ -21,6 +21,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
+import { PanicButton } from "@/components/admin/PanicButton"
 
 interface Product {
   id: number;
@@ -138,7 +139,7 @@ export default function AdminProductsPage() {
   const [localProducts, setLocalProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   
-  // 🔥 NUEVO: Estado para la búsqueda
+  //   Estado para la búsqueda
   const [searchQuery, setSearchQuery] = useState("")
   
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -165,7 +166,7 @@ export default function AdminProductsPage() {
 
   // Cargar productos al montar el componente
   useEffect(() => {
-    console.log('🔄 AdminProductsPage mounted, fetching products...');
+    console.log(' AdminProductsPage mounted, fetching products...');
     const loadProducts = async () => {
       if (!isFetchingRef.current) {
         isFetchingRef.current = true
@@ -182,10 +183,10 @@ export default function AdminProductsPage() {
   // Escuchar evento de actualización de productos
   useEffect(() => {
     const handleProductUpdate = () => {
-      console.log('🔄 Evento product-updated recibido en lista de productos')
+      console.log(' Evento product-updated recibido en lista de productos')
       const now = Date.now()
       if (now - lastRefreshRef.current < MIN_REFRESH_INTERVAL) {
-        console.log('⏳ Demasiado pronto para refrescar, ignorando...')
+        console.log(' Demasiado pronto para refrescar, ignorando...')
         return
       }
       lastRefreshRef.current = now
@@ -204,7 +205,7 @@ export default function AdminProductsPage() {
   }, [fetchProducts])
 
   // ============================================
-  // 🔥 FILTRAR PRODUCTOS POR BÚSQUEDA
+  //  FILTRAR PRODUCTOS POR BÚSQUEDA
   // ============================================
   const filterProductsBySearch = (products: Product[], query: string) => {
     if (!query.trim()) return products
@@ -270,7 +271,7 @@ export default function AdminProductsPage() {
           throw new Error(errorMessage);
         }
 
-        console.log('✅ Producto desactivado correctamente');
+        console.log(' Producto desactivado correctamente');
         
         setLocalProducts(prevProducts => 
           prevProducts.map(p => 
@@ -350,7 +351,7 @@ export default function AdminProductsPage() {
         }
 
         const result = await response.json();
-        console.log('✅ Producto eliminado permanentemente:', result);
+        console.log(' Producto eliminado permanentemente:', result);
         
         setLocalProducts(prevProducts => 
           prevProducts.filter(p => p.id !== productToPermanentlyDelete)
@@ -402,9 +403,7 @@ export default function AdminProductsPage() {
   const confirmReactivate = async () => {
     if (productToReactivate) {
       setActionLoading(true);
-      try {
-        console.log(`🔄 Reactivando producto ${productToReactivate}...`);
-        
+      try {        
         const response = await fetch(`/api/products/${productToReactivate}/reactivate`, {
           method: 'PUT',
           headers: {
@@ -424,7 +423,7 @@ export default function AdminProductsPage() {
           throw new Error(errorMessage);
         }
 
-        console.log('✅ Producto reactivado correctamente');
+        console.log(' Producto reactivado correctamente');
         
         setLocalProducts(prevProducts => 
           prevProducts.map(p => 
@@ -491,7 +490,6 @@ export default function AdminProductsPage() {
     }
     lastRefreshRef.current = now
     
-    console.log('🔄 Manual refresh triggered');
     if (!isFetchingRef.current) {
       isFetchingRef.current = true
       fetchProducts({ includeInactive: true, isAdmin: true, force: true })
@@ -660,7 +658,6 @@ export default function AdminProductsPage() {
             </Button>
           </Link>
           
-          {/* 🔥 HEADER CON BÚSQUEDA A LA IZQUIERDA DEL BOTÓN */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Gestión de Productos</h1>
@@ -669,53 +666,57 @@ export default function AdminProductsPage() {
               </p>
             </div>
             
-            {/* 🔥 FILA DE BÚSQUEDA + BOTONES - AHORA LA BÚSQUEDA ESTÁ A LA IZQUIERDA */}
+            {/*  BOTÓN DE PÁNICO + BÚSQUEDA + BOTONES */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
-              {/* 🔥 BARRA DE BÚSQUEDA - A LA IZQUIERDA */}
-              <div className="relative w-full sm:w-64 md:w-80">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    type="text"
-                    placeholder="Buscar productos..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-10 py-2 w-full"
-                  />
+              <PanicButton />
+              
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
+                {/*  BARRA DE BÚSQUEDA */}
+                <div className="relative w-full sm:w-64 md:w-80">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Buscar productos..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-10 py-2 w-full"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={clearSearch}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                      </button>
+                    )}
+                  </div>
                   {searchQuery && (
-                    <button
-                      onClick={clearSearch}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 hover:text-red-500 transition-colors"
-                    >
-                      <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
-                    </button>
+                    <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap">
+                      Mostrando: <strong className="text-foreground">"{searchQuery}"</strong>
+                    </p>
                   )}
                 </div>
-                {searchQuery && (
-                  <p className="text-xs text-muted-foreground mt-1 whitespace-nowrap">
-                    Mostrando: <strong className="text-foreground">"{searchQuery}"</strong>
-                  </p>
-                )}
-              </div>
 
-              {/* 🔥 BOTONES - A LA DERECHA */}
-              <div className="flex gap-2 flex-wrap w-full sm:w-auto">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleRefresh}
-                  disabled={isFetchingRef.current}
-                  className="flex items-center gap-1 flex-1 sm:flex-none"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isFetchingRef.current ? 'animate-spin' : ''}`} />
-                  {isFetchingRef.current ? 'Actualizando...' : 'Actualizar'}
-                </Button>
-                <Link href="/admin/products/new" className="flex-1 sm:flex-none">
-                  <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412] w-full sm:w-auto" disabled={actionLoading}>
-                    <Plus className="w-4 h-4" />
-                    Añadir Producto
+                {/*  BOTONES */}
+                <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRefresh}
+                    disabled={isFetchingRef.current}
+                    className="flex items-center gap-1 flex-1 sm:flex-none"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isFetchingRef.current ? 'animate-spin' : ''}`} />
+                    {isFetchingRef.current ? 'Actualizando...' : 'Actualizar'}
                   </Button>
-                </Link>
+                  <Link href="/admin/products/new" className="flex-1 sm:flex-none">
+                    <Button className="flex items-center gap-2 bg-[#C2410C] hover:bg-[#9A3412] w-full sm:w-auto" disabled={actionLoading}>
+                      <Plus className="w-4 h-4" />
+                      Añadir Producto
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

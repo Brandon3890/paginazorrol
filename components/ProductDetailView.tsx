@@ -8,7 +8,7 @@ import { useProductStore } from "@/lib/product-store"
 import { useCartStore } from "@/lib/cart-store"
 import { useAuthStore } from "@/lib/auth-store"
 import { Button } from "@/components/ui/button"
-import { ShoppingCart, ArrowLeft, Check, ChevronLeft, ChevronRight, Youtube, Play, Heart } from "lucide-react"
+import { ShoppingCart, ArrowLeft, Check, ChevronLeft, ChevronRight, Youtube, Play, Heart, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
@@ -95,6 +95,10 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
 
+  // 🔥 ESTADO PARA LA TIENDA (PÁNICO)
+  const [storeOpen, setStoreOpen] = useState(true)
+  const [maintenanceMessage, setMaintenanceMessage] = useState("La tienda está en mantenimiento. Por favor, vuelve más tarde.")
+
   useEffect(() => {
     const checkScreenSize = () => setIsMobileOrTablet(window.innerWidth < 1024)
     checkScreenSize()
@@ -104,9 +108,37 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
+  // 🔥 EFECTO PARA OBTENER EL ESTADO DE LA TIENDA
+  useEffect(() => {
+    const fetchStoreStatus = async () => {
+      try {
+        const response = await fetch('/api/store/status')
+        if (response.ok) {
+          const data = await response.json()
+          setStoreOpen(data.storeOpen)
+          setMaintenanceMessage(data.maintenanceMessage || 'La tienda está en mantenimiento. Por favor, vuelve más tarde.')
+        }
+      } catch (error) {
+        console.error('Error fetching store status:', error)
+      }
+    }
+    fetchStoreStatus()
+
+    // Escuchar cambios en el estado de la tienda
+    const handleStoreStatusChange = (event: CustomEvent) => {
+      setStoreOpen(event.detail.storeOpen)
+    }
+    
+    window.addEventListener('store-status-changed', handleStoreStatusChange as EventListener)
+    return () => {
+      window.removeEventListener('store-status-changed', handleStoreStatusChange as EventListener)
+    }
+  }, [])
+
   // Escuchar evento de actualización de productos
   useEffect(() => {
     const handleProductUpdate = () => {
+      console.log('🔄 Producto actualizado, forzando recarga de imágenes...')
       setImageTimestamp(Date.now())
     }
     
@@ -126,6 +158,10 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           else router.push("/"); 
           return; 
         }
+        
+        console.log('📋 Product data loaded:', productData);
+        console.log('📋 Specs raw:', productData.specs);
+        console.log('📋 Specs parsed:', productData.specs ? parseProductSpecs(productData.specs) : 'null');
         
         setProduct(productData);
         setImageTimestamp(Date.now())
@@ -214,7 +250,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const handleMediaClick = () => { if (allMedia[selectedMediaIndex].type === 'video' && product?.youtubeVideoId) setShowVideo(true); };
 
   const handleAddToCart = () => {
-    if (!product || !hasStock()) return;
+    if (!product || !hasStock() || !storeOpen) return;
     setIsAddingToCart(true);
     
     addItem({ 
@@ -420,7 +456,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                           priority
                           unoptimized={true}
                           onError={(e) => {
-                            console.error('Error cargando imagen:', currentMedia.url)
+                            console.error(' Error cargando imagen:', currentMedia.url)
                             const target = e.target as HTMLImageElement
                             target.src = '/uploads/products/diverse-products-still-life.png'
                           }}
@@ -550,7 +586,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
               <span className="font-semibold">Stock disponible:</span> {product.stock}
             </motion.p>
 
-            {/* DESCRIPCIÓN CON SCROLL  */}
+            {/* DESCRIPCIÓN CON SCROLL */}
             <motion.div 
               className="mt-2 flex-1"
               initial={{ opacity: 0 }} 
@@ -579,7 +615,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 {product.description}
               </div>
               
-              {/* Estilos para el scroll en navegadores WebKit */}
               <style jsx>{`
                 div::-webkit-scrollbar {
                   width: 6px;
@@ -623,85 +658,98 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 )}
               </motion.div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 w-full items-center">
-                <motion.div
-                  whileHover={{ scale: hasStock() ? 1.02 : 1 }}
-                  whileTap={{ scale: hasStock() ? 0.98 : 1 }}
-                  className="w-full"
-                >
-                  <Button
-                    onClick={handleAddToCart}
-                    disabled={!hasStock()}
-                    className="w-full h-12 text-white font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
-                    style={{ backgroundColor: "rgba(228, 78, 43)" }}
-                  >
-                    <AnimatePresence mode="wait">
-                      {isAddingToCart ? (
-                        <motion.div
-                          key="adding"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{
-                              duration: 1,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
-                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
-                          />
-                          <span>Agregando...</span>
-                        </motion.div>
-                      ) : showCheckmark ? (
-                        <motion.div
-                          key="success"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 400 }}
-                          >
-                            <Check className="w-4 h-4 mr-2" />
-                          </motion.div>
-                          <span>¡Agregado!</span>
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="normal"
-                          className="flex items-center justify-center"
-                        >
-                          <motion.div
-                            animate={
-                              hasStock()
-                                ? { rotate: [0, -10, 10, -5, 5, 0] }
-                                : {}
-                            }
-                            transition={{ duration: 0.5 }}
-                          >
-                            <ShoppingCart className="w-4 h-4 mr-2" />
-                          </motion.div>
-
-                          <span className="text-xs sm:text-sm md:text-base whitespace-nowrap">
-                            {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
-                          </span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </Button>
-                </motion.div>
-
-                {isAuthenticated && (
-                  <div className="flex items-center justify-start h-full">
-                    <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <FavoriteButton productId={product.id} size="lg" />
-                    </motion.div>
+              {/* 🔥 BOTÓN DE AGREGAR AL CARRITO - CON VERIFICACIÓN DE TIENDA */}
+              {!storeOpen ? (
+                <div className="w-full p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Tienda en mantenimiento</p>
+                      <p className="text-sm text-amber-700">{maintenanceMessage}</p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 w-full items-center">
+                  <motion.div
+                    whileHover={{ scale: hasStock() ? 1.02 : 1 }}
+                    whileTap={{ scale: hasStock() ? 0.98 : 1 }}
+                    className="w-full"
+                  >
+                    <Button
+                      onClick={handleAddToCart}
+                      disabled={!hasStock()}
+                      className="w-full h-12 text-white font-normal font-poppins disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                      style={{ backgroundColor: "rgba(228, 78, 43)" }}
+                    >
+                      <AnimatePresence mode="wait">
+                        {isAddingToCart ? (
+                          <motion.div
+                            key="adding"
+                            className="flex items-center justify-center"
+                          >
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{
+                                duration: 1,
+                                repeat: Infinity,
+                                ease: "linear",
+                              }}
+                              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
+                            />
+                            <span>Agregando...</span>
+                          </motion.div>
+                        ) : showCheckmark ? (
+                          <motion.div
+                            key="success"
+                            className="flex items-center justify-center"
+                          >
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring", stiffness: 400 }}
+                            >
+                              <Check className="w-4 h-4 mr-2" />
+                            </motion.div>
+                            <span>¡Agregado!</span>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="normal"
+                            className="flex items-center justify-center"
+                          >
+                            <motion.div
+                              animate={
+                                hasStock()
+                                  ? { rotate: [0, -10, 10, -5, 5, 0] }
+                                  : {}
+                              }
+                              transition={{ duration: 0.5 }}
+                            >
+                              <ShoppingCart className="w-4 h-4 mr-2" />
+                            </motion.div>
+
+                            <span className="text-xs sm:text-sm md:text-base whitespace-nowrap">
+                              {!hasStock() ? "Sin Stock" : "Agregar al Carro"}
+                            </span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </Button>
+                  </motion.div>
+
+                  {isAuthenticated && (
+                    <div className="flex items-center justify-start h-full">
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        <FavoriteButton productId={product.id} size="lg" />
+                      </motion.div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </motion.div>
         </div>
