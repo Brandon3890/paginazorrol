@@ -179,7 +179,7 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  // ✅ FUNCIÓN PARA CONSULTAR LA BOLETA POR FOLIO
+  //  FUNCIÓN PARA CONSULTAR LA BOLETA POR FOLIO
   const consultarBoleta = async () => {
     const folio = order?.boleta_info?.folio || boletaFolio
     
@@ -196,11 +196,9 @@ export default function AdminOrderDetailPage() {
     setBoletaError(null)
     
     try {
-      console.log(`🔍 Consultando boleta folio: ${folio}`)
       const response = await fetch(`/api/apigateway/consultar?folio=${folio}`)
       const data = await response.json()
       
-      console.log('📊 Respuesta consulta boleta:', data)
       
       if (data.success && data.data) {
         const estado = data.data.estado || data.data.estado_boleta || 'desconocido'
@@ -208,23 +206,23 @@ export default function AdminOrderDetailPage() {
         setBoletaFolio(folio)
         
         toast({
-          title: "✅ Estado consultado",
+          title: " Estado consultado",
           description: `Boleta N° ${folio} está en estado: ${estado}`,
           duration: 5000,
         })
       } else {
         setBoletaError(data.error || 'Error al consultar la boleta')
         toast({
-          title: "❌ Error",
+          title: " Error",
           description: data.error || 'No se pudo consultar la boleta',
           variant: "destructive",
         })
       }
     } catch (error: any) {
-      console.error('❌ Error consultando boleta:', error)
+      console.error(' Error consultando boleta:', error)
       setBoletaError(error.message || 'Error de conexión')
       toast({
-        title: "❌ Error",
+        title: " Error",
         description: error.message || 'Error al consultar la boleta',
         variant: "destructive",
       })
@@ -233,7 +231,7 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  // ✅ FUNCIÓN PARA BUSCAR BOLETA POR ORDEN (cuando NO tiene folio)
+  //  FUNCIÓN PARA BUSCAR BOLETA POR ORDEN (cuando NO tiene folio)
   const consultarBoletaPorOrden = async () => {
     if (!order) {
       toast({
@@ -251,7 +249,6 @@ export default function AdminOrderDetailPage() {
     try {
       const rutCliente = order.customer_rut || '55555555-5'
       
-      console.log(`🔍 Buscando boleta para orden ${order.id} - RUT: ${rutCliente}`)
       
       const fechaFin = new Date().toISOString().split('T')[0]
       const fechaInicio = new Date()
@@ -271,7 +268,7 @@ export default function AdminOrderDetailPage() {
       })
       
       const data = await response.json()
-      console.log('📊 Documentos encontrados:', data)
+      console.log(' Documentos encontrados:', data)
       
       if (data.success && data.data && data.data.length > 0) {
         const montoOrden = Math.round(order.total)
@@ -296,14 +293,14 @@ export default function AdminOrderDetailPage() {
           setBoletaEstado(boletaEncontrada.estado_boleta || 'Aceptada')
           
           toast({
-            title: "✅ Boleta encontrada",
+            title: " Boleta encontrada",
             description: `Folio: ${folio} - Estado: ${boletaEncontrada.estado_boleta || 'Aceptada'}`,
             duration: 5000,
           })
         } else {
           setBoletaError('No se encontró una boleta que coincida con esta orden')
           toast({
-            title: "ℹ️ No encontrada",
+            title: " No encontrada",
             description: "No se encontró una boleta para esta orden",
             variant: "default",
           })
@@ -311,16 +308,16 @@ export default function AdminOrderDetailPage() {
       } else {
         setBoletaError('No se encontraron boletas para este cliente')
         toast({
-          title: "ℹ️ Sin boletas",
+          title: " Sin boletas",
           description: "No se encontraron boletas en el SII para este cliente",
           variant: "default",
         })
       }
     } catch (error: any) {
-      console.error('❌ Error buscando boleta:', error)
+      console.error(' Error buscando boleta:', error)
       setBoletaError(error.message || 'Error de conexión')
       toast({
-        title: "❌ Error",
+        title: " Error",
         description: error.message || 'Error al buscar la boleta',
         variant: "destructive",
       })
@@ -329,7 +326,7 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  // ✅ FUNCIÓN PARA DESCARGAR LA BOLETA
+  //  FUNCIÓN PARA DESCARGAR LA BOLETA
   const descargarBoleta = async () => {
     const folio = order?.boleta_info?.folio || boletaFolio
     
@@ -344,7 +341,6 @@ export default function AdminOrderDetailPage() {
     
     setDescargandoPDF(true)
     try {
-      console.log(`📄 Descargando PDF folio: ${folio}`)
       const response = await fetch(`/api/apigateway/pdf?folio=${folio}`)
       
       if (response.ok) {
@@ -359,14 +355,14 @@ export default function AdminOrderDetailPage() {
         window.URL.revokeObjectURL(url)
         
         toast({
-          title: "✅ PDF descargado",
+          title: " PDF descargado",
           description: `Boleta N° ${folio} descargada exitosamente`,
           duration: 3000,
         })
       } else {
         const errorData = await response.json()
         toast({
-          title: "❌ Error",
+          title: " Error",
           description: errorData.error || "Error al descargar PDF",
           variant: "destructive",
         })
@@ -374,7 +370,7 @@ export default function AdminOrderDetailPage() {
     } catch (error) {
       console.error('Error descargando PDF:', error)
       toast({
-        title: "❌ Error",
+        title: " Error",
         description: "No se pudo descargar el PDF",
         variant: "destructive",
       })
@@ -383,22 +379,35 @@ export default function AdminOrderDetailPage() {
     }
   }
 
+  //  FUNCIÓN MEJORADA PARA OBTENER LA URL DE LA IMAGEN
   const getImageUrl = (imagePath: string | undefined) => {
-    if (!imagePath) return "/placeholder.svg"
+    // Si no hay imagen, usar placeholder
+    if (!imagePath) {
+      return "/placeholder.svg"
+    }
     
-    if (imagePath.startsWith('http')) {
+    // Si ya es una URL completa (http o https)
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
       return imagePath
     }
     
+    // Si es una ruta que comienza con /uploads/ (ruta absoluta desde la raíz)
     if (imagePath.startsWith('/uploads/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+      return imagePath
     }
     
+    // Si es una ruta que comienza con uploads/ (sin slash inicial)
+    if (imagePath.startsWith('uploads/')) {
+      return `/${imagePath}`
+    }
+    
+    // Si es una ruta que comienza con / (ruta absoluta)
     if (imagePath.startsWith('/')) {
-      return `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}${imagePath}`
+      return imagePath
     }
     
-    return "/placeholder.svg"
+    // Para cualquier otro caso, asumimos que está en /uploads/products/
+    return `/uploads/products/${imagePath}`
   }
 
   const formatPaymentMethod = (method: string) => {
@@ -441,7 +450,7 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  // ✅ FUNCIÓN PARA OBTENER LA DIRECCIÓN DE ENVÍO MOSTRADA
+  //  FUNCIÓN PARA OBTENER LA DIRECCIÓN DE ENVÍO MOSTRADA
   const getShippingDisplay = () => {
     if (!order) return null
     
@@ -710,7 +719,10 @@ export default function AdminOrderDetailPage() {
                 {order.transbank_info && (
                   <>
                     {order.transbank_info.authorization_code && (
-                      <div ></div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Código autorización:</span>
+                        <span className="font-mono text-xs">{order.transbank_info.authorization_code}</span>
+                      </div>
                     )}
                     {order.transbank_info.payment_type && (
                       <div className="flex justify-between">
@@ -725,7 +737,10 @@ export default function AdminOrderDetailPage() {
                       </div>
                     )}
                     {order.transbank_info.card_number && (
-                      <div ></div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tarjeta:</span>
+                        <span className="font-mono text-xs">**** {order.transbank_info.card_number}</span>
+                      </div>
                     )}
                     {order.transbank_info.transaction_date && (
                       <div className="flex justify-between">
@@ -746,7 +761,7 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/* ✅ SECCIÓN DE BOLETA - COMPLETA */}
+            {/*  SECCIÓN DE BOLETA - COMPLETA */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -755,7 +770,7 @@ export default function AdminOrderDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* ✅ SI TIENE BOLETA EN LA BD */}
+                {/*  SI TIENE BOLETA EN LA BD */}
                 {tieneBoleta ? (
                   <>
                     <div className="flex items-center justify-between">
@@ -812,7 +827,7 @@ export default function AdminOrderDetailPage() {
                     )}
                   </>
                 ) : (
-                  // ✅ NO TIENE BOLETA - BOTÓN PARA VERIFICAR
+                  //  NO TIENE BOLETA - BOTÓN PARA VERIFICAR
                   <>
                     <p className="text-sm text-muted-foreground text-center py-2">
                       Esta orden no tiene una boleta asociada en la base de datos
@@ -836,7 +851,7 @@ export default function AdminOrderDetailPage() {
                     {boletaEstado && (
                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
                         <p className="text-xs text-green-700">
-                          ✅ Boleta encontrada - Folio: <strong>{boletaFolio}</strong>
+                           Boleta encontrada - Folio: <strong>{boletaFolio}</strong>
                         </p>
                         <p className="text-xs text-green-600 mt-1">
                           Estado: <strong>{boletaEstado}</strong>
@@ -878,12 +893,13 @@ export default function AdminOrderDetailPage() {
                   {order.items && order.items.length > 0 ? (
                     order.items.map((item) => {
                       const itemTotal = item.product_price * item.quantity
+                      const imageUrl = getImageUrl(item.image_url)
                       
                       return (
                         <div key={item.id} className="flex gap-4 p-3 bg-muted/30 rounded-lg">
                           <div className="relative w-16 h-16 flex-shrink-0">
                             <Image
-                              src={getImageUrl(item.image_url)}
+                              src={imageUrl}
                               alt={item.product_name}
                               fill
                               className="object-cover rounded"
