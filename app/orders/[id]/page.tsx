@@ -104,7 +104,7 @@ const statusConfig = {
   cancelled: { label: "Rechazado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-//  MAPEO DE ESTADOS DE LA ORDEN A PASOS
+// MAPEO DE ESTADOS DE LA ORDEN A PASOS
 const statusToStepMap: Record<string, number> = {
   'pending': 0,
   'processing': 1,
@@ -114,7 +114,7 @@ const statusToStepMap: Record<string, number> = {
   'cancelled': -1,
 }
 
-//  FUNCIÓN PARA OBTENER LOS PASOS DE SEGUIMIENTO
+// FUNCIÓN PARA OBTENER LOS PASOS DE SEGUIMIENTO
 const getOrderSteps = (order: Order | null) => {
   if (!order) return []
   
@@ -135,7 +135,7 @@ const getOrderSteps = (order: Order | null) => {
   
   const pendingLabel = isPaymentFailed ? "Pago Rechazado" : "Pago Recibido"
   const pendingDescription = isPaymentFailed 
-    ? " Tu pago ha sido rechazado. Por favor, contacta con soporte."
+    ? "Tu pago ha sido rechazado. Por favor, contacta con soporte."
     : "Tu pago ha sido recibido exitosamente."
   
   if (isPaymentFailed) {
@@ -185,7 +185,7 @@ const getOrderSteps = (order: Order | null) => {
   ]
 }
 
-//  FUNCIÓN PARA OBTENER EL ESTADO DEL PAGO MOSTRADO
+// FUNCIÓN PARA OBTENER EL ESTADO DEL PAGO MOSTRADO
 const getPaymentStatusDisplay = (paymentStatus: string) => {
   switch (paymentStatus) {
     case 'paid':
@@ -201,7 +201,7 @@ const getPaymentStatusDisplay = (paymentStatus: string) => {
   }
 }
 
-//  FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
+// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
 const getShippingMethodDisplay = (order: Order | null): string => {
   if (!order) return 'Método no especificado'
   
@@ -253,7 +253,7 @@ const getShippingMethodDisplay = (order: Order | null): string => {
   return 'Método no especificado'
 }
 
-//  FUNCIÓN PARA OBTENER LA CATEGORÍA DE ENVÍO
+// FUNCIÓN PARA OBTENER LA CATEGORÍA DE ENVÍO
 const getShippingCategory = (order: Order | null): string => {
   if (!order) return 'unknown'
   
@@ -307,6 +307,7 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [resendingEmail, setResendingEmail] = useState(false)
   const [descargandoPDF, setDescargandoPDF] = useState(false)
+  const [reintentandoBoleta, setReintentandoBoleta] = useState(false)
 
   useEffect(() => {
     if (authLoading) return
@@ -380,6 +381,47 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  REINTENTAR GENERACIÓN DE BOLETA
+  const handleReintentarBoleta = async () => {
+    if (!order) return;
+    
+    setReintentandoBoleta(true);
+    try {
+      const response = await fetch(`/api/orders/${order.id}/retry-boleta`, {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        toast({
+          title: " Boleta emitida",
+          description: data.message,
+          duration: 5000,
+        });
+        // Recargar la orden para ver los cambios
+        fetchOrder();
+      } else {
+        toast({
+          title: "❌ No se pudo emitir la boleta",
+          description: data.error || "Error al generar la boleta",
+          variant: "destructive",
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "❌ Error",
+        description: "Error al conectar con el servidor",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setReintentandoBoleta(false);
+    }
+  }
+
+  //  DESCARGAR BOLETA CON APIGATEWAY
   const descargarBoleta = async () => {
     const folio = order?.boleta_info?.folio
     if (!folio) {
@@ -394,7 +436,7 @@ export default function OrderDetailPage() {
     
     setDescargandoPDF(true)
     try {
-      const response = await fetch(`/api/simplefactura/pdf?folio=${folio}`)
+      const response = await fetch(`/api/apigateway/pdf?folio=${folio}`)
       
       if (response.ok) {
         const blob = await response.blob()
@@ -434,6 +476,7 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  VER BOLETA CON APIGATEWAY
   const verBoleta = async () => {
     const folio = order?.boleta_info?.folio
     if (!folio) {
@@ -445,7 +488,7 @@ export default function OrderDetailPage() {
       })
       return
     }
-    window.open(`/api/simplefactura/pdf?folio=${folio}`, '_blank')
+    window.open(`/api/apigateway/pdf?folio=${folio}`, '_blank')
   }
 
   const getImageUrl = (url?: string) => {
@@ -466,6 +509,7 @@ export default function OrderDetailPage() {
   const currentStep = getCurrentStep()
   const isCancelled = order?.status === 'cancelled'
   const isPaymentFailed = order?.payment_status === 'failed'
+  const tieneBoleta = order?.boleta_emitida === 1 && order?.boleta_info?.folio
 
   if (authLoading) {
     return (
@@ -536,33 +580,23 @@ export default function OrderDetailPage() {
     department: "",
     delivery_instructions: ""
   }
-  const tieneBoleta = order.boleta_emitida === 1 && order.boleta_info?.folio
   
   const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
-  //  OBTENER EL MÉTODO DE ENVÍO Y CATEGORÍA
   const shippingMethodDisplay = getShippingMethodDisplay(order)
   const shippingCategory = getShippingCategory(order)
   
-  //  DETERMINAR TIPOS DE ENVÍO - USAR DIRECTAMENTE order.shipping_type
   const isBodegaPickup = order?.shipping_type === 'bodega_pickup'
   const isBranchPickup = order?.shipping_type === 'branch_pickup'
   const isHomeDelivery = order?.shipping_type === 'home_delivery'
   const isCashOnDelivery = order?.shipping_type === 'cash_on_delivery'
 
-  //  OBTENER LA SUCURSAL SELECCIONADA
   const selectedBranch = order?.shipping_details?.selectedBranch
-
-  //  DETERMINAR SI EL PEDIDO ESTÁ ENTREGADO
   const isDelivered = order?.status === 'delivered'
-
-  //  ESTADO DEL PAGO
   const paymentStatusDisplay = getPaymentStatusDisplay(order?.payment_status || '')
 
-  //  OBTENER LOS PASOS CON ETIQUETAS DINÁMICAS
   const orderSteps = getOrderSteps(order)
 
-  //  OBTENER EL ICONO PARA EL PASO "EN CAMINO" SEGÚN EL TIPO
   const getShippedIcon = () => {
     if (isBodegaPickup || isBranchPickup) {
       return Store
@@ -722,9 +756,9 @@ export default function OrderDetailPage() {
 
                         if (step.key === "pending" && (stepStatus === "completed" || stepStatus === "active")) {
                           if (order.payment_status === 'paid') {
-                            stepDescription = ' Tu pago ha sido aprobado y recibido correctamente.'
+                            stepDescription = 'Tu pago ha sido aprobado y recibido correctamente.'
                           } else if (order.payment_status === 'failed') {
-                            stepDescription = ' Tu pago ha sido rechazado. Por favor, contacta con soporte.'
+                            stepDescription = 'Tu pago ha sido rechazado. Por favor, contacta con soporte.'
                           } else {
                             stepDescription = 'Tu pago ha sido recibido exitosamente.'
                           }
@@ -740,11 +774,11 @@ export default function OrderDetailPage() {
 
                         if (step.key === "shipped" && (stepStatus === "active" || stepStatus === "completed")) {
                           if (isBodegaPickup) {
-                            stepDescription = ' Tu pedido está disponible para retiro en nuestra bodega.'
+                            stepDescription = 'Tu pedido está disponible para retiro en nuestra bodega.'
                           } else if (isBranchPickup) {
-                            stepDescription = ` Tu pedido está disponible para retiro en ${selectedBranch?.name || 'nuestra sucursal'}.`
+                            stepDescription = `Tu pedido está disponible para retiro en ${selectedBranch?.name || 'nuestra sucursal'}.`
                           } else if (isHomeDelivery) {
-                            stepDescription = ` Tu pedido está en camino - ${shippingMethodDisplay}`
+                            stepDescription = `Tu pedido está en camino - ${shippingMethodDisplay}`
                           } else {
                             stepDescription = shippingMethodDisplay
                           }
@@ -752,11 +786,11 @@ export default function OrderDetailPage() {
 
                         if (step.key === "delivered" && (stepStatus === "active" || stepStatus === "completed")) {
                           if (isBodegaPickup || isBranchPickup) {
-                            stepDescription = ' Pedido retirado por el cliente'
+                            stepDescription = 'Pedido retirado por el cliente'
                           } else if (isHomeDelivery) {
-                            stepDescription = ` Pedido entregado en ${order.shipping_address?.street || 'tu domicilio'}`
+                            stepDescription = `Pedido entregado en ${order.shipping_address?.street || 'tu domicilio'}`
                           } else {
-                            stepDescription = ' Pedido entregado con éxito'
+                            stepDescription = 'Pedido entregado con éxito'
                           }
                         }
 
@@ -877,7 +911,7 @@ export default function OrderDetailPage() {
                                         )}
                                         {order.shipping === 0 && order.total > 0 && !isBodegaPickup && (
                                           <Badge variant="outline" className="text-xs bg-green-50 border-green-200 text-green-700">
-                                             Envío Gratis
+                                            Envío Gratis
                                           </Badge>
                                         )}
                                       </div>
@@ -892,7 +926,7 @@ export default function OrderDetailPage() {
                                             </span>
                                           </p>
                                           <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
-                                             Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                                            Horario: Lunes a Viernes 10:00 - 18:00 hrs
                                           </p>
                                         </div>
                                       )}
@@ -905,10 +939,15 @@ export default function OrderDetailPage() {
                                               <strong>Dirección de retiro:</strong><br />
                                               {selectedBranch.name}<br />
                                               {selectedBranch.address}
+                                              {selectedBranch.telephone && (
+                                                <>
+                                                  <br />📞 {selectedBranch.telephone}
+                                                </>
+                                              )}
                                             </span>
                                           </p>
                                           <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
-                                             Horario: Lunes a Viernes 12:00 - 18:00 hrs
+                                            Horario: Lunes a Viernes 12:00 - 18:00 hrs
                                           </p>
                                         </div>
                                       )}
@@ -930,7 +969,7 @@ export default function OrderDetailPage() {
                                           </p>
                                           {order.shipping_details?.serviceName && (
                                             <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-purple-600'} mt-1 pl-6`}>
-                                               {order.shipping_details.serviceName}
+                                              {order.shipping_details.serviceName}
                                             </p>
                                           )}
                                         </div>
@@ -1021,7 +1060,7 @@ export default function OrderDetailPage() {
               </Card>
             )}
 
-            {/*  MENSAJE DE PAGO RECHAZADO */}
+            {/* MENSAJE DE PAGO RECHAZADO */}
             {isPaymentFailed && (
               <Card className="shadow-sm border-red-200 bg-red-50">
                 <CardContent className="pt-6">
@@ -1140,7 +1179,7 @@ export default function OrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/*  DIRECCIÓN DE ENVÍO / RETIRO EN BODEGA - CORREGIDO */}
+            {/* DIRECCIÓN DE ENVÍO / RETIRO EN BODEGA */}
             <Card className="shadow-sm gap-1">
               <CardHeader className="pb-1">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1165,15 +1204,13 @@ export default function OrderDetailPage() {
 
                 <div className="text-muted-foreground space-y-1">
                   {isBodegaPickup ? (
-                    //  DIRECCIÓN DE BODEGA - SIEMPRE SE MUESTRA
                     <>
                       <p>Arcangel 1200, San Miguel</p>
                       <p>San Miguel, Región Metropolitana</p>
                       <p>Código Postal: 8900000</p>
-                      <p className="text-xs text-muted-foreground mt-1"> Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
+                      <p className="text-xs text-muted-foreground mt-1">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
                     </>
                   ) : (
-                    //  DIRECCIÓN NORMAL
                     order.shipping_address ? (
                       <>
                         <p>{order.shipping_address.street}</p>
@@ -1210,8 +1247,10 @@ export default function OrderDetailPage() {
 
               <CardContent className="pt-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0 ">
-
+                  <div className="w-10 h-6 rounded flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-bold">
+                      TB
+                    </span>
                   </div>
 
                   <div>
@@ -1229,7 +1268,6 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
-
               <Button
                 variant="outline"
                 className="w-full"
@@ -1249,16 +1287,30 @@ export default function OrderDetailPage() {
                 )}
               </Button>
 
+              {/*  BOTÓN PARA REINTENTAR BOLETA - SOLO SIEMPLE CUMPLE TODAS LAS CONDICIONES */}
+              {!tieneBoleta && order.payment_status === 'paid' && (
+                <Button
+                  variant="outline"
+                  className="w-full border-amber-500 text-amber-600 hover:bg-amber-50"
+                  onClick={handleReintentarBoleta}
+                  disabled={reintentandoBoleta}
+                >
+                  {reintentandoBoleta ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generando boleta...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Reintentar generación de boleta
+                    </>
+                  )}
+                </Button>
+              )}
+
               {tieneBoleta && (
                 <>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={verBoleta}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Ver boleta
-                  </Button>
 
                   <Button
                     variant="outline"
@@ -1276,7 +1328,6 @@ export default function OrderDetailPage() {
                   </Button>
                 </>
               )}
-
             </div>
 
           </div>

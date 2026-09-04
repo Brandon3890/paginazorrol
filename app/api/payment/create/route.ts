@@ -1,6 +1,6 @@
+// app/api/payment/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
-import { orderNumberService } from '@/lib/order-number-service'
 import { query } from '@/lib/db'
 
 function generateSimpleOrderNumber(): string {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const { orderId, amount, isGuest, guestEmail } = body
 
     if (!orderId || !amount) {
-      console.log('Missing required fields:', { orderId, amount })
+      console.log(' Missing required fields:', { orderId, amount })
       return NextResponse.json(
         { error: 'Faltan datos requeridos: orderId y amount' },
         { status: 400 }
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
 
     // Buscar el usuario (logueado o invitado)
     if (isGuest && guestEmail) {
-      console.log('Buscando usuario invitado con email:', guestEmail)
       const guestUser = await query(
         'SELECT id, rut FROM users WHERE email = ? AND is_guest = 1',
         [guestEmail]
@@ -41,9 +40,7 @@ export async function POST(request: NextRequest) {
       if (guestUser.length > 0) {
         userId = guestUser[0].id
         userRut = guestUser[0].rut
-        console.log('Usuario invitado encontrado:', userId)
       } else {
-        console.log('Usuario invitado no encontrado para email:', guestEmail)
         return NextResponse.json(
           { error: 'Usuario invitado no encontrado' },
           { status: 404 }
@@ -70,14 +67,14 @@ export async function POST(request: NextRequest) {
           const { payload } = await jwtVerify(token, JWT_SECRET)
           userId = payload.userId as string
           userRut = payload.rut as string || null
-          console.log('Usuario autenticado encontrado:', userId)
+          console.log('Usuario autenticado encontrado')
         } catch (error) {
           console.log('Error verificando token:', error)
         }
       }
       
       if (!userId) {
-        console.log('No se encontro usuario autenticado')
+        console.log(' No se encontró usuario autenticado')
         return NextResponse.json(
           { error: 'No autorizado' },
           { status: 401 }
@@ -92,7 +89,7 @@ export async function POST(request: NextRequest) {
     ) as any[]
 
     if (orders.length === 0) {
-      console.log('Orden no encontrada:', { orderId, userId })
+      console.log(' Orden no encontrada:', { orderId, userId })
       return NextResponse.json(
         { error: 'Orden no encontrada' },
         { status: 404 }
@@ -100,23 +97,14 @@ export async function POST(request: NextRequest) {
     }
 
     const order = orders[0]
-    console.log('Orden encontrada:', { id: order.id, currentOrderNumber: order.order_number })
 
-    // Generar datos para Transbank
+    //  GENERAR NUEVO NÚMERO DE ORDEN
     const newOrderNumber = generateSimpleOrderNumber()
     const transbankBuyOrder = `TBK${Date.now()}${Math.floor(Math.random() * 10000)}`
     const sessionId = `SES${Date.now()}${Math.random().toString(36).substring(2, 15)}`
     const returnUrl = `${process.env.NEXTAUTH_URL}/api/payment/response`
 
-    console.log('Datos para Transbank:', {
-      newOrderNumber,
-      transbankBuyOrder,
-      sessionId,
-      returnUrl,
-      amount
-    })
-
-    // Actualizar la orden
+    //  ACTUALIZAR LA ORDEN (SOLO DATOS DE PAGO, NO VALIDAR TÉRMINOS)
     await query(
       `UPDATE orders SET 
         order_number = ?,
@@ -131,7 +119,7 @@ export async function POST(request: NextRequest) {
       [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, userRut, orderId]
     )
 
-    console.log('Orden actualizada, creando transaccion en Transbank...')
+    console.log(' Orden actualizada, creando transacción')
 
     // Crear transacción en Transbank
     const transaction = await transbankService.createTransaction({
@@ -141,7 +129,7 @@ export async function POST(request: NextRequest) {
       return_url: returnUrl
     })
 
-    console.log('Transaccion creada exitosamente:', { token: transaction.token, url: transaction.url })
+    console.log(' Transacción creada exitosamente')
 
     return NextResponse.json({
       success: true,
@@ -154,10 +142,10 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('Error creando transaccion Webpay:', error)
+    console.error(' Error creando transacción :', error)
     return NextResponse.json(
       { 
-        error: 'Error interno del servidor al crear transaccion',
+        error: 'Error interno del servidor al crear transacción',
         details: error.message 
       },
       { status: 500 }

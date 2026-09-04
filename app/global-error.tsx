@@ -85,7 +85,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             </motion.div>
 
             <p className="text-xs text-gray-400 mt-8">
-              Si el problema persiste, contacta a soporte@ludicagames.com
+              Si el problema persiste, contacta a jinfranko@zorroludico.cl
             </p>
           </div>
         </div>

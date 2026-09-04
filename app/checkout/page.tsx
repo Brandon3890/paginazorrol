@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store, Home } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -68,7 +68,7 @@ interface RegionsResponse {
   regions: Region[];
 }
 
-//  OPCIÓN DE RETIRO EN BODEGA (GRATUITA)
+// OPCIÓN DE RETIRO EN BODEGA (GRATUITA)
 const BODEGA_OPTION: ChilexpressOption = {
   id: "bodega_pickup",
   type: "bodega_pickup",
@@ -85,7 +85,7 @@ const BODEGA_OPTION: ChilexpressOption = {
   }]
 }
 
-//  DIRECCIÓN DE LA BODEGA
+// DIRECCIÓN DE LA BODEGA
 const BODEGA_ADDRESS = {
   street: "Arcangel 1200, San Miguel",
   hasNoNumber: false,
@@ -116,7 +116,6 @@ export default function CheckoutPage() {
     applyCoupon,
     removeCoupon,
     isLoading: cartLoading,
-    hasActiveCheckout,
   } = useCartStore()
   
   const { user, isAuthenticated, loadUserAddresses } = useAuthStore()
@@ -148,6 +147,9 @@ export default function CheckoutPage() {
   })
   const [guestFormErrors, setGuestFormErrors] = useState<Record<string, string>>({})
 
+  //  ESTADO PARA LA ELECCIÓN DE DIRECCIÓN DEL INVITADO
+  const [guestAddressOption, setGuestAddressOption] = useState<'bodega' | 'manual' | null>(null)
+
   // Estados para dirección manual con API de regiones
   const [regions, setRegions] = useState<Region[]>([])
   const [loadingRegions, setLoadingRegions] = useState(false)
@@ -173,16 +175,16 @@ export default function CheckoutPage() {
   // Estado para términos y condiciones
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
-  //  Estado para controlar si se muestra el formulario de dirección
+  // Estado para controlar si se muestra el formulario de dirección
   const [showAddressForm, setShowAddressForm] = useState(true)
-  //  Estado para saber si se seleccionó retiro en bodega
+  // Estado para saber si se seleccionó retiro en bodega
   const [isBodegaSelected, setIsBodegaSelected] = useState(false)
 
-  //  ESTADO PARA LA TIENDA (PÁNICO)
+  // ESTADO PARA LA TIENDA (PÁNICO)
   const [storeOpen, setStoreOpen] = useState(true)
   const [maintenanceMessage, setMaintenanceMessage] = useState("")
 
-  //  EFECTO PARA VERIFICAR EL ESTADO DE LA TIENDA
+  // EFECTO PARA VERIFICAR EL ESTADO DE LA TIENDA
   useEffect(() => {
     const fetchStoreStatus = async () => {
       try {
@@ -350,7 +352,7 @@ export default function CheckoutPage() {
       
       const data = await response.json();
       
-      //  COMBINAR OPCIONES DE CHILEXPRESS CON LA OPCIÓN DE BODEGA
+      // COMBINAR OPCIONES DE CHILEXPRESS CON LA OPCIÓN DE BODEGA
       let allOptions: ChilexpressOption[] = []
       
       if (data.success && data.options && data.options.length > 0) {
@@ -365,7 +367,7 @@ export default function CheckoutPage() {
         setShippingError(data.error || "No se encontraron tarifas de envio")
       }
       
-      //  SIEMPRE AGREGAR LA OPCIÓN DE RETIRO EN BODEGA
+      // SIEMPRE AGREGAR LA OPCIÓN DE RETIRO EN BODEGA
       const hasBodegaOption = allOptions.some((o: any) => o.type === "bodega_pickup")
       if (!hasBodegaOption) {
         allOptions.push(BODEGA_OPTION)
@@ -395,7 +397,7 @@ export default function CheckoutPage() {
     } catch (error) {
       console.error("Error fetching shipping rates:", error)
       setShippingError("Error al calcular el costo de envio")
-      //  Incluso en error, mostrar la opción de bodega
+      // Incluso en error, mostrar la opción de bodega
       setChilexpressOptions([BODEGA_OPTION])
       setSelectedChilexpressOption(BODEGA_OPTION)
       setShippingCost(0)
@@ -449,7 +451,7 @@ export default function CheckoutPage() {
     }
   }, [user?.addresses, selectedAddress, isGuestMode, isBodegaSelected])
 
-  // Validar formulario de invitado
+  // Validar formulario de invitado - RUT OPCIONAL
   const validateGuestForm = () => {
     const errors: Record<string, string> = {}
     
@@ -459,9 +461,6 @@ export default function CheckoutPage() {
     if (!guestData.confirmEmail) errors.confirmEmail = "Confirmar email requerido"
     if (guestData.email !== guestData.confirmEmail) errors.confirmEmail = "Los correos no coinciden"
     if (!guestData.phone) errors.phone = "Teléfono requerido"
-    if (!guestData.rut) errors.rut = "RUT requerido para la boleta"
-    
-    // Validar formato de RUT básico
     if (guestData.rut && !guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
       errors.rut = "Formato de RUT inválido (ej: 12345678-5)"
     }
@@ -495,12 +494,15 @@ export default function CheckoutPage() {
       return
     }
     
+    // Si el RUT está vacío, asignar el valor predeterminado
+    const rutToUse = guestData.rut.trim() || "66666666-6"
+    
     const sessionId = createGuestSession({
       email: guestData.email,
       firstName: guestData.firstName,
       lastName: guestData.lastName,
       phone: guestData.phone,
-      rut: guestData.rut
+      rut: rutToUse
     })
     
     setFormData({
@@ -516,7 +518,7 @@ export default function CheckoutPage() {
     
     toast({
       title: "Modo invitado activado",
-      description: "Completa tu dirección para continuar",
+      description: "Ahora elige tu método de envío",
     })
   }
 
@@ -545,7 +547,6 @@ export default function CheckoutPage() {
     
     // Cuando cambia la comuna, NO auto-llenar el código postal (dejarlo editable)
     if (name === 'communeName') {
-      // Solo actualizar la comuna, el código postal queda como está
       setManualAddress(prev => ({
         ...prev,
         communeName: value
@@ -580,10 +581,42 @@ export default function CheckoutPage() {
     }
     
     setSelectedAddress(tempAddress)
+    setGuestAddressOption('manual')
+    setIsBodegaSelected(false)
     
     toast({
       title: "Dirección guardada",
       description: "Ahora selecciona un método de envío",
+    })
+  }
+
+  //  FUNCIÓN PARA SELECCIONAR RETIRO EN BODEGA (INVITADO)
+  const handleGuestSelectBodega = () => {
+    setGuestAddressOption('bodega')
+    setIsBodegaSelected(true)
+    setSelectedAddress(null)
+    setShowAddressForm(false)
+    
+    //  Seleccionar automáticamente la opción de bodega en el método de envío
+    const bodegaOption = chilexpressOptions.find(o => o.type === "bodega_pickup")
+    if (bodegaOption) {
+      setSelectedChilexpressOption(bodegaOption)
+      setShippingCost(0)
+      setShippingMethod("bodega_pickup" as any)
+      setShowBranchSelector(false)
+      setSelectedBranch(null)
+    } else {
+      // Si no existe la opción en chilexpressOptions, crearla
+      setSelectedChilexpressOption(BODEGA_OPTION)
+      setShippingCost(0)
+      setShippingMethod("bodega_pickup" as any)
+      setShowBranchSelector(false)
+      setSelectedBranch(null)
+    }
+    
+    toast({
+      title: " Retiro en Bodega seleccionado",
+      description: "Retirarás tu pedido en nuestra bodega sin costo de envío",
     })
   }
 
@@ -592,7 +625,7 @@ export default function CheckoutPage() {
     const price = option.price ?? 0;
     setShippingCost(price);
     
-    //  DETERMINAR EL TIPO DE ENVÍO
+    // DETERMINAR EL TIPO DE ENVÍO
     if (option.type === "bodega_pickup") {
       setShippingMethod("bodega_pickup" as any)
       setIsBodegaSelected(true)
@@ -618,7 +651,7 @@ export default function CheckoutPage() {
     }
   };
 
-  //  Función para obtener direcciones únicas (evitar duplicados)
+  // Función para obtener direcciones únicas (evitar duplicados)
   const getUniqueAddresses = (addresses: any[]) => {
     const seen = new Set()
     return addresses.filter(addr => {
@@ -629,7 +662,7 @@ export default function CheckoutPage() {
     })
   }
 
-  //  Obtener direcciones únicas para mostrar
+  // Obtener direcciones únicas para mostrar
   const uniqueAddresses = user?.addresses ? getUniqueAddresses(user.addresses) : []
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -641,7 +674,7 @@ export default function CheckoutPage() {
       return
     }
     
-    //  VALIDACIÓN: Si no es retiro en bodega, debe tener dirección
+    // VALIDACIÓN: Si no es retiro en bodega, debe tener dirección
     const isBodegaPickupSelected = selectedChilexpressOption?.type === "bodega_pickup"
     
     if (!isBodegaPickupSelected && !selectedAddress) {
@@ -674,7 +707,7 @@ export default function CheckoutPage() {
       const isGuestUser = isGuestMode && !isAuthenticated
       const apiEndpoint = isGuestUser ? '/api/orders/create-guest' : '/api/orders/create'
       
-      //  DETERMINAR EL TIPO DE ENVÍO
+      // DETERMINAR EL TIPO DE ENVÍO
       let shippingType = 'standard'
       
       if (isBodegaPickupSelected) {
@@ -689,7 +722,7 @@ export default function CheckoutPage() {
         shippingType = 'branch_pickup'
       }
       
-      //  DIRECCIÓN DE ENVÍO: Si es retiro en bodega, usar dirección de la bodega
+      // DIRECCIÓN DE ENVÍO: Si es retiro en bodega, usar dirección de la bodega
       let shippingAddressData
       if (isBodegaPickupSelected) {
         shippingAddressData = BODEGA_ADDRESS
@@ -706,7 +739,7 @@ export default function CheckoutPage() {
         }
       }
       
-      //  SHIPPING DETAILS
+      // SHIPPING DETAILS
       let shippingDetailsData
       if (isBodegaPickupSelected) {
         shippingDetailsData = {
@@ -742,6 +775,14 @@ export default function CheckoutPage() {
         }
       }
       
+      // Obtener el RUT: si es invitado y está vacío, usar el predeterminado
+      let rutToUse
+      if (isGuestUser) {
+        rutToUse = guestData.rut.trim() || "66666666-6"
+      } else {
+        rutToUse = user?.rut
+      }
+      
       const orderPayload: any = {
         items: items.map((item) => ({
           id: item.id,
@@ -756,7 +797,7 @@ export default function CheckoutPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
-          rut: isGuestUser ? guestData.rut : user?.rut
+          rut: rutToUse
         },
         shippingAddress: shippingAddressData,
         totals: {
@@ -788,7 +829,10 @@ export default function CheckoutPage() {
       })
 
       const orderData = await orderResponse.json()
-      if (!orderResponse.ok) throw new Error(orderData.error)
+      
+      if (!orderResponse.ok) {
+        throw new Error(orderData.error || 'Error al crear la orden')
+      }
 
       addOrder({
         userId: orderData.userId,
@@ -825,7 +869,11 @@ export default function CheckoutPage() {
 
     } catch (error: any) {
       console.error('Error:', error)
-      toast({ title: "Error", description: error.message, variant: "destructive" })
+      toast({ 
+        title: "Error", 
+        description: error.message || "Ocurrió un error al procesar tu pedido", 
+        variant: "destructive" 
+      })
     } finally {
       setIsProcessing(false)
     }
@@ -1010,7 +1058,7 @@ export default function CheckoutPage() {
                     )}
                   </div>
                   <div>
-                    <Label>RUT *</Label>
+                    <Label>RUT (Opcional)</Label>
                     <Input
                       placeholder="Ej: 12345678-5"
                       value={guestData.rut}
@@ -1042,32 +1090,268 @@ export default function CheckoutPage() {
           )}
 
           {isGuestMode && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-amber-700">Comprando como invitado</span>
-                <Badge variant="outline" className="bg-amber-100">
-                  {formData.email}
-                </Badge>
+            <>
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-700">Comprando como invitado</span>
+                  <Badge variant="outline" className="bg-amber-100">
+                    {formData.email}
+                  </Badge>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    clearGuestSession()
+                    setIsGuestMode(false)
+                    setSelectedAddress(null)
+                    setShowGuestForm(true)
+                    setGuestAddressOption(null)
+                    setIsBodegaSelected(false)
+                    setSelectedChilexpressOption(null)
+                    setFormData({ email: "", firstName: "", lastName: "", phone: "", notes: "" })
+                    setGuestData({ email: "", firstName: "", lastName: "", phone: "", rut: "", confirmEmail: "" })
+                    toast({ title: "Sesión cerrada", description: "Puedes iniciar sesión o volver a comprar como invitado" })
+                  }}
+                >
+                  Cambiar
+                </Button>
               </div>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => {
-                  clearGuestSession()
-                  setIsGuestMode(false)
-                  setSelectedAddress(null)
-                  setShowGuestForm(true)
-                  setFormData({ email: "", firstName: "", lastName: "", phone: "", notes: "" })
-                  setGuestData({ email: "", firstName: "", lastName: "", phone: "", rut: "", confirmEmail: "" })
-                  toast({ title: "Sesión cerrada", description: "Puedes iniciar sesión o volver a comprar como invitado" })
-                }}
-              >
-                Cambiar
-              </Button>
-            </div>
+
+              {/*  OPCIÓN DE DIRECCIÓN PARA INVITADO */}
+              {!guestAddressOption && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5" />
+                      ¿Cómo deseas recibir tu pedido?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Opción 1: Retiro en Bodega */}
+                      <div
+                        className="border-2 rounded-lg p-6 cursor-pointer hover:border-green-500 transition-all hover:shadow-md text-center"
+                        onClick={handleGuestSelectBodega}
+                      >
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+                            <Store className="w-7 h-7 text-green-600" />
+                          </div>
+
+                          <div>
+                            <h3 className="font-semibold text-lg">Retiro en Bodega</h3>
+
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Sin costo de envío
+                            </p>
+
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Arcangel 1200, San Miguel
+                            </p>
+
+                            <p className="text-xs text-muted-foreground">
+                              Horario: 10:00 - 18:00 hrs
+                            </p>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            className="mt-2 w-full border-green-500 text-green-600 hover:bg-green-50 hover:text-green-600"
+                          >
+                            Seleccionar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Opción 2: Ingresar dirección */}
+                      <div
+                        className="border-2 rounded-lg p-6 cursor-pointer hover:border-blue-500 transition-all hover:shadow-md text-center"
+                        onClick={() => setGuestAddressOption('manual')}
+                      >
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                            <Home className="w-7 h-7 text-blue-600" />
+                          </div>
+
+                          <div>
+                            <h3 className="font-semibold text-lg">Envío a Domicilio</h3>
+
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Ingresa tu dirección
+                            </p>
+
+                            <p className="text-xs text-muted-foreground mt-2">
+                              El costo de envío se calculará según tu ubicación
+                            </p>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            className="mt-2 w-full border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-600"
+                          >
+                            Ingresar dirección
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/*  FORMULARIO DE DIRECCIÓN MANUAL (cuando elige envío a domicilio) */}
+              {guestAddressOption === 'manual' && !selectedAddress && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5" />
+                      Ingresa tu dirección
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleManualAddressSubmit} className="space-y-4">
+                      <div>
+                        <Label>Calle y número *</Label>
+                        <Input
+                          name="street"
+                          required
+                          value={manualAddress.street}
+                          onChange={handleManualAddressChange}
+                          placeholder="Ej: Av. Providencia 1234"
+                          className={manualAddressErrors.street ? "border-red-500" : ""}
+                        />
+                        {manualAddressErrors.street && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {manualAddressErrors.street}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Región *</Label>
+                          <select
+                            name="regionIso"
+                            required
+                            value={manualAddress.regionIso}
+                            onChange={handleManualAddressChange}
+                            className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
+                            disabled={loadingRegions}
+                          >
+                            <option value="">Selecciona una región</option>
+                            {regions.map(region => (
+                              <option key={region.region_iso_3166_2} value={region.region_iso_3166_2}>
+                                {region.name}
+                              </option>
+                            ))}
+                          </select>
+                          {manualAddressErrors.regionIso && (
+                            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {manualAddressErrors.regionIso}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label>Comuna *</Label>
+                          <select
+                            name="communeName"
+                            required
+                            value={manualAddress.communeName}
+                            onChange={handleManualAddressChange}
+                            disabled={!manualAddress.regionIso || loadingRegions}
+                            className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
+                          >
+                            <option value="">Selecciona una comuna</option>
+                            {selectedRegion?.communes.map(commune => (
+                              <option key={commune.name} value={commune.name}>
+                                {commune.name}
+                              </option>
+                            ))}
+                          </select>
+                          {manualAddressErrors.communeName && (
+                            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {manualAddressErrors.communeName}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>Código Postal *</Label>
+                        <Input
+                          name="postalCode"
+                          required
+                          value={manualAddress.postalCode}
+                          onChange={handleManualAddressChange}
+                          placeholder="Ej: 7500000"
+                          className={manualAddressErrors.postalCode ? "border-red-500" : ""}
+                        />
+                        {manualAddressErrors.postalCode && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {manualAddressErrors.postalCode}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Ingresa el código postal de tu dirección
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Departamento (Opcional)</Label>
+                        <Input
+                          name="department"
+                          value={manualAddress.department}
+                          onChange={handleManualAddressChange}
+                          placeholder="Depto, oficina, etc."
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Instrucciones de entrega</Label>
+                        <Textarea
+                          name="deliveryInstructions"
+                          value={manualAddress.deliveryInstructions}
+                          onChange={handleManualAddressChange}
+                          rows={2}
+                          placeholder="Referencias, horario, etc."
+                        />
+                      </div>
+
+                      <div className="flex gap-3">
+                        <Button type="submit" className="flex-1">
+                          Guardar dirección
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="ghost"
+                          onClick={() => {
+                            setGuestAddressOption(null)
+                            setManualAddress({
+                              street: '',
+                              regionIso: '',
+                              regionName: '',
+                              communeName: '',
+                              postalCode: '',
+                              department: '',
+                              deliveryInstructions: ''
+                            })
+                          }}
+                        >
+                          Volver
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
 
-          {(isAuthenticated || isGuestMode) && (
+          {(isAuthenticated || (isGuestMode && guestAddressOption !== null)) && (
             <Card>
               <CardHeader><CardTitle>Información de Contacto</CardTitle></CardHeader>
               <CardContent className="space-y-4">
@@ -1122,19 +1406,38 @@ export default function CheckoutPage() {
           <Card>
             <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
             <CardContent>
-              {/*  SI ES RETIRO EN BODEGA, NO MOSTRAR FORMULARIO DE DIRECCIÓN */}
+              {/*  SI ES RETIRO EN BODEGA (Invitado o Usuario) */}
               {isBodegaSelected ? (
-                <div className="p-4 border  rounded-lg">
+                <div className="p-4 border rounded-lg bg-green-50 border-green-200">
                   <div className="flex items-start gap-3">
-                    <Store className="w-5 h-5  mt-0.5" />
+                    <Store className="w-5 h-5 text-green-600 mt-0.5" />
                     <div>
-                      <p className="font-medium ">Retiro en Bodega</p>
-                      <p className="text-sm  mt-1">
+                      <p className="font-medium text-green-800">Retiro en Bodega</p>
+                      <p className="text-sm text-green-700 mt-1">
                         Arcangel 1200, San Miguel
                       </p>
-                      <p className="text-xs  mt-1">
-                         Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                      <p className="text-xs text-green-600 mt-1">
+                        Horario: Lunes a Viernes 10:00 - 18:00 hrs
                       </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        Sin costo de envío
+                      </p>
+                      {isGuestMode && guestAddressOption === 'bodega' && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="mt-2 text-green-700 hover:bg-green-100 hover:text-green-700"
+                          onClick={() => {
+                            setIsBodegaSelected(false)
+                            setGuestAddressOption(null)
+                            setSelectedChilexpressOption(null)
+                            setSelectedAddress(null)
+                            setShowAddressForm(true)
+                          }}
+                        >
+                          Cambiar opción
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1151,7 +1454,6 @@ export default function CheckoutPage() {
                         if (value === "bodega_pickup") {
                           setIsBodegaSelected(true)
                           setSelectedAddress(null)
-                          // Seleccionar la opción de bodega en el método de envío
                           const bodegaOption = chilexpressOptions.find(o => o.type === "bodega_pickup")
                           if (bodegaOption) {
                             handleSelectShippingOption(bodegaOption)
@@ -1159,7 +1461,6 @@ export default function CheckoutPage() {
                           return
                         }
                         setIsBodegaSelected(false)
-                        //  CORREGIDO: Verificar que user no sea null
                         if (user && user.addresses) {
                           const address = user.addresses.find(addr => addr.id.toString() === value)
                           if (address) {
@@ -1171,7 +1472,7 @@ export default function CheckoutPage() {
                           <SelectValue placeholder="Selecciona una dirección" />
                         </SelectTrigger>
                         <SelectContent>
-                          {/*  OPCIÓN DE RETIRO EN BODEGA */}
+                          {/* OPCIÓN DE RETIRO EN BODEGA (solo para usuarios autenticados) */}
                           <SelectItem value="bodega_pickup" className="text-green-600 font-medium">
                             <div className="flex items-center gap-2">
                               <Store className="w-4 h-4" />
@@ -1181,7 +1482,6 @@ export default function CheckoutPage() {
                           
                           <Separator className="my-1" />
                           
-                          {/*  DIRECCIONES ÚNICAS (sin duplicados) */}
                           {uniqueAddresses.map((address) => (
                             <SelectItem key={address.id} value={address.id.toString()}>
                               {address.title} - {address.street}, {address.communeName}
@@ -1205,124 +1505,7 @@ export default function CheckoutPage() {
                     </div>
                   )}
                 </>
-              ) : isGuestMode && !selectedAddress ? (
-                <form onSubmit={handleManualAddressSubmit} className="space-y-4">
-                  <div>
-                    <Label>Calle y número *</Label>
-                    <Input
-                      name="street"
-                      required
-                      value={manualAddress.street}
-                      onChange={handleManualAddressChange}
-                      placeholder="Ej: Av. Providencia 1234"
-                      className={manualAddressErrors.street ? "border-red-500" : ""}
-                    />
-                    {manualAddressErrors.street && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {manualAddressErrors.street}
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <Label>Región *</Label>
-                      <select
-                        name="regionIso"
-                        required
-                        value={manualAddress.regionIso}
-                        onChange={handleManualAddressChange}
-                        className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
-                        disabled={loadingRegions}
-                      >
-                        <option value="">Selecciona una región</option>
-                        {regions.map(region => (
-                          <option key={region.region_iso_3166_2} value={region.region_iso_3166_2}>
-                            {region.name}
-                          </option>
-                        ))}
-                      </select>
-                      {manualAddressErrors.regionIso && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {manualAddressErrors.regionIso}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label>Comuna *</Label>
-                      <select
-                        name="communeName"
-                        required
-                        value={manualAddress.communeName}
-                        onChange={handleManualAddressChange}
-                        disabled={!manualAddress.regionIso || loadingRegions}
-                        className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
-                      >
-                        <option value="">Selecciona una comuna</option>
-                        {selectedRegion?.communes.map(commune => (
-                          <option key={commune.name} value={commune.name}>
-                            {commune.name}
-                          </option>
-                        ))}
-                      </select>
-                      {manualAddressErrors.communeName && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {manualAddressErrors.communeName}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Código Postal *</Label>
-                    <Input
-                      name="postalCode"
-                      required
-                      value={manualAddress.postalCode}
-                      onChange={handleManualAddressChange}
-                      placeholder="Ej: 7500000"
-                      className={manualAddressErrors.postalCode ? "border-red-500" : ""}
-                    />
-                    {manualAddressErrors.postalCode && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {manualAddressErrors.postalCode}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Ingresa el código postal de tu dirección
-                    </p>
-                  </div>
-
-                  <div>
-                    <Label>Departamento (Opcional)</Label>
-                    <Input
-                      name="department"
-                      value={manualAddress.department}
-                      onChange={handleManualAddressChange}
-                      placeholder="Depto, oficina, etc."
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Instrucciones de entrega</Label>
-                    <Textarea
-                      name="deliveryInstructions"
-                      value={manualAddress.deliveryInstructions}
-                      onChange={handleManualAddressChange}
-                      rows={2}
-                      placeholder="Referencias, horario, etc."
-                    />
-                  </div>
-
-                  <Button type="submit" className="w-full">
-                    Guardar dirección
-                  </Button>
-                </form>
-              ) : selectedAddress && !isBodegaSelected && (
+              ) : isGuestMode && guestAddressOption === 'manual' && selectedAddress && (
                 <div className="p-3 bg-muted rounded-lg">
                   <p className="font-medium">{selectedAddress.street}</p>
                   <p className="text-sm text-muted-foreground">
@@ -1333,22 +1516,44 @@ export default function CheckoutPage() {
                   {selectedAddress.deliveryInstructions && (
                     <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
                   )}
-                  {isGuestMode && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="mt-2"
-                      onClick={() => setSelectedAddress(null)}
-                    >
-                      Cambiar dirección
-                    </Button>
-                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => {
+                      setSelectedAddress(null)
+                      setGuestAddressOption('manual')
+                    }}
+                  >
+                    Cambiar dirección
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="mt-2 ml-2"
+                    onClick={() => {
+                      setSelectedAddress(null)
+                      setGuestAddressOption(null)
+                      setIsBodegaSelected(false)
+                      setManualAddress({
+                        street: '',
+                        regionIso: '',
+                        regionName: '',
+                        communeName: '',
+                        postalCode: '',
+                        department: '',
+                        deliveryInstructions: ''
+                      })
+                    }}
+                  >
+                    Volver a opciones
+                  </Button>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {(isAuthenticated || isGuestMode) && (
+          {(isAuthenticated || (isGuestMode && guestAddressOption !== null)) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1498,7 +1703,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {(isAuthenticated || isGuestMode) && selectedChilexpressOption && (
+          {(isAuthenticated || (isGuestMode && guestAddressOption !== null)) && selectedChilexpressOption && (
             <Card>
               <CardHeader><CardTitle>Método de Pago</CardTitle></CardHeader>
               <CardContent>
@@ -1510,7 +1715,7 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {(isAuthenticated || isGuestMode) && selectedChilexpressOption && (
+          {(isAuthenticated || (isGuestMode && guestAddressOption !== null)) && selectedChilexpressOption && (
             <Card>
               <CardHeader><CardTitle>Notas del Pedido</CardTitle></CardHeader>
               <CardContent>
@@ -1607,7 +1812,9 @@ export default function CheckoutPage() {
                 <Checkbox
                   id="terms"
                   checked={acceptedTerms}
-                  onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                  onCheckedChange={(checked) => {
+                    setAcceptedTerms(checked === true)
+                  }}
                   className="mt-0.5"
                 />
                 <div className="grid gap-1.5 leading-none">

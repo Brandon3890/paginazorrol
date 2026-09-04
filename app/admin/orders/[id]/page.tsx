@@ -1,3 +1,4 @@
+// app/admin/orders/[id]/page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -19,11 +20,18 @@ import {
   Phone,
   MapPin,
   CreditCard,
-  Users
+  Users,
+  Store,
+  FileText,
+  Download,
+  Eye,
+  AlertCircle,
+  Search
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 interface OrderItem {
   id: number
@@ -56,7 +64,10 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  customer_rut?: string
   is_guest?: boolean
+  shipping_type?: string
+  shipping_details?: any
   shipping_address?: {
     street: string
     commune_name: string
@@ -73,6 +84,13 @@ interface Order {
     card_number?: string
     transaction_date?: string
   }
+  boleta_info?: {
+    folio: string
+    monto_total: number
+    fecha_emision: string
+    estado_sii: string
+  }
+  boleta_emitida?: number
 }
 
 const statusConfig = {
@@ -95,10 +113,18 @@ export default function AdminOrderDetailPage() {
   const router = useRouter()
   const params = useParams()
   const orderId = params.id as string
+  const { toast } = useToast()
   
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Estado para la boleta
+  const [consultandoBoleta, setConsultandoBoleta] = useState(false)
+  const [boletaEstado, setBoletaEstado] = useState<string | null>(null)
+  const [boletaFolio, setBoletaFolio] = useState<string | null>(null)
+  const [boletaError, setBoletaError] = useState<string | null>(null)
+  const [descargandoPDF, setDescargandoPDF] = useState(false)
 
   const formatPrice = (price: number) => {
     if (isNaN(price) || price === undefined || price === null) return '$0'
@@ -135,6 +161,12 @@ export default function AdminOrderDetailPage() {
         const orderData = await response.json()
         console.log('Order data received:', orderData)
         setOrder(orderData)
+        
+        // Si ya tiene boleta, mostrar el estado
+        if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
+          setBoletaFolio(orderData.boleta_info.folio)
+          setBoletaEstado(orderData.boleta_info.estado_sii || 'emitida')
+        }
       } else {
         const errorData = await response.json()
         setError(errorData.error || 'Error al cargar los detalles del pedido')
@@ -144,6 +176,210 @@ export default function AdminOrderDetailPage() {
       setError('No se pudieron cargar los detalles del pedido. Por favor intenta nuevamente.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ✅ FUNCIÓN PARA CONSULTAR LA BOLETA POR FOLIO
+  const consultarBoleta = async () => {
+    const folio = order?.boleta_info?.folio || boletaFolio
+    
+    if (!folio) {
+      toast({
+        title: "Sin folio",
+        description: "No se encontró el folio de la boleta",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setConsultandoBoleta(true)
+    setBoletaError(null)
+    
+    try {
+      console.log(`🔍 Consultando boleta folio: ${folio}`)
+      const response = await fetch(`/api/apigateway/consultar?folio=${folio}`)
+      const data = await response.json()
+      
+      console.log('📊 Respuesta consulta boleta:', data)
+      
+      if (data.success && data.data) {
+        const estado = data.data.estado || data.data.estado_boleta || 'desconocido'
+        setBoletaEstado(estado)
+        setBoletaFolio(folio)
+        
+        toast({
+          title: "✅ Estado consultado",
+          description: `Boleta N° ${folio} está en estado: ${estado}`,
+          duration: 5000,
+        })
+      } else {
+        setBoletaError(data.error || 'Error al consultar la boleta')
+        toast({
+          title: "❌ Error",
+          description: data.error || 'No se pudo consultar la boleta',
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Error consultando boleta:', error)
+      setBoletaError(error.message || 'Error de conexión')
+      toast({
+        title: "❌ Error",
+        description: error.message || 'Error al consultar la boleta',
+        variant: "destructive",
+      })
+    } finally {
+      setConsultandoBoleta(false)
+    }
+  }
+
+  // ✅ FUNCIÓN PARA BUSCAR BOLETA POR ORDEN (cuando NO tiene folio)
+  const consultarBoletaPorOrden = async () => {
+    if (!order) {
+      toast({
+        title: "Error",
+        description: "No hay información de la orden",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setConsultandoBoleta(true)
+    setBoletaError(null)
+    setBoletaEstado(null)
+    
+    try {
+      const rutCliente = order.customer_rut || '55555555-5'
+      
+      console.log(`🔍 Buscando boleta para orden ${order.id} - RUT: ${rutCliente}`)
+      
+      const fechaFin = new Date().toISOString().split('T')[0]
+      const fechaInicio = new Date()
+      fechaInicio.setDate(fechaInicio.getDate() - 90)
+      const fechaInicioStr = fechaInicio.toISOString().split('T')[0]
+      
+      const response = await fetch('/api/apigateway/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date_from: fechaInicioStr,
+          date_to: fechaFin,
+          page: 1,
+          items_per_page: 100,
+          estado: 'aceptada,rechazada,en_proceso'
+        })
+      })
+      
+      const data = await response.json()
+      console.log('📊 Documentos encontrados:', data)
+      
+      if (data.success && data.data && data.data.length > 0) {
+        const montoOrden = Math.round(order.total)
+        
+        // Buscar por monto exacto
+        let boletaEncontrada = data.data.find((doc: any) => {
+          const montoDoc = Math.round(doc.total || 0)
+          return montoDoc === montoOrden
+        })
+        
+        // Si no se encuentra por monto, buscar la más reciente
+        if (!boletaEncontrada && data.data.length > 0) {
+          const sorted = [...data.data].sort((a, b) => 
+            new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+          )
+          boletaEncontrada = sorted[0]
+        }
+        
+        if (boletaEncontrada) {
+          const folio = boletaEncontrada.folio
+          setBoletaFolio(folio)
+          setBoletaEstado(boletaEncontrada.estado_boleta || 'Aceptada')
+          
+          toast({
+            title: "✅ Boleta encontrada",
+            description: `Folio: ${folio} - Estado: ${boletaEncontrada.estado_boleta || 'Aceptada'}`,
+            duration: 5000,
+          })
+        } else {
+          setBoletaError('No se encontró una boleta que coincida con esta orden')
+          toast({
+            title: "ℹ️ No encontrada",
+            description: "No se encontró una boleta para esta orden",
+            variant: "default",
+          })
+        }
+      } else {
+        setBoletaError('No se encontraron boletas para este cliente')
+        toast({
+          title: "ℹ️ Sin boletas",
+          description: "No se encontraron boletas en el SII para este cliente",
+          variant: "default",
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Error buscando boleta:', error)
+      setBoletaError(error.message || 'Error de conexión')
+      toast({
+        title: "❌ Error",
+        description: error.message || 'Error al buscar la boleta',
+        variant: "destructive",
+      })
+    } finally {
+      setConsultandoBoleta(false)
+    }
+  }
+
+  // ✅ FUNCIÓN PARA DESCARGAR LA BOLETA
+  const descargarBoleta = async () => {
+    const folio = order?.boleta_info?.folio || boletaFolio
+    
+    if (!folio) {
+      toast({
+        title: "Sin boleta",
+        description: "Esta orden no tiene una boleta asociada",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    setDescargandoPDF(true)
+    try {
+      console.log(`📄 Descargando PDF folio: ${folio}`)
+      const response = await fetch(`/api/apigateway/pdf?folio=${folio}`)
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `boleta-${folio}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+        
+        toast({
+          title: "✅ PDF descargado",
+          description: `Boleta N° ${folio} descargada exitosamente`,
+          duration: 3000,
+        })
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "❌ Error",
+          description: errorData.error || "Error al descargar PDF",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error descargando PDF:', error)
+      toast({
+        title: "❌ Error",
+        description: "No se pudo descargar el PDF",
+        variant: "destructive",
+      })
+    } finally {
+      setDescargandoPDF(false)
     }
   }
 
@@ -204,6 +440,55 @@ export default function AdminOrderDetailPage() {
       return 'Fecha inválida'
     }
   }
+
+  // ✅ FUNCIÓN PARA OBTENER LA DIRECCIÓN DE ENVÍO MOSTRADA
+  const getShippingDisplay = () => {
+    if (!order) return null
+    
+    const shippingType = order.shipping_type || ''
+    const shippingDetails = order.shipping_details
+    
+    // Caso 1: Retiro en Bodega
+    if (shippingType === 'bodega_pickup' || shippingDetails?.type === 'bodega_pickup') {
+      const branch = shippingDetails?.selectedBranch || {
+        address: 'Arcangel 1200, San Miguel'
+      }
+      return {
+        type: 'bodega',
+        title: 'Retiro en Bodega',
+        address: branch.address || 'Arcangel 1200, San Miguel',
+        details: '',
+        icon: Store
+      }
+    }
+    
+    // Caso 2: Retiro en Sucursal
+    if (shippingType === 'branch_pickup' || shippingDetails?.selectedBranch) {
+      const branch = shippingDetails?.selectedBranch
+      return {
+        type: 'branch',
+        title: 'Retiro en Sucursal',
+        address: branch?.address || 'Sucursal Chilexpress',
+        details: branch?.name ? `Sucursal: ${branch.name}` : '',
+        icon: Store
+      }
+    }
+    
+    // Caso 3: Envío a Domicilio
+    if (shippingType === 'home_delivery' || shippingType === 'standard' || shippingType === 'express') {
+      return {
+        type: 'home',
+        title: 'Envío a Domicilio',
+        address: order.shipping_address?.street || 'Dirección no especificada',
+        details: `${order.shipping_address?.commune_name || ''} ${order.shipping_address?.region_name ? `, ${order.shipping_address.region_name}` : ''}`,
+        icon: Truck
+      }
+    }
+    
+    return null
+  }
+
+  const shippingDisplay = getShippingDisplay()
 
   if (authLoading) {
     return (
@@ -277,6 +562,7 @@ export default function AdminOrderDetailPage() {
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
   const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
+  const tieneBoleta = order.boleta_emitida === 1 && order.boleta_info?.folio
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -369,23 +655,20 @@ export default function AdminOrderDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {order.shipping_address ? (
-                  <div className="space-y-2 text-sm">
-                    {order.shipping_address.title && (
-                      <p className="font-medium">{order.shipping_address.title}</p>
+                {shippingDisplay ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <shippingDisplay.icon className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium">{shippingDisplay.title}</span>
+                    </div>
+                    <p className="text-sm">{shippingDisplay.address}</p>
+                    {shippingDisplay.details && (
+                      <p className="text-sm text-muted-foreground">{shippingDisplay.details}</p>
                     )}
-                    <p>{order.shipping_address.street}</p>
-                    <p>
-                      {order.shipping_address.commune_name}, {order.shipping_address.region_name}
-                    </p>
-                    <p>Código Postal: {order.shipping_address.postal_code}</p>
-                    {order.shipping_address.department && (
-                      <p>Departamento: {order.shipping_address.department}</p>
-                    )}
-                    {order.shipping_address.delivery_instructions && (
-                      <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
-                        <p className="text-xs font-medium text-blue-800">Instrucciones de entrega:</p>
-                        <p className="text-xs text-blue-700">{order.shipping_address.delivery_instructions}</p>
+
+                    {shippingDisplay.type === 'branch' && order.shipping_details?.selectedBranch?.telephone && (
+                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-700">📞 {order.shipping_details.selectedBranch.telephone}</p>
                       </div>
                     )}
                   </div>
@@ -462,6 +745,127 @@ export default function AdminOrderDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* ✅ SECCIÓN DE BOLETA - COMPLETA */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileText className="w-5 h-5" />
+                  Boleta Electrónica
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* ✅ SI TIENE BOLETA EN LA BD */}
+                {tieneBoleta ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Folio:</span>
+                      <span className="font-mono font-medium">{order.boleta_info?.folio}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Estado:</span>
+                      <Badge variant={order.boleta_info?.estado_sii === 'emitida' ? 'default' : 'outline'}>
+                        {order.boleta_info?.estado_sii || 'emitida'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-col gap-2 mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={consultarBoleta}
+                        disabled={consultandoBoleta}
+                      >
+                        {consultandoBoleta ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Eye className="w-4 h-4 mr-2" />
+                        )}
+                        Consultar estado en el SII
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={descargarBoleta}
+                        disabled={descargandoPDF}
+                      >
+                        {descargandoPDF ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4 mr-2" />
+                        )}
+                        Descargar PDF
+                      </Button>
+                    </div>
+                    {boletaEstado && boletaEstado !== order.boleta_info?.estado_sii && (
+                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-700">
+                          Estado actualizado: <strong>{boletaEstado}</strong>
+                        </p>
+                      </div>
+                    )}
+                    {boletaError && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-600">{boletaError}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // ✅ NO TIENE BOLETA - BOTÓN PARA VERIFICAR
+                  <>
+                    <p className="text-sm text-muted-foreground text-center py-2">
+                      Esta orden no tiene una boleta asociada en la base de datos
+                    </p>
+                    <div className="flex flex-col gap-2 mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={consultarBoletaPorOrden}
+                        disabled={consultandoBoleta}
+                      >
+                        {consultandoBoleta ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Search className="w-4 h-4 mr-2" />
+                        )}
+                        Verificar si existe en el SII
+                      </Button>
+                    </div>
+                    {boletaEstado && (
+                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-xs text-green-700">
+                          ✅ Boleta encontrada - Folio: <strong>{boletaFolio}</strong>
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          Estado: <strong>{boletaEstado}</strong>
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2"
+                          onClick={descargarBoleta}
+                          disabled={descargandoPDF}
+                        >
+                          {descargandoPDF ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4 mr-2" />
+                          )}
+                          Descargar PDF
+                        </Button>
+                      </div>
+                    )}
+                    {boletaError && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-600">{boletaError}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           <div className="xl:col-span-2 space-y-6">
@@ -474,7 +878,6 @@ export default function AdminOrderDetailPage() {
                   {order.items && order.items.length > 0 ? (
                     order.items.map((item) => {
                       const itemTotal = item.product_price * item.quantity
-                      const { neto: itemNeto, iva: itemIVA } = calculateTaxBreakdown(itemTotal)
                       
                       return (
                         <div key={item.id} className="flex gap-4 p-3 bg-muted/30 rounded-lg">
@@ -497,8 +900,6 @@ export default function AdminOrderDetailPage() {
                                 {item.category || "General"}
                               </Badge>
                               <span className="text-xs text-muted-foreground">Cantidad: {item.quantity}</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
                             </div>
                           </div>
                           <div className="text-right">

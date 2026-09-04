@@ -27,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    // 🔥 INCLUIR shipping_type y shipping_details
+    // ✅ INCLUIR INFORMACIÓN DE LA BOLETA
     const orders = await query(
       `SELECT 
         o.*, 
@@ -41,9 +41,14 @@ export async function GET(
         o.transbank_transaction_date,
         o.payment_method,
         o.shipping_type,
-        o.shipping_details
+        o.shipping_details,
+        b.folio as boleta_folio,
+        b.estado_sii as boleta_estado,
+        b.monto_total as boleta_monto,
+        b.fecha_emision as boleta_fecha
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
+       LEFT JOIN boletas b ON o.id = b.order_id
        WHERE o.id = ?`,
       [orderId]
     ) as any[]
@@ -112,7 +117,15 @@ export async function GET(
       }
     }
 
-    // 🔥 PARSEAR shipping_details
+    // ✅ CONSTRUIR INFORMACIÓN DE LA BOLETA
+    const boletaInfo = order.boleta_folio ? {
+      folio: order.boleta_folio,
+      estado_sii: order.boleta_estado || 'emitida',
+      monto_total: parseFloat(order.boleta_monto) || 0,
+      fecha_emision: order.boleta_fecha || null
+    } : null
+
+    // Parsear shipping_details
     let shippingDetails = null
     if (order.shipping_details) {
       try {
@@ -124,7 +137,7 @@ export async function GET(
       }
     }
 
-    // 🔥 Determinar el método de envío mostrado
+    // Determinar el método de envío mostrado
     let shippingMethodDisplay = 'Método no especificado'
     let shippingType = order.shipping_type || 'standard'
     
@@ -200,6 +213,8 @@ export async function GET(
       customer_last_name: order.last_name || '',
       customer_phone: order.phone || '',
       is_guest: order.is_guest === 1,
+      boleta_emitida: order.boleta_folio ? 1 : 0,
+      boleta_info: boletaInfo,
       items: itemsWithImages.map((item: any) => ({
         id: item.id,
         product_id: item.product_id,
@@ -259,7 +274,6 @@ export async function PATCH(
       )
     }
 
-    // 🔥 INCLUIR 'confirmed' EN LOS ESTADOS VÁLIDOS
     const validStatuses = ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'cancelled']
     if (!validStatuses.includes(status)) {
       return NextResponse.json(

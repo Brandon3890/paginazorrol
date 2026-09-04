@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // 🔥 PARSEAR shipping_details
+        //  PARSEAR shipping_details
         let shippingDetails = null
         if (order.shipping_details) {
           try {

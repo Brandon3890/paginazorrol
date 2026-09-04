@@ -1,4 +1,3 @@
-// app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -67,18 +66,18 @@ export async function GET(
             }
           }
         } catch (error) {
-          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+          console.error(`Error obteniendo imagen para producto:`, error)
         }
         return item
       })
     )
 
-    //  CONSTRUIR DIRECCIÓN DE ENVÍO 
+    //  CONSTRUIR DIRECCIÓN DE ENVÍO - CORREGIDO PARA BODEGA
     let shippingAddress = null
     const isBodegaPickup = order.shipping_type === 'bodega_pickup'
 
     if (isBodegaPickup) {
-      //  DIRECCIÓN DE BODEGA FIJA 
+      //  DIRECCIÓN DE BODEGA FIJA - SIN GUARDAR EN BD
       shippingAddress = {
         street: 'Arcangel 1200, San Miguel',
         commune_name: 'San Miguel',
@@ -232,7 +231,7 @@ export async function GET(
       customer_first_name: order.customer_first_name || '',
       customer_last_name: order.customer_last_name || '',
       customer_phone: order.customer_phone || '',
-      customer_rut: order.customer_rut || '55555555-5',
+      customer_rut: order.customer_rut || '66666666-6',
       is_guest: order.is_guest === 1,
       boleta_id: order.boleta_id,
       boleta_emitida: order.boleta_emitida || (boletaInfo ? 1 : 0),
@@ -290,8 +289,6 @@ export async function PATCH(
       `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [status, orderId]
     )
-
-    console.log(`Order ${orderId} status updated to ${status}`)
 
     return NextResponse.json({ 
       success: true, 

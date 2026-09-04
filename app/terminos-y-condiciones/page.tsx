@@ -207,82 +207,185 @@ export default function TerminosYCondicionesPage() {
           </motion.section>
 
           {/* PROCESO DE COMPRA, VALIDACIÓN, EMISIÓN DE DOCUMENTO TRIBUTARIO Y DESPACHO - NUEVO */}
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.425 }}
-            className=" rounded-xl p-6 border "
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <Package className="w-6 h-6 text-blue-600" />
-              <h2 className="text-xl font-semibold font-poppins text-gray-900">PROCESO DE COMPRA, VALIDACIÓN, EMISIÓN DE DOCUMENTO TRIBUTARIO Y DESPACHO</h2>
-            </div>
-            
-            <div className="space-y-4 text-gray-700 font-poppins leading-relaxed">
-              <p>
-                Una vez que el cliente realice una compra a través del sitio web de Zorro Lúdico, se generará una Orden de Compra, identificada mediante un número o código asociado a la operación.
-              </p>
-              
-              <p>
-                La recepción del pago y la generación de la Orden de Compra darán inicio al proceso de validación de la operación. Durante dicho proceso, Zorro Lúdico verificará la recepción y aprobación efectiva del pago, la información proporcionada por el cliente, la existencia de los productos comprendidos en la orden y la correcta capacidad de emisión del documento tributario correspondiente, además de aquellos otros antecedentes que resulten necesarios para procesar adecuadamente la operación.
-              </p>
-              
-              <div className="p-4 bg-blue-100 rounded-lg border-l-4 border-blue-600">
-                <p className="font-medium flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-blue-600" />
-                  Plazo de validación:
-                </p>
-                <p className="mt-1">
-                  El proceso de validación se realizará dentro de un plazo máximo de un día hábil, contado desde la recepción efectiva del pago. Las órdenes efectuadas fuera del horario de atención informado en el sitio web comenzarán a ser procesadas a partir del siguiente día hábil.
-                </p>
-              </div>
-              
-              <p>
-                Una vez finalizado satisfactoriamente el proceso de validación, la orden pasará al estado de <span className="font-semibold text-blue-700">"Orden Confirmada"</span>. Zorro Lúdico procederá entonces a emitir el documento tributario electrónico correspondiente y lo enviará al cliente por medios electrónicos, utilizando los datos de contacto proporcionados durante el proceso de compra. A partir de dicho momento se iniciará la preparación del pedido para su posterior despacho o entrega.
-              </p>
-              
-              <div className="p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
-                <p className="font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-yellow-600" />
-                  Sobre la disponibilidad de productos:
-                </p>
-                <p className="mt-1">
-                  Zorro Lúdico procurará mantener permanentemente actualizada la información relativa a la disponibilidad de los productos ofrecidos en su sitio web. No obstante, excepcionalmente podrán producirse errores involuntarios de inventario o sincronización que permitan generar una Orden de Compra respecto de un producto que, al momento de efectuarse la validación, no se encuentre efectivamente disponible.
-                </p>
-                <p className="mt-2">
-                  En caso de producirse una situación de esta naturaleza, Zorro Lúdico informará al cliente tan pronto como sea detectada y adoptará las medidas que correspondan conforme a la legislación vigente, incluyendo, cuando proceda, la restitución íntegra de los montos pagados. Esta disposición se refiere exclusivamente a errores involuntarios y excepcionales de inventario y no constituye una facultad de Zorro Lúdico para cancelar discrecionalmente una operación por falta de existencias.
-                </p>
-              </div>
-              
-              <p>
-                Asimismo, si durante el proceso de validación se detectare un pago rechazado o no acreditado, una inconsistencia sustancial en los antecedentes proporcionados por el cliente, un impedimento para emitir correctamente el documento tributario correspondiente u otra circunstancia objetiva que imposibilite procesar válidamente la orden, Zorro Lúdico informará al cliente y procederá de acuerdo con la naturaleza de la situación y la normativa vigente.
-              </p>
-              
-              <p>
-                Las devoluciones, cambios, restituciones de dinero y demás derechos del consumidor procederán de conformidad con lo establecido en la Ley N.º 19.496 sobre Protección de los Derechos de los Consumidores y demás normativa aplicable.
-              </p>
-              
-              <div className="p-4 bg-green-50 rounded-lg border-l-4 border-green-600">
-                <p className="font-medium flex items-center gap-2">
-                  <Truck className="w-4 h-4 text-green-600" />
-                  Estado de despacho:
-                </p>
-                <p className="mt-1">
-                  Cuando corresponda despacho, una vez que el pedido sea entregado a la empresa de transporte seleccionada por el cliente, Zorro Lúdico informará que éste se encuentra en estado de <span className="font-semibold text-green-700">"Pedido en camino"</span>, proporcionando, cuando corresponda, el número de seguimiento u otros antecedentes disponibles para consultar el estado del envío. El despacho se regirá por las condiciones aplicables a la modalidad y empresa de transporte seleccionadas por el cliente, conforme a lo establecido en las demás disposiciones de estos Términos y Condiciones.
-                </p>
-              </div>
-              
-              <div className="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
-                <p className="font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  Importante:
-                </p>
-                <p className="mt-1">
-                  La generación de una Orden de Compra, la recepción de una confirmación automática de pago o el envío de comunicaciones automáticas asociadas a la recepción de la orden no deberán confundirse con la notificación mediante la cual Zorro Lúdico informa que el proceso interno de validación ha concluido y que la orden ha pasado al estado de <span className="font-semibold text-red-700">"Orden Confirmada"</span>, sin perjuicio de las normas legales aplicables al perfeccionamiento del contrato.
-                </p>
-              </div>
-            </div>
-          </motion.section>
+<motion.section
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.3, delay: 0.425 }}
+  className="rounded-xl p-6 border"
+>
+  <div className="flex items-center gap-3 mb-4">
+    <Package className="w-6 h-6 text-blue-600" />
+    <h2 className="text-xl font-semibold font-poppins text-gray-900">
+      PROCESO DE COMPRA, VALIDACIÓN, EMISIÓN DE DOCUMENTO TRIBUTARIO Y DESPACHO
+    </h2>
+  </div>
+
+  <div className="space-y-4 text-gray-700 font-poppins leading-relaxed">
+
+    <p>
+      Una vez que el cliente realice una compra a través del sitio web de
+      Zorro Lúdico, se generará una Orden de Compra, identificada mediante
+      un número o código asociado a la operación.
+    </p>
+
+    <p>
+      La recepción del pago y la generación de la Orden de Compra darán
+      inicio al proceso de validación de la operación. Durante dicho
+      proceso, Zorro Lúdico verificará la recepción y aprobación efectiva
+      del pago, la información proporcionada por el cliente, la existencia
+      de los productos comprendidos en la orden y la correcta capacidad de
+      emisión del documento tributario correspondiente, además de aquellos
+      otros antecedentes que resulten necesarios para procesar adecuadamente
+      la operación.
+    </p>
+
+    <div className="p-4 bg-blue-100 rounded-lg border-l-4 border-blue-600">
+      <p className="font-medium flex items-center gap-2">
+        <Clock className="w-4 h-4 text-blue-600" />
+        Plazo de validación:
+      </p>
+
+      <p className="mt-1">
+        El proceso de validación se realizará dentro de un plazo máximo de
+        un día hábil, contado desde la recepción efectiva del pago. Las
+        órdenes efectuadas fuera del horario de atención informado en el
+        sitio web comenzarán a ser procesadas a partir del siguiente día
+        hábil.
+      </p>
+    </div>
+
+    <p>
+    Tas registrada la compra, Zorro Lúdico podrá enviar al cliente
+    un correo electrónico con el detalle de la operación realizada,
+    incluyendo información como los productos adquiridos, cantidades,
+    precios y monto total asociados a la Orden de
+    Compra. Esta comunicación tendrá un carácter exclusivamente informativo y
+    de confirmación de la operación. Por lo tanto, dicho correo,
+    comprobante o resumen de compra no constituye una boleta, factura ni otro documento tributario
+    electrónico , ni reemplaza el documento tributario que corresponda emitir
+    conforme a la normativa vigente.
+    </p>
+
+    <p>
+      Una vez finalizado satisfactoriamente el proceso de validación, la
+      orden pasará al estado de{" "}
+      <span className="font-semibold text-blue-700">
+        "Orden Confirmada"
+      </span>
+      . Zorro Lúdico procederá entonces a emitir el documento tributario
+      electrónico correspondiente y lo enviará al cliente por medios
+      electrónicos, utilizando los datos de contacto proporcionados durante
+      el proceso de compra. A partir de dicho momento se iniciará la
+      preparación del pedido para su posterior despacho o entrega.
+    </p>
+
+
+
+    {/* DISPONIBILIDAD */}
+    <div className="p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
+      <p className="font-medium flex items-center gap-2">
+        <AlertCircle className="w-4 h-4 text-yellow-600" />
+        Sobre la disponibilidad de productos:
+      </p>
+
+      <p className="mt-1">
+        Zorro Lúdico procurará mantener permanentemente actualizada la
+        información relativa a la disponibilidad de los productos ofrecidos
+        en su sitio web. No obstante, excepcionalmente podrán producirse
+        errores involuntarios de inventario o sincronización que permitan
+        generar una Orden de Compra respecto de un producto que, al momento
+        de efectuarse la validación, no se encuentre efectivamente
+        disponible.
+      </p>
+
+      <p className="mt-2">
+        En caso de producirse una situación de esta naturaleza, Zorro Lúdico
+        informará al cliente tan pronto como sea detectada y adoptará las
+        medidas que correspondan conforme a la legislación vigente,
+        incluyendo, cuando proceda, la restitución íntegra de los montos
+        pagados. Esta disposición se refiere exclusivamente a errores
+        involuntarios y excepcionales de inventario y no constituye una
+        facultad de Zorro Lúdico para cancelar discrecionalmente una
+        operación por falta de existencias.
+      </p>
+    </div>
+
+    <p>
+      Asimismo, si durante el proceso de validación se detectare un pago
+      rechazado o no acreditado, una inconsistencia sustancial en los
+      antecedentes proporcionados por el cliente, un impedimento para
+      emitir correctamente el documento tributario correspondiente u otra
+      circunstancia objetiva que imposibilite procesar válidamente la
+      orden, Zorro Lúdico informará al cliente y procederá de acuerdo con
+      la naturaleza de la situación y la normativa vigente.
+    </p>
+
+    <p>
+      Las devoluciones, cambios, restituciones de dinero y demás derechos
+      del consumidor procederán de conformidad con lo establecido en la
+      Ley N.º 19.496 sobre Protección de los Derechos de los Consumidores
+      y demás normativa aplicable.
+    </p>
+
+    {/* DESPACHO */}
+    <div className="p-4 bg-green-50 rounded-lg border-l-4 border-green-600">
+      <p className="font-medium flex items-center gap-2">
+        <Truck className="w-4 h-4 text-green-600" />
+        Estado de despacho:
+      </p>
+
+      <p className="mt-1">
+        Cuando corresponda despacho, una vez que el pedido sea entregado a
+        la empresa de transporte seleccionada por el cliente, Zorro Lúdico
+        informará que éste se encuentra en estado de{" "}
+        <span className="font-semibold text-green-700">
+          "Pedido en camino"
+        </span>
+        , proporcionando, cuando corresponda, el número de seguimiento u
+        otros antecedentes disponibles para consultar el estado del envío.
+        El despacho se regirá por las condiciones aplicables a la modalidad
+        y empresa de transporte seleccionadas por el cliente, conforme a lo
+        establecido en las demás disposiciones de estos Términos y
+        Condiciones.
+      </p>
+    </div>
+
+    {/* IMPORTANTE */}
+    <div className="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+      <p className="font-medium flex items-center gap-2">
+        <AlertCircle className="w-4 h-4 text-red-600" />
+        Importante:
+      </p>
+
+      <p className="mt-1">
+        La generación de una Orden de Compra, la recepción de una
+        confirmación automática de pago o el envío de comunicaciones
+        automáticas asociadas a la recepción de la orden no deberán
+        confundirse con la notificación mediante la cual Zorro Lúdico
+        informa que el proceso interno de validación ha concluido y que la
+        orden ha pasado al estado de{" "}
+        <span className="font-semibold text-red-700">
+          "Orden Confirmada"
+        </span>
+        , sin perjuicio de las normas legales aplicables al
+        perfeccionamiento del contrato.
+      </p>
+
+      <p className="mt-2">
+        Del mismo modo, el correo electrónico que contenga el resumen o
+        detalle de la compra tiene carácter exclusivamente informativo y
+        <span className="font-semibold text-red-700">
+          {" "}no constituye por sí mismo un documento tributario
+        </span>
+        . El documento tributario electrónico correspondiente será emitido
+        de manera independiente y enviado al cliente por los medios
+        electrónicos informados.
+      </p>
+    </div>
+
+  </div>
+</motion.section>
+
 
           {/* Reembolsos */}
           <motion.section

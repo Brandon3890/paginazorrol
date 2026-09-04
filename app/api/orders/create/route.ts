@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
           customerInfo.firstName,
           customerInfo.lastName,
           customerInfo.phone || null,
-          customerInfo.rut || '55555555-5'
+          customerInfo.rut || '66666666-6'
         ]
       ) as any
       
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         userId,
-        customerInfo.rut || '55555555-5',
+        customerInfo.rut || '66666666-6',
         orderNumber,
         'pending',
         totals.subtotal,

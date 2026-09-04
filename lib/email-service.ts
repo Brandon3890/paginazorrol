@@ -69,8 +69,6 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
   const subtotalNeto = calculateNeto(subtotal);
   const subtotalIVA = calculateIVAFromTotal(subtotal);
   
-  // Si el descuento aplicó, también hay que desglosarlo
-  const discountNeto = discount > 0 ? calculateNeto(discount) : 0;
   const totalAfterDiscountNeto = calculateNeto(subtotal - discount);
   const totalAfterDiscountIVA = calculateIVAFromTotal(subtotal - discount);
 
@@ -83,9 +81,30 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
     }).format(price);
   };
 
+  //  Verificar que shippingAddress existe y tiene datos
+  console.log(' shippingAddress en email:', shippingAddress);
+
+  //  Construir dirección de envío correctamente
+  const direccionCompleta = shippingAddress?.street 
+    ? `${shippingAddress.street}${shippingAddress.department ? `, Depto: ${shippingAddress.department}` : ''}`
+    : 'No especificada';
+  
+  const comunaRegion = shippingAddress?.commune_name 
+    ? `${shippingAddress.commune_name}${shippingAddress.region_name ? `, ${shippingAddress.region_name}` : ''}`
+    : '';
+
+  const direccionMostrada = comunaRegion 
+    ? `${direccionCompleta}<br>${comunaRegion}`
+    : direccionCompleta;
+
   const emailTemplate = `
 <!DOCTYPE html>
 <html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boleta Electrónica</title>
+</head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;">
 
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px 0;background:#f3f4f6;">
@@ -93,11 +112,11 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
 <td align="center">
 
 <!-- CONTENEDOR -->
-<table width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;">
+<table width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
 
 <!-- HEADER -->
 <tr>
-<td style="background:#cf741f;padding:30px;">
+<td style="background:#cf741f;padding:30px;border-radius:8px 8px 0 0;">
   <table width="100%">
     <tr>
       <td align="left">
@@ -133,7 +152,7 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 
 <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:15px;text-align:center;margin:20px 0;">
   <p style="margin:0;font-size:14px;color:#1e40af;">
-    📄 <strong>Boleta Electrónica N° ${folio}</strong>
+     <strong>Boleta Electrónica N° ${folio}</strong>
   </p>
   <p style="margin:5px 0 0 0;font-size:12px;color:#1e40af;">
     El PDF de tu boleta está adjunto a este correo
@@ -146,16 +165,16 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 <table width="100%" cellpadding="0" cellspacing="0">
 <tr>
 <td width="50%" valign="top" style="padding-right:10px;">
-  <table width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;">
+  <table width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
     <tr>
       <td style="padding:20px;">
-        <h3 style="margin:0 0 15px 0;">Información del Pedido</h3>
+        <h3 style="margin:0 0 15px 0;font-size:16px;color:#374151;">Información del Pedido</h3>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">NÚMERO DE ORDEN</p>
-        <p style="margin:5px 0 15px 0;font-weight:bold;">${orderNumber}</p>
+        <p style="margin:5px 0 15px 0;font-weight:bold;color:#111827;">${orderNumber}</p>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">FECHA</p>
-        <p style="margin:5px 0 15px 0;">${orderDate}</p>
+        <p style="margin:5px 0 15px 0;color:#111827;">${orderDate}</p>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">ESTADO</p>
         <p style="margin:5px 0;color:#059669;font-weight:bold;">✓ Pagado y Boleta Emitida</p>
@@ -165,20 +184,20 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 </td>
 
 <td width="50%" valign="top" style="padding-left:10px;">
-  <table width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;">
+  <table width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
     <tr>
       <td style="padding:20px;">
-        <h3 style="margin:0 0 15px 0;">Información de Pago</h3>
+        <h3 style="margin:0 0 15px 0;font-size:16px;color:#374151;">Información de Pago</h3>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">MÉTODO DE PAGO</p>
-        <p style="margin:5px 0 15px 0;">${paymentMethod}</p>
+        <p style="margin:5px 0 15px 0;color:#111827;">${paymentMethod}</p>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">TOTAL PAGADO</p>
-        <p style="margin:5px 0;font-size:18px;font-weight:bold;color:#059669;">
+        <p style="margin:5px 0;font-size:20px;font-weight:bold;color:#059669;">
           ${formatPrice(total)}
         </p>
         <p style="margin:5px 0 0 0;font-size:11px;color:#6b7280;">
-          💰 Precio incluye IVA
+           Precio incluye IVA
         </p>
       </td>
     </tr>
@@ -190,30 +209,31 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 <br>
 
 <!-- DATOS CLIENTE -->
-<table width="100%" style="background:#dbeafe;border:1px solid #93c5fd;">
+<table width="100%" style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;">
 <tr>
 <td style="padding:20px;">
-  <h3 style="margin:0 0 20px 0;color:#1e40af;">Datos del Cliente</h3>
+  <h3 style="margin:0 0 20px 0;color:#1e40af;font-size:16px;">Datos del Cliente</h3>
 
   <table width="100%">
     <tr>
       <td width="50%" valign="top">
         <p style="font-size:12px;color:#6b7280;margin:0;">NOMBRE</p>
-        <p style="margin:5px 0 15px 0;">${customerName}</p>
+        <p style="margin:5px 0 15px 0;color:#111827;">${customerName}</p>
 
         <p style="font-size:12px;color:#6b7280;margin:0;">EMAIL</p>
-        <p style="margin:5px 0;">${customerEmail}</p>
+        <p style="margin:5px 0 15px 0;color:#111827;">${customerEmail}</p>
       </td>
 
       <td width="50%" valign="top">
         <p style="font-size:12px;color:#6b7280;margin:0;">TELÉFONO</p>
-        <p style="margin:5px 0 15px 0;">${customerPhone || 'No especificado'}</p>
+        <p style="margin:5px 0 15px 0;color:#111827;">${customerPhone || 'No especificado'}</p>
 
-        <p style="font-size:12px;color:#6b7280;margin:0;">DIRECCIÓN</p>
-        <p style="margin:5px 0;">
-          ${shippingAddress?.street || 'No especificada'}<br>
-          ${shippingAddress?.commune_name || ''} ${shippingAddress?.region_name ? `, ${shippingAddress.region_name}` : ''}
+        <p style="font-size:12px;color:#6b7280;margin:0;">DIRECCIÓN DE ENVÍO</p>
+        <p style="margin:5px 0;color:#111827;">
+          ${direccionMostrada}
         </p>
+        ${shippingAddress?.postal_code ? `<p style="margin:5px 0 0 0;font-size:12px;color:#6b7280;">Código Postal: ${shippingAddress.postal_code}</p>` : ''}
+        ${shippingAddress?.instructions ? `<p style="margin:5px 0 0 0;font-size:12px;color:#6b7280;">Instrucciones: ${shippingAddress.instructions}</p>` : ''}
       </td>
     </tr>
   </table>
@@ -224,24 +244,24 @@ Adjunto encontrarás el PDF de tu boleta para que puedas descargarlo y guardarlo
 <br>
 
 <!-- PRODUCTOS -->
-<h3 style="margin:20px 0;color:#111827;">Detalle de Productos</h3>
+<h3 style="margin:20px 0 15px 0;color:#111827;font-size:16px;">Detalle de Productos</h3>
 
-<table width="100%" cellpadding="10" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb;">
+<table width="100%" cellpadding="10" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
 <tr style="background:#cf741f;color:#ffffff;font-size:13px;">
-  <th align="left">Producto</th>
-  <th align="center">Cant.</th>
-  <th align="center">Precio Unitario</th>
-  <th align="center">Subtotal</th>
+  <th align="left" style="padding:12px 15px;">Producto</th>
+  <th align="center" style="padding:12px 15px;">Cant.</th>
+  <th align="center" style="padding:12px 15px;">Precio Unitario</th>
+  <th align="center" style="padding:12px 15px;">Subtotal</th>
 </tr>
 
 ${items.map((item: any) => {
   const itemTotalConIVA = item.product_price * item.quantity;
   return `
 <tr style="border-top:1px solid #e5e7eb;font-size:14px;">
-  <td>${item.product_name}</td>
-  <td align="center">${item.quantity}</td>
-  <td align="center">${formatPrice(item.product_price)}</td>
-  <td align="center">${formatPrice(itemTotalConIVA)}</td>
+  <td style="padding:12px 15px;color:#111827;">${item.product_name}</td>
+  <td align="center" style="padding:12px 15px;color:#111827;">${item.quantity}</td>
+  <td align="center" style="padding:12px 15px;color:#111827;">${formatPrice(item.product_price)}</td>
+  <td align="center" style="padding:12px 15px;color:#111827;">${formatPrice(itemTotalConIVA)}</td>
 </tr>
 `;
 }).join('')}
@@ -250,35 +270,34 @@ ${items.map((item: any) => {
 
 <br>
 
-<!-- TOTALES CON DESGLOSE CORRECTO -->
-<table width="100%" style="border:1px solid #e5e7eb;background:#f9fafb;">
+<!-- TOTALES -->
+<table width="100%" style="border:1px solid #e5e7eb;background:#f9fafb;border-radius:8px;">
 <tr>
 <td style="padding:20px;">
 
-<h4 style="margin:0 0 15px 0;color:#374151;">Resumen de tu compra</h4>
+<h4 style="margin:0 0 15px 0;color:#374151;font-size:15px;">Resumen de tu compra</h4>
 
 <table width="100%">
   ${discount > 0 ? `
   <tr>
-    <td>Subtotal (con IVA incluido):</td>
-    <td align="right">${formatPrice(subtotal)}</td>
+    <td style="padding:4px 0;color:#6b7280;font-size:14px;">Subtotal (con IVA incluido):</td>
+    <td align="right" style="padding:4px 0;color:#111827;font-size:14px;">${formatPrice(subtotal)}</td>
   </tr>
   <tr>
-    <td style="color:#059669;">Descuento aplicado:</td>
-    <td align="right" style="color:#059669;">-${formatPrice(discount)}</td>
+    <td style="padding:4px 0;color:#059669;font-size:14px;">Descuento aplicado:</td>
+    <td align="right" style="padding:4px 0;color:#059669;font-size:14px;">-${formatPrice(discount)}</td>
   </tr>
   <tr>
-    <td><strong>Subtotal con descuento:</strong></td>
-    <td align="right"><strong>${formatPrice(subtotal - discount)}</strong></td>
+    <td style="padding:4px 0;color:#374151;font-size:15px;font-weight:bold;">Subtotal con descuento:</td>
+    <td align="right" style="padding:4px 0;color:#111827;font-size:15px;font-weight:bold;">${formatPrice(subtotal - discount)}</td>
   </tr>
   ` : `
   <tr>
-    <td><strong>Subtotal:</strong></td>
-    <td align="right"><strong>${formatPrice(subtotal)}</strong></td>
+    <td style="padding:4px 0;color:#374151;font-size:15px;font-weight:bold;">Subtotal:</td>
+    <td align="right" style="padding:4px 0;color:#111827;font-size:15px;font-weight:bold;">${formatPrice(subtotal)}</td>
   </tr>
   `}
   
-  <!-- Desglose del IVA incluido (transparencia) -->
   <tr style="border-top:1px dashed #e5e7eb;">
     <td colspan="2" style="padding-top:10px;">
       <details style="font-size:13px;color:#6b7280;">
@@ -288,16 +307,16 @@ ${items.map((item: any) => {
         <div style="margin-top:10px;padding:10px;background:#f3f4f6;border-radius:6px;">
           <table width="100%" style="font-size:12px;">
             <tr>
-              <td>Neto (sin IVA):</td>
-              <td align="right">${formatPrice(discount > 0 ? totalAfterDiscountNeto : subtotalNeto)}</td>
+              <td style="padding:3px 0;color:#6b7280;">Neto (sin IVA):</td>
+              <td align="right" style="padding:3px 0;color:#111827;">${formatPrice(discount > 0 ? totalAfterDiscountNeto : subtotalNeto)}</td>
             </tr>
             <tr>
-              <td>IVA (19%):</td>
-              <td align="right">${formatPrice(discount > 0 ? totalAfterDiscountIVA : subtotalIVA)}</td>
+              <td style="padding:3px 0;color:#6b7280;">IVA (19%):</td>
+              <td align="right" style="padding:3px 0;color:#111827;">${formatPrice(discount > 0 ? totalAfterDiscountIVA : subtotalIVA)}</td>
             </tr>
             <tr style="font-weight:bold;">
-              <td>Total con IVA:</td>
-              <td align="right">${formatPrice(discount > 0 ? subtotal - discount : subtotal)}</td>
+              <td style="padding:3px 0;color:#374151;">Total con IVA:</td>
+              <td align="right" style="padding:3px 0;color:#111827;">${formatPrice(discount > 0 ? subtotal - discount : subtotal)}</td>
             </tr>
           </table>
         </div>
@@ -306,20 +325,17 @@ ${items.map((item: any) => {
   </tr>
   
   <tr>
-    <td>Costo de envío:</td>
-    <td align="right">${shipping === 0 ? 'Gratis' : formatPrice(shipping)}</td>
+    <td style="padding:4px 0;color:#6b7280;font-size:14px;">Costo de envío:</td>
+    <td align="right" style="padding:4px 0;color:#111827;font-size:14px;">${shipping === 0 ? 'Gratis' : formatPrice(shipping)}</td>
   </tr>
   
   <tr>
-    <td colspan="2"><hr style="border:none;border-top:1px solid #d1d5db;margin:10px 0;"></td>
+    <td colspan="2"><hr style="border:none;border-top:2px solid #d1d5db;margin:10px 0;"></td>
   </tr>
   
-  <tr style="font-size:18px;font-weight:bold;">
-    <td>TOTAL A PAGAR:</td>
-    <td align="right">${formatPrice(total)}</td>
-  </tr>
-  
-  <tr>
+  <tr style="font-size:20px;font-weight:bold;">
+    <td style="padding:4px 0;color:#111827;">TOTAL A PAGAR:</td>
+    <td align="right" style="padding:4px 0;color:#cf741f;">${formatPrice(total)}</td>
   </tr>
 </table>
 
@@ -332,10 +348,10 @@ ${items.map((item: any) => {
 <!-- BOTÓN -->
 <table width="100%">
 <tr>
-<td align="center" style="padding:20px 0;">
+<td align="center" style="padding:15px 0;">
 <a href="${process.env.NEXTAUTH_URL}/orders"
 style="background:#cf741f;color:#ffffff;text-decoration:none;
-padding:14px 30px;display:inline-block;font-weight:bold;border-radius:8px;">
+padding:14px 35px;display:inline-block;font-weight:bold;border-radius:8px;font-size:15px;">
 Ver Mis Pedidos
 </a>
 </td>
@@ -343,11 +359,11 @@ Ver Mis Pedidos
 </table>
 
 <!-- SOPORTE -->
-<table width="100%" style="background:#f0f9ff;border:1px solid #7dd3fc;">
+<table width="100%" style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;">
 <tr>
 <td align="center" style="padding:20px;font-size:14px;color:#0369a1;">
 <strong>¿Tienes preguntas sobre tu pedido?</strong><br>
-Contáctanos en jinfranko@zorroludico.cl
+Contáctanos en ${process.env.APIGATEWAY_CORREO || 'jinfranko@zorroludico.cl'}
 </td>
 </tr>
 </table>
@@ -357,6 +373,9 @@ Contáctanos en jinfranko@zorroludico.cl
 
 <!-- FOOTER -->
 <tr>
+<td style="background:#f9fafb;padding:20px;text-align:center;font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;border-radius:0 0 8px 8px;">
+  Este es un mensaje automático, por favor no responder a este correo.
+</td>
 </tr>
 
 </table>
@@ -371,7 +390,7 @@ Contáctanos en jinfranko@zorroludico.cl
 
   try {
     const mailOptions = {
-      from: process.env.SMTP_FROM || '"Zorro Lúdico" <jinfranko@zorroludico.cl>',
+      from: process.env.SMTP_FROM || '"Zorro Lúdico" <noreply@ludicagames.com>',
       to: customerEmail,
       subject: `Boleta Electrónica N° ${folio} - Pedido ${orderNumber}`,
       html: emailTemplate,
@@ -386,10 +405,11 @@ Contáctanos en jinfranko@zorroludico.cl
     };
 
     const info = await transporter.sendMail(mailOptions);
+    console.log(' Email con boleta enviado a:', customerEmail, 'ID:', info.messageId);
     return true;
 
   } catch (error) {
-    console.error('Error enviando email:', error);
+    console.error(' Error enviando email con boleta:', error);
     return false;
   }
 }
