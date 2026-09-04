@@ -1511,7 +1511,7 @@ export default function CheckoutPage() {
                   <p className="text-sm text-muted-foreground">
                     {selectedAddress.communeName}, {selectedAddress.regionName}
                   </p>
-                  <p className="text-sm text-muted-foreground">CP: {selectedAddress.postalCode}</p>
+                  <p className="text-sm text-muted-foreground"> {selectedAddress.postalCode}</p>
                   {selectedAddress.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
                   {selectedAddress.deliveryInstructions && (
                     <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>

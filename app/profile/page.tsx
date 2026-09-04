@@ -1152,7 +1152,7 @@ export default function ProfilePage() {
                                 {address.communeName}, {address.regionName}
                               </p>
                               <p className="text-xs sm:text-sm text-muted-foreground">
-                                CP: {address.postalCode}
+                                Codigo postal: {address.postalCode}
                               </p>
                               {address.department && (
                                 <p className="text-xs sm:text-sm text-muted-foreground">
