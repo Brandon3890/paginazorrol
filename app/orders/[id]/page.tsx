@@ -926,7 +926,7 @@ export default function OrderDetailPage() {
                                             </span>
                                           </p>
                                           <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
-                                            Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                                            Horario: Lunes a Viernes 12:00 - 18:00 hrs
                                           </p>
                                         </div>
                                       )}
@@ -1208,7 +1208,7 @@ export default function OrderDetailPage() {
                       <p>Arcangel 1200, San Miguel</p>
                       <p>San Miguel, Región Metropolitana</p>
                       <p>Código Postal: 8900000</p>
-                      <p className="text-xs text-muted-foreground mt-1">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
+                      <p className="text-xs text-muted-foreground mt-1">Horario: Lunes a Viernes 12:00 - 18:00 hrs</p>
                     </>
                   ) : (
                     order.shipping_address ? (

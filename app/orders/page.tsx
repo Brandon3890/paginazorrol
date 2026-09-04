@@ -378,7 +378,7 @@ export default function OrdersPage() {
                                   <p>Arcangel 1200, San Miguel</p>
                                   <p>San Miguel, Región Metropolitana</p>
                                   <p>Código Postal: 8900000</p>
-                                  <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
+                                  <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 12:00 - 18:00 hrs</p>
                                 </>
                               ) : (
                                 <>

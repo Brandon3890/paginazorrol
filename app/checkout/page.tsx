@@ -74,7 +74,7 @@ const BODEGA_OPTION: ChilexpressOption = {
   name: "Retiro en Bodega",
   price: 0,
   deliveryDescription: "Retira tu pedido en nuestra bodega sin costo de envio",
-  conditions: "Horario: Lunes a Viernes 10:00 - 18:00 hrs",
+  conditions: "Horario: Lunes a Viernes 12:00 - 18:00 hrs",
   isBranchPickup: true,
   branches: [{
     id: 1,
@@ -1183,7 +1183,7 @@ export default function CheckoutPage() {
                         <h3 className="font-semibold text-lg">Retiro en Bodega</h3>
                         <p className="text-sm text-muted-foreground mt-1">Sin costo de envio</p>
                         <p className="text-xs text-muted-foreground mt-2">Arcangel 1200, San Miguel</p>
-                        <p className="text-xs text-muted-foreground">Horario: 10:00 - 18:00 hrs</p>
+                        <p className="text-xs text-muted-foreground">Horario: 12:00 - 18:00 hrs</p>
                       </div>
                       <Button variant="outline" className="mt-2 w-full border-green-500 text-green-600 hover:bg-green-50 hover:text-green-600">
                         Seleccionar
@@ -1237,7 +1237,7 @@ export default function CheckoutPage() {
                         <h3 className="font-semibold text-lg">Retiro en Bodega</h3>
                         <p className="text-sm text-muted-foreground mt-1">Sin costo de envio</p>
                         <p className="text-xs text-muted-foreground mt-2">Arcangel 1200, San Miguel</p>
-                        <p className="text-xs text-muted-foreground">Horario: 10:00 - 18:00 hrs</p>
+                        <p className="text-xs text-muted-foreground">Horario: 12:00 - 18:00 hrs</p>
                       </div>
                       <Button variant="outline" className="mt-2 w-full border-green-500 text-green-600 hover:bg-green-50 hover:text-green-600">
                         Seleccionar
@@ -1497,7 +1497,7 @@ export default function CheckoutPage() {
                         Arcangel 1200, San Miguel
                       </p>
                       <p className="text-xs text-green-600 mt-1">
-                        Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                        Horario: Lunes a Viernes 12:00 - 18:00 hrs
                       </p>
                       <p className="text-xs text-green-600 mt-1">
                         Sin costo de envio

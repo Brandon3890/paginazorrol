@@ -28,7 +28,7 @@ function extraerShippingAddress(order: any): {
       region_name: 'Región Metropolitana',
       postal_code: '8900000',
       department: '',
-      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 10:00 - 18:00 hrs'
+      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 12:00 - 18:00 hrs'
     };
   }
 
