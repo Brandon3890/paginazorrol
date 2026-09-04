@@ -84,7 +84,7 @@ export async function GET(
         region_name: 'Región Metropolitana',
         postal_code: '8900000',
         department: '',
-        delivery_instructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs',
+        delivery_instructions: 'Retiro en bodega - Horario 12:00 a 18:00 hrs',
         title: 'Retiro en Bodega',
         isBodega: true
       }

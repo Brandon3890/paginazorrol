@@ -1,4 +1,4 @@
-// app/api/shipping/rate/route.ts - Versión corregida
+// app/api/shipping/rate/route.ts - Versión corregida con siempre retiro en sucursal
 import { NextRequest, NextResponse } from "next/server";
 import { getShippingRates, getDeliveryDescription } from "@/lib/chilexpress-api";
 import { getOfficesByCounty, getCountyCode } from "@/lib/chilexpress-geo";
@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
     let destinationCountyCode: string;
     try {
       destinationCountyCode = await getCountyCode(communeName, regionName);
-      console.log(`Código destino: ${destinationCountyCode}`);
     } catch (error) {
       return NextResponse.json({
         success: false,
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
       package: packageData,
       productType: productType as 1 | 3,
       declaredWorth,
-      deliveryTime: 0 as const, // Usar 'as const' para tipo literal
+      deliveryTime: 0 as const,
     };
 
     let homeDeliveryOptions: any[] = [];
@@ -102,7 +101,6 @@ export async function POST(request: NextRequest) {
       
       if (homeDeliveryOptions.length > 0) {
         hasHomeDelivery = true;
-        console.log(`Servicios a domicilio encontrados: ${homeDeliveryOptions.length}`);
         
         // Opción 1: Envío por Pagar (el cliente paga al recibir)
         const cheapestOption = homeDeliveryOptions.reduce((prev, curr) => 
@@ -149,62 +147,73 @@ export async function POST(request: NextRequest) {
     }
 
     // =============================================
-    // 2. RETIRO EN SUCURSAL (SOLO si NO hay envío a domicilio)
+    // 2. RETIRO EN SUCURSAL - SIEMPRE DISPONIBLE COMO OPCIÓN
     // =============================================
-    if (!hasHomeDelivery) {
-      console.log("No hay envío a domicilio, buscando sucursales como alternativa...");
+    console.log(" Buscando sucursales ");
+    
+    try {
+      const offices = await getOfficesByCounty(communeName, 0);
       
-      try {
-        const offices = await getOfficesByCounty(communeName, 0);
+      console.log(` Sucursales encontradas`);
+      
+      if (offices.length > 0) {
+        // Precio base fijo para envío a sucursal
+        let branchBasePrice = 3990;
         
-        console.log(`Sucursales encontradas: ${offices.length}`);
-        
-        if (offices.length > 0) {
-          // Precio base fijo para envío a sucursal (calculado con la API)
-          let branchBasePrice = 3990; // Precio por defecto
-          
-          try {
-            // Intentamos cotizar con la misma comuna
-            const branchRateRequest = {
-              originCountyCode,
-              destinationCountyCode,
-              package: packageData,
-              productType: productType as 1 | 3,
-              declaredWorth,
-              deliveryTime: 0 as const,
-            };
-            const rates = await getShippingRates(branchRateRequest);
-            const cheapestOption = rates?.data?.courierServiceOptions?.[0];
-            if (cheapestOption) {
-              branchBasePrice = parseInt(cheapestOption.serviceValue, 10);
-            }
-          } catch (e) {
-            console.log("No se pudo obtener precio de API para sucursal, usando precio base");
+        // Intentar obtener precio real de la API
+        try {
+          const branchRateRequest = {
+            originCountyCode,
+            destinationCountyCode,
+            package: packageData,
+            productType: productType as 1 | 3,
+            declaredWorth,
+            deliveryTime: 0 as const,
+          };
+          const rates = await getShippingRates(branchRateRequest);
+          const cheapestOption = rates?.data?.courierServiceOptions?.[0];
+          if (cheapestOption) {
+            branchBasePrice = parseInt(cheapestOption.serviceValue, 10);
           }
-          
-          const branchesList = offices.map(office => ({
-            id: office.addressId || office.officeCode,
-            name: office.officeName,
-            address: `${office.streetName} ${office.streetNumber}, ${office.countyName}`,
-            telephone: office.telephone || "No disponible",
-            latitude: office.latitude,
-            longitude: office.longitude,
-          }));
-          
-          shippingOptions.push({
-            id: "branch_pickup",
-            type: "branch_pickup",
-            name: "Retiro en Sucursal Chilexpress",
-            price: branchBasePrice,
-            priceFormatted: `$${branchBasePrice.toLocaleString("es-CL")}`,
-            deliveryDescription: `No hay envío a domicilio disponible en ${communeName}. Puedes retirar tu pedido en una de nuestras sucursales.`,
-            conditions: "Presentar cédula de identidad al retirar. Pago contra entrega en sucursal.",
-            requiresBranchSelection: true,
-            branches: branchesList,
-          });
-          
-          console.log(`Opción de retiro en sucursal agregada (${offices.length} sucursales)`);
+        } catch (e) {
+          console.log("No se pudo obtener precio de API para sucursal");
+        }
+        
+        const branchesList = offices.map(office => ({
+          id: office.addressId || office.officeCode || `branch_${Math.random()}`,
+          name: office.officeName || "Sucursal Chilexpress",
+          address: `${office.streetName || ""} ${office.streetNumber || ""}, ${office.countyName || communeName}`.trim(),
+          telephone: office.telephone || "No disponible",
+          latitude: office.latitude,
+          longitude: office.longitude,
+        }));
+        
+        // Determinar el mensaje de descripción
+        let deliveryDesc = "Retira tu pedido en una sucursal Chilexpress cercana";
+        if (hasHomeDelivery) {
+          deliveryDesc = "Como alternativa al envío a domicilio, puedes retirar tu pedido en una sucursal Chilexpress";
         } else {
+          deliveryDesc = `No hay envío a domicilio disponible en ${communeName}. Puedes retirar tu pedido en una de nuestras sucursales.`;
+        }
+        
+        shippingOptions.push({
+          id: "branch_pickup",
+          type: "branch_pickup",
+          name: "Retiro en Sucursal Chilexpress",
+          price: branchBasePrice,
+          priceFormatted: `$${branchBasePrice.toLocaleString("es-CL")}`,
+          deliveryDescription: deliveryDesc,
+          conditions: "Presentar cédula de identidad al retirar. Verificar horario de atención.",
+          requiresBranchSelection: true,
+          branches: branchesList,
+          isBranchPickup: true,
+        });
+        
+        console.log(` Opción de retiro en sucursal agregada (${offices.length} sucursales)`);
+      } else {
+        console.log("No se encontraron sucursales en esta comuna");
+        // Si no hay sucursales, mostrar mensaje de contacto
+        if (!hasHomeDelivery) {
           shippingOptions.push({
             id: "contact",
             type: "contact",
@@ -215,12 +224,14 @@ export async function POST(request: NextRequest) {
             isContactRequired: true,
           });
         }
-      } catch (error) {
-        console.error("Error obteniendo oficinas:", error);
+      }
+    } catch (error) {
+      console.error("Error obteniendo oficinas:", error);
+      if (!hasHomeDelivery) {
         shippingOptions.push({
           id: "contact",
           type: "contact",
-          name: "📞 Contactar para envío",
+          name: "Contactar para envío",
           price: 0,
           deliveryDescription: `No hay opciones de envío disponibles para ${communeName}`,
           conditions: "Contáctanos para coordinar una solución alternativa",
@@ -230,19 +241,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (shippingOptions.length === 0) {
-      throw new Error("No hay opciones de envío disponibles");
+      return NextResponse.json({
+        success: false,
+        error: "No hay opciones de envío disponibles para esta comuna",
+      }, { status: 400 });
     }
 
-    // Ordenar opciones
+    // Ordenar opciones: primero envío por pagar, luego las demás por precio
     shippingOptions.sort((a, b) => {
       if (a.isCashOnDelivery) return -1;
       if (b.isCashOnDelivery) return 1;
-      return (a.price || 0) - (b.price || 0);
+      if (a.isBranchPickup && b.isHomeDelivery) return 1;
+      if (b.isBranchPickup && a.isHomeDelivery) return -1;
+      return (a.price || 999999) - (b.price || 999999);
     });
-
-    const cheapestHomeDelivery = shippingOptions.find(opt => opt.type === "home_delivery");
-
-    console.log(`Total opciones: ${shippingOptions.length}`);
 
     return NextResponse.json({
       success: true,
@@ -254,17 +266,11 @@ export async function POST(request: NextRequest) {
         weightFormatted: `${packageData.weight.toFixed(2)} kg`,
         dimensions: `${packageData.height}x${packageData.width}x${packageData.length} cm`,
       },
-      cheapestHomeDelivery: cheapestHomeDelivery ? {
-        name: cheapestHomeDelivery.name,
-        price: cheapestHomeDelivery.price,
-        priceFormatted: cheapestHomeDelivery.priceFormatted,
-        deliveryDescription: cheapestHomeDelivery.deliveryDescription,
-      } : null,
       options: shippingOptions,
     });
 
   } catch (error) {
-    console.error("Error general:", error);
+    console.error(" Error general:", error);
     
     return NextResponse.json(
       { 

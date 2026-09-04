@@ -1,4 +1,3 @@
-// app/api/orders/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -9,18 +8,6 @@ function generateOrderNumber(): string {
   const day = String(now.getDate()).padStart(2, '0')
   const random = Math.floor(Math.random() * 9000 + 1000)
   return `ORD-${year}${month}${day}-${random}`
-}
-
-//  DIRECCIÓN DE LA BODEGA
-const BODEGA_ADDRESS = {
-  street: "Arcangel 1200, San Miguel",
-  hasNoNumber: false,
-  regionIso: 'CL-RM',
-  regionName: 'Región Metropolitana',
-  communeName: 'San Miguel',
-  postalCode: '8900000',
-  department: '',
-  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
 }
 
 export async function POST(request: NextRequest) {
@@ -34,190 +21,206 @@ export async function POST(request: NextRequest) {
       notes,
       couponId,
       couponCode,
-      guestSessionId,
+      shippingMethod,
       shippingType,
-      shippingDetails
+      shippingDetails,
+      acceptedTerms
     } = body
 
-    if (!items || !items.length) {
+    // Validar términos y condiciones
+    if (!acceptedTerms) {
       return NextResponse.json(
-        { error: 'No hay productos en la orden' },
+        { error: 'Debes aceptar los Términos y Condiciones' },
         { status: 400 }
       )
     }
 
-    if (!customerInfo?.email || !customerInfo?.firstName || !customerInfo?.lastName) {
+    // Validar datos mínimos
+    if (!items || items.length === 0) {
       return NextResponse.json(
-        { error: 'Datos del cliente incompletos' },
+        { error: 'No hay productos en el pedido' },
         { status: 400 }
       )
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(customerInfo.email)) {
-      return NextResponse.json(
-        { error: 'Email invalido' },
-        { status: 400 }
-      )
-    }
-
-    // Buscar o crear usuario
-    const existingUser = await query(
-      'SELECT id, is_guest FROM users WHERE email = ?',
-      [customerInfo.email]
-    ) as any[]
-    
+    //  OBTENER USUARIO DESDE LA BASE DE DATOS
     let userId = null
+    let userRut = null
+    let userEmail = null
+    let userFirstName = null
+    let userLastName = null
+    let userPhone = null
     
-    if (existingUser.length > 0) {
-      userId = existingUser[0].id
+    const authHeader = request.headers.get('authorization')
+    let token = null
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7)
     } else {
-      const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
-      
-      const insertResult = await query(
-        `INSERT INTO users (email, password_hash, first_name, last_name, phone, rut, role, is_active, email_verified, is_guest)
-         VALUES (?, ?, ?, ?, ?, ?, 'customer', 1, 1, 1)`,
-        [
-          customerInfo.email,
-          fakePasswordHash,
-          customerInfo.firstName,
-          customerInfo.lastName,
-          customerInfo.phone || null,
-          customerInfo.rut || '66666666-6'
-        ]
-      ) as any
-      
-      userId = insertResult.insertId
+      const cookie = request.cookies.get('auth_token')
+      if (cookie) {
+        token = cookie.value
+      }
     }
-
-    const orderNumber = generateOrderNumber()
-
-    // Validar dirección (solo si no es bodega pickup)
-    const isBodegaPickup = shippingType === 'bodega_pickup'
-    if (!isBodegaPickup && (!shippingAddress?.street || !shippingAddress?.communeName)) {
-      return NextResponse.json(
-        { error: 'Direccion de envio incompleta' },
-        { status: 400 }
-      )
-    }
-
-    let shippingAddressId = null
-
-    // Solo guardar dirección si no es bodega pickup
-    if (!isBodegaPickup && shippingAddress) {
-      // Verificar si ya existe una dirección igual para este usuario
-      const existingAddresses = await query(
-        `SELECT id FROM user_addresses 
-         WHERE user_id = ? 
-         AND street = ? 
-         AND commune_name = ?`,
-        [userId, shippingAddress.street, shippingAddress.communeName]
-      ) as any[]
-
-      if (existingAddresses.length > 0) {
-        shippingAddressId = existingAddresses[0].id
-      } else {
-        // Crear nueva dirección
-        const addressResult = await query(
-          `INSERT INTO user_addresses 
-           (user_id, title, street, has_no_number, region_iso, region_name, commune_name, postal_code, department, delivery_instructions, is_default)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            userId,
-            'Dirección de envío',
-            shippingAddress.street,
-            shippingAddress.hasNoNumber || 0,
-            shippingAddress.regionIso || 'CL-RM',
-            shippingAddress.regionName || 'Región Metropolitana',
-            shippingAddress.communeName,
-            shippingAddress.postalCode || '0000000',
-            shippingAddress.department || null,
-            shippingAddress.deliveryInstructions || null,
-            0
-          ]
-        ) as any
+    
+    if (token) {
+      try {
+        const { jwtVerify } = await import('jose')
+        const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!)
+        const { payload } = await jwtVerify(token, JWT_SECRET)
+        userId = payload.userId as string
         
-        shippingAddressId = addressResult.insertId
+        if (userId) {
+          const userResult = await query(
+            `SELECT id, rut, email, first_name, last_name, phone FROM users WHERE id = ?`,
+            [userId]
+          ) as any[]
+          
+          if (userResult.length > 0) {
+            const user = userResult[0]
+            userRut = user.rut
+            userEmail = user.email
+            userFirstName = user.first_name
+            userLastName = user.last_name
+            userPhone = user.phone
+            console.log(' Usuario autenticado encontrado')
+          }
+        }
+      } catch (error) {
+        console.log('Error verificando token:', error)
       }
     }
 
-    // Calcular impuestos
-    const tax = Math.round(totals.total * 0.19)
+    //  DATOS DEL CLIENTE (prioridad: customerInfo > usuario)
+    const customerRut = customerInfo?.rut || userRut || null
+    const customerEmail = customerInfo?.email || userEmail || null
+    const customerFirstName = customerInfo?.firstName || userFirstName || null
+    const customerLastName = customerInfo?.lastName || userLastName || null
+    const customerPhone = customerInfo?.phone || userPhone || null
 
-    //  USAR DIRECCIÓN DE BODEGA SI CORRESPONDE
-    let finalShippingAddress = shippingAddress
-    if (isBodegaPickup) {
-      finalShippingAddress = BODEGA_ADDRESS
+
+    // Calcular totales
+    const subtotal = totals.subtotal || 0
+    const discount = totals.discount || 0
+    const shipping = totals.shipping || 0
+    const tax = totals.tax || 0
+    const total = totals.total || 0
+
+    // Generar número de orden
+    const orderNumber = generateOrderNumber()
+
+    // Insertar dirección si se proporcionó
+    let shippingAddressId = null
+    if (shippingAddress) {
+      const addressResult = await query(
+        `INSERT INTO user_addresses (
+          user_id, title, street, has_no_number, region_iso, region_name, 
+          commune_name, postal_code, department, delivery_instructions, is_default
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          'Dirección de envío',
+          shippingAddress.street || 'No especificada',
+          shippingAddress.hasNoNumber || 0,
+          shippingAddress.regionIso || 'CL-RM',
+          shippingAddress.regionName || 'Región Metropolitana',
+          shippingAddress.communeName || 'Santiago',
+          shippingAddress.postalCode || '000000',
+          shippingAddress.department || '',
+          shippingAddress.deliveryInstructions || '',
+          0
+        ]
+      ) as any
+      shippingAddressId = addressResult.insertId
     }
 
-    // Crear orden CON shipping_type y shipping_details
+    //  INSERTAR LA ORDEN CON TODOS LOS DATOS DEL CLIENTE
     const orderResult = await query(
       `INSERT INTO orders (
-        user_id, customer_rut, order_number, status, subtotal, discount, shipping, tax, total,
-        coupon_id, coupon_code, shipping_address_id, payment_method, payment_status, notes,
-        shipping_type, shipping_details, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        user_id,
+        customer_rut,
+        customer_email,
+        customer_first_name,
+        customer_last_name,
+        customer_phone,
+        order_number,
+        status,
+        subtotal,
+        discount,
+        shipping,
+        shipping_type,
+        shipping_details,
+        tax,
+        total,
+        coupon_id,
+        coupon_code,
+        shipping_address_id,
+        payment_status,
+        notes,
+        created_at,
+        updated_at,
+        boleta_emitida,
+        boleta_intentos
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 0, 0)`,
       [
         userId,
-        customerInfo.rut || '66666666-6',
+        customerRut,
+        customerEmail,
+        customerFirstName,
+        customerLastName,
+        customerPhone,
         orderNumber,
         'pending',
-        totals.subtotal,
-        totals.discount,
-        totals.shipping || 0,
+        subtotal,
+        discount,
+        shipping,
+        shippingType || 'standard',
+        shippingDetails ? JSON.stringify(shippingDetails) : null,
         tax,
-        totals.total,
+        total,
         couponId || null,
         couponCode || null,
         shippingAddressId,
-        'transbank',
         'pending',
-        notes || null,
-        shippingType || 'standard',
-        shippingDetails ? JSON.stringify(shippingDetails) : null
+        notes || null
       ]
     ) as any
-    
-    const orderId = orderResult.insertId
-    console.log('Orden creada con shipping_type:', shippingType)
 
-    // Crear items de la orden
+    const orderId = orderResult.insertId
+
+    console.log(' Orden creada')
+
+    // Insertar items de la orden
     for (const item of items) {
       await query(
-        `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO order_items (
+          order_id, product_id, product_name, product_price, quantity, subtotal
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           item.id,
-          item.name || 'Producto',
-          item.price || 0,
-          item.quantity || 1,
-          (item.price || 0) * (item.quantity || 1)
+          item.name,
+          item.price,
+          item.quantity,
+          item.price * item.quantity
         ]
       )
     }
-    console.log('Items de la orden creados:', items.length)
 
-    // Guardar guest session si existe
-    if (guestSessionId) {
-      await query(
-        `INSERT INTO guest_orders (user_id, guest_session_id, order_number, order_id, created_at)
-         VALUES (?, ?, ?, ?, NOW())`,
-        [userId, guestSessionId, orderNumber, orderId]
-      )
-    }
+    console.log(`Productos agregados a la orden`)
 
     return NextResponse.json({
       success: true,
-      orderId,
-      orderNumber,
-      userId
+      orderId: orderId,
+      orderNumber: orderNumber,
+      userId: userId,
+      message: 'Orden creada exitosamente'
     })
 
   } catch (error: any) {
-    console.error('Error creando orden:', error)
+    console.error('Error al crear la orden:', error)
     return NextResponse.json(
-      { error: 'Error al crear la orden: ' + error.message },
+      { error: error.message || 'Error al crear la orden' },
       { status: 500 }
     )
   }

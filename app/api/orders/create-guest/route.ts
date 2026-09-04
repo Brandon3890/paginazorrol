@@ -26,7 +26,7 @@ const BODEGA_ADDRESS = {
   communeName: 'San Miguel',
   postalCode: '8900000',
   department: '',
-  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
+  deliveryInstructions: 'Retiro en bodega - Horario 12:00 a 18:00 hrs'
 }
 
 export async function POST(request: NextRequest) {
@@ -76,21 +76,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar usuario por email
-    const existingUser = await query(
-      'SELECT id, is_guest FROM users WHERE email = ?',
-      [customerInfo.email]
-    ) as any[]
-    
+    //  BUSCAR O CREAR USUARIO INVITADO POR EMAIL
     let userId = null
     let isGuestUser = true
+    
+    // Buscar usuario existente por email (invitado o registrado)
+    const existingUser = await query(
+      'SELECT id, is_guest, rut, email, first_name, last_name, phone FROM users WHERE email = ?',
+      [customerInfo.email]
+    ) as any[]
     
     if (existingUser.length > 0) {
       userId = existingUser[0].id
       isGuestUser = existingUser[0].is_guest === 1
-      console.log(`Usuario existente encontrado: ${userId} (is_guest: ${isGuestUser})`)
+      console.log(` Usuario existente encontrado`)
     } else {
-      // Crear nuevo usuario invitado
+      //  CREAR NUEVO USUARIO INVITADO (si no existe)
       const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
       
       const insertResult = await query(
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
         'UPDATE users SET rut = ? WHERE id = ?',
         [guestRut, userId]
       )
-      console.log(`Usuario invitado creado con ID: ${userId}, RUT: ${guestRut}`)
+      console.log(` Usuario invitado`)
     }
 
     const orderNumber = generateOrderNumber()
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
 
         if (existingAddresses.length > 0) {
           shippingAddressId = existingAddresses[0].id
-          console.log(`Usando dirección existente: ${shippingAddressId}`)
+          console.log(` Usando dirección existente`)
         }
       }
       
@@ -170,10 +171,10 @@ export async function POST(request: NextRequest) {
         ) as any
         
         shippingAddressId = addressResult.insertId
-        console.log(`Nueva dirección creada: ${shippingAddressId}`)
+        console.log(` Nueva dirección creada`)
       }
     } else {
-      console.log(`Retiro en bodega - sin dirección guardada`)
+      console.log(` Retiro en bodega - sin dirección guardada`)
     }
 
     const tax = Math.round(totals.total * 0.19)
@@ -184,14 +185,15 @@ export async function POST(request: NextRequest) {
       finalShippingAddress = BODEGA_ADDRESS
     }
 
-    //  OBTENER DATOS DEL CLIENTE
+    //  DATOS DEL CLIENTE
     const customerRut = isGuestUser ? '66666666-6' : (customerInfo?.rut || '66666666-6')
     const customerEmail = customerInfo?.email || null
     const customerFirstName = customerInfo?.firstName || null
     const customerLastName = customerInfo?.lastName || null
     const customerPhone = customerInfo?.phone || null
 
-    // Crear orden con todos los datos del cliente
+
+    //  CREAR ORDEN CON TODOS LOS DATOS DEL CLIENTE
     const orderResult = await query(
       `INSERT INTO orders (
         user_id, 
@@ -246,7 +248,7 @@ export async function POST(request: NextRequest) {
     ) as any
     
     const orderId = orderResult.insertId
-    console.log(`Orden invitado creada con ID: ${orderId}, shipping_type: ${shippingType}`)
+    console.log(` Orden invitado creada`)
 
     // Insertar items
     for (const item of items) {
@@ -281,7 +283,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('Error creando orden de invitado:', error)
+    console.error(' Error creando orden de invitado:', error)
     return NextResponse.json(
       { error: 'Error al crear la orden: ' + error.message },
       { status: 500 }
