@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useState, useRef, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/auth-store"
+import { useGuestStore } from "@/lib/guest-store"
 
 export function CartDrawer() {
   const { 
@@ -28,7 +29,8 @@ export function CartDrawer() {
     checkoutExpiresAt
   } = useCartStore()
   
-  const { user } = useAuthStore()
+  const { user, isAuthenticated } = useAuthStore()
+  const { getGuestSession } = useGuestStore()
   const { incrementVersion } = useProductStore()
   const router = useRouter()
   const { toast } = useToast()
@@ -47,15 +49,32 @@ export function CartDrawer() {
     currentItemsRef.current = items
   }, [items])
 
-  useEffect(() => {
-    if (hasActiveCheckout() && user && items.length > 0) {
-      const timeoutId = setTimeout(() => {
-        updateFullReservation()
-      }, 500)
-      return () => clearTimeout(timeoutId)
+  // Obtener identifier para el usuario actual
+  const getIdentifier = () => {
+    if (isAuthenticated && user) {
+      return `user_${user.id}`
     }
-  }, [items, hasActiveCheckout, user])
+    const guest = getGuestSession()
+    if (guest) {
+      return `guest_${guest.sessionId}`
+    }
+    return null
+  }
 
+  // Actualizar reserva cuando cambian los items (solo si hay checkout activo)
+  useEffect(() => {
+    if (hasActiveCheckout() && items.length > 0) {
+      const identifier = getIdentifier()
+      if (identifier) {
+        const timeoutId = setTimeout(() => {
+          updateFullReservation()
+        }, 500)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [items, hasActiveCheckout])
+
+  // Temporizador sincronizado con checkoutExpiresAt
   useEffect(() => {
     if (!hasActiveCheckout() || !checkoutExpiresAt) {
       setTimeLeft(null)
@@ -107,9 +126,11 @@ export function CartDrawer() {
   }
 
   const releaseSingleProductStock = async (productId: number, quantity: number, productName: string) => {
-    if (!user || !hasActiveCheckout()) return false
+    const identifier = getIdentifier()
+    if (!hasActiveCheckout() || !identifier) return false
     
     try {
+      console.log(`Liberando stock de producto`)
       
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
@@ -130,17 +151,18 @@ export function CartDrawer() {
         return false
       }
       
-      console.log(`Stock liberado correctamente `)
+      console.log(`Stock liberado correctamente para ${productName}`)
       return true
       
     } catch (error) {
-      console.error('Error en releaseSingleProductStock:', error)
+      console.error(' Error en releaseSingleProductStock:', error)
       return false
     }
   }
 
   const updateFullReservation = async () => {
-    if (!hasActiveCheckout() || !user || items.length === 0) return
+    const identifier = getIdentifier()
+    if (!hasActiveCheckout() || !identifier || items.length === 0) return
     
     setIsUpdatingStock(true)
     try {
@@ -161,7 +183,7 @@ export function CartDrawer() {
         const data = await response.json()
         if (data.errors) {
           toast({
-            title: "Stock insuficiente",
+            title: "⚠️ Stock insuficiente",
             description: data.errors.map((e: any) => `${e.name}: solo ${e.disponible} disponibles`).join(', '),
             variant: "destructive",
             duration: 5000,
@@ -182,7 +204,7 @@ export function CartDrawer() {
     
     setRemovingItemId(id)
     
-    if (hasActiveCheckout() && user) {
+    if (hasActiveCheckout()) {
       await releaseSingleProductStock(id, itemToRemove.quantity, itemToRemove.name)
     }
     
@@ -203,18 +225,31 @@ export function CartDrawer() {
     const oldQuantity = item.quantity
     const quantityDiff = newQuantity - oldQuantity
     
-    if (hasActiveCheckout() && user && quantityDiff < 0) {
+    if (hasActiveCheckout() && quantityDiff < 0) {
       const releaseQuantity = Math.abs(quantityDiff)
       await releaseSingleProductStock(id, releaseQuantity, item.name)
     }
     
     updateQuantity(id, newQuantity)
     
-    if (hasActiveCheckout() && user && quantityDiff > 0) {
+    if (hasActiveCheckout() && quantityDiff > 0) {
       setTimeout(() => updateFullReservation(), 100)
     }
   }
 
+  // =====================================================
+  // Vaciar carrito CON confirmación (cuando hay reserva activa)
+  // =====================================================
+  const handleClearCartWithReservation = () => {
+    if (hasActiveCheckout() && items.length > 0) {
+      setShowCancelConfirm(true)
+    } else {
+      // Si no hay reserva activa, vaciar directamente
+      handleClearCartDirect()
+    }
+  }
+
+  // Vaciar carrito sin reserva activa
   const handleClearCartDirect = () => {
     clearCart()
     endCheckout()
@@ -225,24 +260,17 @@ export function CartDrawer() {
     })
   }
 
-  const handleClearCartWithReservation = async () => {
-    if (!hasActiveCheckout() || !user || items.length === 0) {
-      handleClearCartDirect()
-      return
-    }
-
-    setShowCancelConfirm(true)
-  }
-
+  // Función real para vaciar con reserva (cuando el usuario confirma)
   const handleCancelAndClear = async () => {
     setIsCancellingCheckout(true)
     
     try {
       const itemsToRelease = currentItemsRef.current
+      const identifier = getIdentifier()
       
       console.log('Cancelando y vaciando carrito. Items a liberar:', itemsToRelease)
 
-      if (itemsToRelease.length > 0) {
+      if (itemsToRelease.length > 0 && identifier) {
         const response = await fetch('/api/cart/reserve-stock', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -259,6 +287,10 @@ export function CartDrawer() {
         if (!response.ok) {
           throw new Error('Error al liberar stock')
         }
+        
+        console.log(' Stock liberado correctamente')
+      } else if (itemsToRelease.length > 0 && !identifier) {
+        console.warn('No hay identifier, no se puede liberar stock')
       }
 
       forceClearCart()
@@ -295,6 +327,7 @@ export function CartDrawer() {
     }, 300)
   }
 
+  // Carrito vacío
   if (items.length === 0) {
     return (
       <Sheet open={isOpen} onOpenChange={setCartOpen}>
@@ -359,6 +392,7 @@ export function CartDrawer() {
             </SheetDescription>
           </SheetHeader>
 
+          {/* Banner de temporizador - solo visible cuando hay reserva activa */}
           {hasActiveCheckout() && timeLeft !== null && timeLeft > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
@@ -405,6 +439,7 @@ export function CartDrawer() {
             </motion.div>
           )}
 
+          {/* Modal de confirmación - Para cancelar compra (invitados y autenticados) */}
           {showCancelConfirm && (
             <>
               <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCancelConfirm(false)} />

@@ -1,6 +1,8 @@
+// hooks/use-checkout-timer.ts
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useCartStore } from '@/lib/cart-store'
 import { useAuthStore } from '@/lib/auth-store'
+import { useGuestStore } from '@/lib/guest-store'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
 
@@ -26,9 +28,21 @@ export const useCheckoutTimer = () => {
     resetCartAfterCheckout,
     clearCart
   } = useCartStore()
-  const { user } = useAuthStore()
+  const { user, isAuthenticated } = useAuthStore()
+  const { getGuestSession } = useGuestStore()
   const router = useRouter()
   const { toast } = useToast()
+
+  const getIdentifier = useCallback(() => {
+    if (isAuthenticated && user) {
+      return `user_${user.id}`
+    }
+    const guest = getGuestSession()
+    if (guest) {
+      return `guest_${guest.sessionId}`
+    }
+    return null
+  }, [isAuthenticated, user, getGuestSession])
 
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
@@ -80,10 +94,18 @@ export const useCheckoutTimer = () => {
     
     console.log('Liberando stock y limpiando carrito...')
     
-    if (items.length === 0 || !user) {
+    if (items.length === 0) {
       clearCart()
       endCheckout()
       initialExpiresAt.current = null
+      return
+    }
+
+    const identifier = getIdentifier()
+    if (!identifier) {
+      console.log('No hay identifier, limpiando carrito sin liberar stock')
+      clearCart()
+      endCheckout()
       return
     }
 
@@ -113,7 +135,7 @@ export const useCheckoutTimer = () => {
     } catch (error) {
       console.error('Error en releaseStockAndClearCart:', error)
     }
-  }, [items, user, clearCart, endCheckout])
+  }, [items, clearCart, endCheckout, getIdentifier])
 
   const expireCheckout = useCallback(async () => {
     if (expiryProcessed.current || purchaseConfirmed.current) return
@@ -140,7 +162,10 @@ export const useCheckoutTimer = () => {
   }, [releaseStockAndClearCart, router, toast])
 
   const updateReservation = useCallback(async () => {
-    if (!hasActiveCheckout() || !user || items.length === 0) return
+    if (!hasActiveCheckout() || items.length === 0) return
+
+    const identifier = getIdentifier()
+    if (!identifier) return
 
     try {
       console.log('Actualizando reserva...')
@@ -178,14 +203,15 @@ export const useCheckoutTimer = () => {
     } catch (error) {
       console.error('Error actualizando reserva:', error)
     }
-  }, [items, user, hasActiveCheckout, router, toast])
+  }, [items, hasActiveCheckout, router, toast, getIdentifier])
 
   const createReservation = useCallback(async () => {
-    if (purchaseConfirmed.current || items.length === 0 || !user) {
-      return
-    }
+    if (purchaseConfirmed.current || items.length === 0) return
+    if (hasActiveCheckout()) return
 
-    if (hasActiveCheckout()) {
+    const identifier = getIdentifier()
+    if (!identifier) {
+      console.log('No hay identifier, no se puede reservar stock')
       return
     }
 
@@ -193,7 +219,7 @@ export const useCheckoutTimer = () => {
     setIsReserving(true)
 
     try {
-      console.log('Creando nueva reserva...')
+      console.log('Creando nueva reserva para:', identifier)
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,23 +267,26 @@ export const useCheckoutTimer = () => {
     } finally {
       setIsReserving(false)
     }
-  }, [items, user, router, toast, startCheckout, hasActiveCheckout])
+  }, [items, router, toast, startCheckout, hasActiveCheckout, getIdentifier])
 
   useEffect(() => {
-    if (hasActiveCheckout() && user && items.length > 0 && !expiryProcessed.current && !purchaseConfirmed.current) {
+    if (hasActiveCheckout() && items.length > 0 && !expiryProcessed.current && !purchaseConfirmed.current) {
       const timeoutId = setTimeout(() => {
         updateReservation()
       }, 500)
       
       return () => clearTimeout(timeoutId)
     }
-  }, [items, hasActiveCheckout, user, updateReservation])
+  }, [items, hasActiveCheckout, updateReservation])
 
   useEffect(() => {
-    if (!hasActiveCheckout() && !reservationAttempted.current && items.length > 0 && user && !purchaseConfirmed.current && !expiryProcessed.current) {
-      createReservation()
+    if (!hasActiveCheckout() && !reservationAttempted.current && items.length > 0 && !purchaseConfirmed.current && !expiryProcessed.current) {
+      const identifier = getIdentifier()
+      if (identifier) {
+        createReservation()
+      }
     }
-  }, [hasActiveCheckout, items, user, createReservation])
+  }, [hasActiveCheckout, items, createReservation, getIdentifier])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -282,7 +311,10 @@ export const useCheckoutTimer = () => {
   }, [hasActiveCheckout, checkoutExpiresAt, expireCheckout])
 
   const confirmPurchase = useCallback(async () => {
-    if (items.length === 0 || !user || purchaseConfirmed.current) return
+    if (items.length === 0 || purchaseConfirmed.current) return
+
+    const identifier = getIdentifier()
+    if (!identifier) return
 
     purchaseConfirmed.current = true
 
@@ -315,7 +347,7 @@ export const useCheckoutTimer = () => {
       console.error('Error confirmando compra:', error)
       purchaseConfirmed.current = false
     }
-  }, [items, user, endCheckout, resetCartAfterCheckout])
+  }, [items, endCheckout, resetCartAfterCheckout, getIdentifier])
 
   const resetTimer = useCallback(() => {
     if (timerRef.current) {

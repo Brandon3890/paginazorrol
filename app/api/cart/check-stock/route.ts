@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getUserIdFromRequest } from '@/lib/auth-utils'
+import { getUserIdFromRequest, getIdentifierFromRequest } from '@/lib/auth-utils'
 
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request)
+    const identifier = getIdentifierFromRequest(request)
     const body = await request.json()
     const { items } = body
 
@@ -25,14 +26,14 @@ export async function POST(request: NextRequest) {
             p.id,
             p.name,
             p.stock,
-            COALESCE(SUM(CASE WHEN sr.user_id != ? THEN sr.quantity ELSE 0 END), 0) as other_users_reserved,
-            COALESCE(SUM(CASE WHEN sr.user_id = ? THEN sr.quantity ELSE 0 END), 0) as my_reserved
+            COALESCE(SUM(CASE WHEN sr.identifier != ? THEN sr.quantity ELSE 0 END), 0) as other_users_reserved,
+            COALESCE(SUM(CASE WHEN sr.identifier = ? THEN sr.quantity ELSE 0 END), 0) as my_reserved
          FROM products p
          LEFT JOIN stock_reservations sr ON p.id = sr.product_id 
             AND sr.expires_at > NOW()
          WHERE p.id = ?
          GROUP BY p.id`,
-        [userId, userId, item.id]
+        [identifier, identifier, item.id]
       ) as any[]
 
       if (product) {
