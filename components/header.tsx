@@ -121,26 +121,6 @@ export function Header() {
 
   return (
     <div className="sticky top-0 z-50">
-      <div className="bg-red-600 text-white py-3 px-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-3">
-          <motion.div
-            animate={{ rotate: [0, 10, -10, 10, 0] }}
-            transition={{ duration: 0.5, delay: 0.3, repeat: Infinity, repeatDelay: 5 }}
-          >
-            <AlertTriangle className="w-5 h-5" />
-          </motion.div>
-          <p className="text-sm font-medium text-center">
-            <strong>Página en construcción</strong> - Algunas secciones están en desarrollo. 
-          </p>
-          <motion.div
-            animate={{ rotate: [0, -10, 10, -10, 0] }}
-            transition={{ duration: 0.5, delay: 0.3, repeat: Infinity, repeatDelay: 5 }}
-          >
-            <AlertTriangle className="w-5 h-5" />
-          </motion.div>
-        </div>
-      </div>
-
       <header className="bg-white text-black border-b border-gray-300">
         <div className="max-w-7xl mx-auto px-8 py-6">
           <div className="flex items-center justify-between gap-6">
