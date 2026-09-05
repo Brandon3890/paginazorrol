@@ -611,10 +611,6 @@ export default function CheckoutPage() {
     router.push('/login?redirect=/checkout')
   }
 
-  const handleGuestModeClick = () => {
-    setShowGuestForm(true)
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -892,17 +888,25 @@ export default function CheckoutPage() {
         {/* COLUMNA IZQUIERDA */}
         <div className="space-y-6">
 
-          {/* Como deseas comprar */}
+          {/* Iniciar Sesion / Datos de Invitado */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5" />
-                Como deseas comprar
+                Iniciar Sesion
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!isAuthenticated && !isGuestMode && !showGuestForm ? (
-                <div className="space-y-3">
+              {!isAuthenticated && !isGuestMode ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground text-center leading-relaxed">
+                    <span className="font-bold text-foreground">¿Ya tienes cuenta?</span>{" "}
+                    Inicia sesión para{" "}
+                    <span className="font-bold text-foreground">rastrear tu pedido</span>{" "}
+                    y 
+                    <span className="font-bold text-foreground"> conseguir beneficios</span>{" "} 
+                     en el futuro como cliente frecuente.
+                  </p>
                   <Button
                     className="w-full"
                     onClick={handleLoginClick}
@@ -910,27 +914,123 @@ export default function CheckoutPage() {
                     <LogIn className="w-4 h-4 mr-2" />
                     Iniciar Sesion
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Al iniciar sesion podras ver el estado de tu pedido y conseguir beneficios en el futuro como cliente frecuente.
-                  </p>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <Separator />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        O
-                      </span>
-                    </div>
+
+                  
+
+
+
+                  <div className="pt-4">
+                    <p className="text-sm font-medium text-center text-muted-foreground mb-4">
+                      O comprar como invitado
+                    </p>
+                    
+                    <form onSubmit={handleGuestSubmit} className="space-y-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Nombre *</Label>
+                          <Input
+                            required
+                            value={guestData.firstName}
+                            onChange={(e) => setGuestData({...guestData, firstName: e.target.value})}
+                            placeholder="Tu nombre"
+                            className={guestFormErrors.firstName ? "border-red-500" : ""}
+                          />
+                          {guestFormErrors.firstName && (
+                            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {guestFormErrors.firstName}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label>Apellido *</Label>
+                          <Input
+                            required
+                            value={guestData.lastName}
+                            onChange={(e) => setGuestData({...guestData, lastName: e.target.value})}
+                            placeholder="Tu apellido"
+                            className={guestFormErrors.lastName ? "border-red-500" : ""}
+                          />
+                          {guestFormErrors.lastName && (
+                            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {guestFormErrors.lastName}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Email *</Label>
+                        <Input
+                          type="email"
+                          required
+                          value={guestData.email}
+                          onChange={(e) => setGuestData({...guestData, email: e.target.value})}
+                          placeholder="correo@ejemplo.com"
+                          className={guestFormErrors.email ? "border-red-500" : ""}
+                        />
+                        {guestFormErrors.email && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {guestFormErrors.email}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label>Confirmar Email *</Label>
+                        <Input
+                          type="email"
+                          required
+                          value={guestData.confirmEmail}
+                          onChange={(e) => setGuestData({...guestData, confirmEmail: e.target.value})}
+                          placeholder="confirma tu correo"
+                          className={guestFormErrors.confirmEmail ? "border-red-500" : ""}
+                        />
+                        {guestFormErrors.confirmEmail && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {guestFormErrors.confirmEmail}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label>Telefono *</Label>
+                        <Input
+                          type="tel"
+                          required
+                          value={guestData.phone}
+                          onChange={(e) => setGuestData({...guestData, phone: e.target.value})}
+                          placeholder="+569 XXXX XXXX"
+                          className={guestFormErrors.phone ? "border-red-500" : ""}
+                        />
+                        {guestFormErrors.phone && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {guestFormErrors.phone}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label>RUT (Opcional)</Label>
+                        <Input
+                          placeholder="Ej: 12345678-5"
+                          value={guestData.rut}
+                          onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
+                          className={guestFormErrors.rut ? "border-red-500" : ""}
+                        />
+                        {guestFormErrors.rut && (
+                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {guestFormErrors.rut}
+                          </p>
+                        )}
+                      </div>
+                      <Button type="submit" className="w-full">
+                        <User className="w-4 h-4 mr-2" />
+                        Continuar
+                      </Button>
+                    </form>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleGuestModeClick}
-                  >
-                    <User className="w-4 h-4 mr-2" />
-                    Comprar como Invitado
-                  </Button>
                 </div>
               ) : isAuthenticated ? (
                 <div className="space-y-2">
@@ -947,13 +1047,17 @@ export default function CheckoutPage() {
                     <User className="w-4 h-4" />
                     <span className="font-medium">Comprando como invitado</span>
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.email}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Te notificaremos cuando tu pedido este listo para retiro via email o telefono.
                   </p>
+
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="px-4 py-2 h-auto text-600 rounded-md"
+                    className="px-3 py-2 h-auto text-sm font-medium text-600"
                     onClick={() => {
                       setIsGuestMode(false)
                       setShowGuestForm(true)
@@ -961,127 +1065,9 @@ export default function CheckoutPage() {
                   >
                     Cambiar datos
                   </Button>
+
                 </div>
               ) : null}
-
-              {showGuestForm && !isAuthenticated && (
-                <form onSubmit={handleGuestSubmit} className="space-y-4 pt-4 border-t">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <Label>Nombre *</Label>
-                      <Input
-                        required
-                        value={guestData.firstName}
-                        onChange={(e) => setGuestData({...guestData, firstName: e.target.value})}
-                        placeholder="Tu nombre"
-                        className={guestFormErrors.firstName ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.firstName && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.firstName}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label>Apellido *</Label>
-                      <Input
-                        required
-                        value={guestData.lastName}
-                        onChange={(e) => setGuestData({...guestData, lastName: e.target.value})}
-                        placeholder="Tu apellido"
-                        className={guestFormErrors.lastName ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.lastName && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.lastName}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Email *</Label>
-                    <Input
-                      type="email"
-                      required
-                      value={guestData.email}
-                      onChange={(e) => setGuestData({...guestData, email: e.target.value})}
-                      placeholder="correo@ejemplo.com"
-                      className={guestFormErrors.email ? "border-red-500" : ""}
-                    />
-                    {guestFormErrors.email && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {guestFormErrors.email}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Confirmar Email *</Label>
-                    <Input
-                      type="email"
-                      required
-                      value={guestData.confirmEmail}
-                      onChange={(e) => setGuestData({...guestData, confirmEmail: e.target.value})}
-                      placeholder="confirma tu correo"
-                      className={guestFormErrors.confirmEmail ? "border-red-500" : ""}
-                    />
-                    {guestFormErrors.confirmEmail && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {guestFormErrors.confirmEmail}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Telefono *</Label>
-                    <Input
-                      type="tel"
-                      required
-                      value={guestData.phone}
-                      onChange={(e) => setGuestData({...guestData, phone: e.target.value})}
-                      placeholder="+569 XXXX XXXX"
-                      className={guestFormErrors.phone ? "border-red-500" : ""}
-                    />
-                    {guestFormErrors.phone && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {guestFormErrors.phone}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>RUT (Opcional)</Label>
-                    <Input
-                      placeholder="Ej: 12345678-5"
-                      value={guestData.rut}
-                      onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
-                      className={guestFormErrors.rut ? "border-red-500" : ""}
-                    />
-                    {guestFormErrors.rut && (
-                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {guestFormErrors.rut}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-3">
-                    <Button type="submit" className="flex-1">
-                      Continuar como Invitado
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setShowGuestForm(false)
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-                </form>
-              )}
             </CardContent>
           </Card>
 

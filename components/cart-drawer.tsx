@@ -450,14 +450,6 @@ export function CartDrawer() {
                   >
                     Cancelar
                   </Button>
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs bg-orange-600 hover:bg-orange-700"
-                    onClick={handleCheckout}
-                    disabled={isCheckingOut}
-                  >
-                    Continuar Pago
-                  </Button>
                 </div>
               </div>
             </motion.div>
