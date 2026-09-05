@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuthStore } from "@/lib/auth-store"
 import { useGuestStore } from "@/lib/guest-store"
 
+const GUEST_IDENTIFIER_COOKIE = 'guest_identifier'
+
 export function CartDrawer() {
   const { 
     items, 
@@ -54,11 +56,35 @@ export function CartDrawer() {
     if (isAuthenticated && user) {
       return `user_${user.id}`
     }
+    
+    // Intentar obtener de cookies primero
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';')
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=')
+        if (name === GUEST_IDENTIFIER_COOKIE) {
+          return decodeURIComponent(value)
+        }
+      }
+    }
+    
+    // Si no hay cookie, usar guest session
     const guest = getGuestSession()
     if (guest) {
-      return `guest_${guest.sessionId}`
+      const identifier = `guest_${guest.sessionId}`
+      // Guardar en cookie para futuras visitas
+      if (typeof document !== 'undefined') {
+        document.cookie = `${GUEST_IDENTIFIER_COOKIE}=${encodeURIComponent(identifier)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`
+      }
+      return identifier
     }
-    return null
+    
+    // Último recurso: generar uno temporal
+    const tempId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+    if (typeof document !== 'undefined') {
+      document.cookie = `${GUEST_IDENTIFIER_COOKIE}=${encodeURIComponent(tempId)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`
+    }
+    return tempId
   }
 
   // Actualizar reserva cuando cambian los items (solo si hay checkout activo)
@@ -130,7 +156,7 @@ export function CartDrawer() {
     if (!hasActiveCheckout() || !identifier) return false
     
     try {
-      console.log(`Liberando stock de producto`)
+      console.log(`Liberando stock de producto: ${productName} (${quantity} unidades)`)
       
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
@@ -155,7 +181,7 @@ export function CartDrawer() {
       return true
       
     } catch (error) {
-      console.error(' Error en releaseSingleProductStock:', error)
+      console.error('Error en releaseSingleProductStock:', error)
       return false
     }
   }
@@ -237,9 +263,7 @@ export function CartDrawer() {
     }
   }
 
-  // =====================================================
   // Vaciar carrito CON confirmación (cuando hay reserva activa)
-  // =====================================================
   const handleClearCartWithReservation = () => {
     if (hasActiveCheckout() && items.length > 0) {
       setShowCancelConfirm(true)
@@ -268,7 +292,7 @@ export function CartDrawer() {
       const itemsToRelease = currentItemsRef.current
       const identifier = getIdentifier()
       
-      console.log('Cancelando y vaciando carrito. Items a liberar:', itemsToRelease)
+      console.log('Cancelando y vaciando carrito')
 
       if (itemsToRelease.length > 0 && identifier) {
         const response = await fetch('/api/cart/reserve-stock', {
@@ -288,7 +312,7 @@ export function CartDrawer() {
           throw new Error('Error al liberar stock')
         }
         
-        console.log(' Stock liberado correctamente')
+        console.log('Stock liberado correctamente')
       } else if (itemsToRelease.length > 0 && !identifier) {
         console.warn('No hay identifier, no se puede liberar stock')
       }
@@ -420,7 +444,7 @@ export function CartDrawer() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                    className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-300"
                     onClick={handleClearCartWithReservation}
                     disabled={isCancellingCheckout}
                   >

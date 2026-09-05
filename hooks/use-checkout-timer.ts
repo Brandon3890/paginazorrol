@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
 
 const CHECKOUT_TIME = 10 * 60 * 1000
+const GUEST_IDENTIFIER_COOKIE = 'guest_identifier'
 
 export const useCheckoutTimer = () => {
   const [timeLeft, setTimeLeft] = useState<number>(CHECKOUT_TIME)
@@ -33,16 +34,49 @@ export const useCheckoutTimer = () => {
   const router = useRouter()
   const { toast } = useToast()
 
+  // Función para obtener el identifier de las cookies en el cliente
+  const getIdentifierFromCookies = useCallback((): string | null => {
+    if (typeof document === 'undefined') return null
+    
+    const cookies = document.cookie.split(';')
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=')
+      if (name === GUEST_IDENTIFIER_COOKIE) {
+        return decodeURIComponent(value)
+      }
+    }
+    return null
+  }, [])
+
   const getIdentifier = useCallback(() => {
     if (isAuthenticated && user) {
       return `user_${user.id}`
     }
+    
+    // Intentar obtener de cookies primero
+    const cookieId = getIdentifierFromCookies()
+    if (cookieId) {
+      return cookieId
+    }
+    
+    // Si no hay cookie, usar guest session
     const guest = getGuestSession()
     if (guest) {
-      return `guest_${guest.sessionId}`
+      const identifier = `guest_${guest.sessionId}`
+      // Guardar en cookie para futuras visitas
+      if (typeof document !== 'undefined') {
+        document.cookie = `${GUEST_IDENTIFIER_COOKIE}=${encodeURIComponent(identifier)}; path=/; max-age=${60 * 60 * 24 * 30}`
+      }
+      return identifier
     }
-    return null
-  }, [isAuthenticated, user, getGuestSession])
+    
+    // Último recurso: generar uno temporal
+    const tempId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+    if (typeof document !== 'undefined') {
+      document.cookie = `${GUEST_IDENTIFIER_COOKIE}=${encodeURIComponent(tempId)}; path=/; max-age=${60 * 60 * 24 * 30}`
+    }
+    return tempId
+  }, [isAuthenticated, user, getGuestSession, getIdentifierFromCookies])
 
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
@@ -168,7 +202,7 @@ export const useCheckoutTimer = () => {
     if (!identifier) return
 
     try {
-      console.log('Actualizando reserva...')
+      console.log('Actualizando reserva para:', identifier)
       const response = await fetch('/api/cart/reserve-stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

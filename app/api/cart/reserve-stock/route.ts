@@ -1,3 +1,4 @@
+// app/api/cart/reserve-stock/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest, getIdentifierFromRequest, createGuestIdentifier } from '@/lib/auth-utils'
@@ -19,9 +20,11 @@ export async function POST(request: NextRequest) {
     let identifier = getIdentifierFromRequest(request)
     
     // Si no hay identifier válido, crear uno temporal
-    if (!identifier || identifier === 'unknown') {
+    if (!identifier || identifier === 'unknown' || identifier === 'null') {
       identifier = createGuestIdentifier(request)
+      console.log('Nuevo identifier creado')
     }
+
 
     const body = await request.json()
     const { items, action } = body
@@ -59,7 +62,6 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-
         if (product.stock < item.quantity) {
           errors.push({ 
             id: item.id, 
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
           [identifier, item.id, item.quantity, expiresAtFormatted, userId || null]
         )
 
-        console.log(' Stock DESCONTADO y reserva creada')
+        console.log('Stock DESCONTADO y reserva creada')
       }
 
       if (errors.length > 0) {
@@ -112,13 +114,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'update') {
-      console.log('ACTUALIZANDO reserva ')
+      console.log('ACTUALIZANDO reserva')
       
       const currentReservations = await query(
         `SELECT product_id, quantity FROM stock_reservations WHERE identifier = ? AND expires_at > NOW()`,
         [identifier]
       ) as any[]
       
+      console.log('Reservas actuales:', currentReservations)
       
       const newCartMap = new Map()
       for (const item of items) {
@@ -182,7 +185,7 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          console.log('Aumentado stock para producto', item.id, '+', difference, 'unidades descontadas')
+          console.log('Aumentado stock para producto')
         } else if (newQuantity < currentQuantity) {
           const difference = currentQuantity - newQuantity
           
@@ -209,7 +212,7 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          console.log('Disminuido stock para producto', item.id, '+', difference, 'unidades devueltas')
+          console.log('Disminuido stock para producto')
         } else {
           if (currentQuantity > 0) {
             await query(
@@ -238,7 +241,7 @@ export async function POST(request: NextRequest) {
             [identifier, productId]
           )
           
-          console.log('Producto', productId, 'eliminado del carrito, stock devuelto: +' + quantity)
+          console.log('Producto eliminado del carrito, stock devuelto')
         }
       }
       
@@ -266,7 +269,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'release') {
-      console.log('LIBERANDO reserva y devolviendo stock ',)
+      console.log('LIBERANDO reserva y devolviendo stock ')
       
       const reservations = await query(
         `SELECT product_id, quantity 
@@ -276,7 +279,7 @@ export async function POST(request: NextRequest) {
       ) as any[]
 
       if (reservations && reservations.length > 0) {
-        console.log('Reservas a liberar (devolviendo stock)',)
+        console.log('Reservas a liberar (devolviendo stock)')
         
         for (const res of reservations) {
           const [product] = await query(
@@ -292,7 +295,7 @@ export async function POST(request: NextRequest) {
                WHERE id = ?`,
               [res.quantity, res.product_id]
             )
-            console.log('Stock devuelto para producto', res.product_id, '+', res.quantity, 'unidades')
+            console.log('Stock devuelto para producto')
           } else {
             console.warn('Producto no encontrado, no se puede devolver stock')
           }
@@ -314,7 +317,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'release_single') {
-      console.log('Liberando stock de producto individual',)
+      console.log('Liberando stock de producto individual ')
       
       for (const item of items) {
         const reservations = await query(
@@ -334,13 +337,13 @@ export async function POST(request: NextRequest) {
              WHERE id = ?`,
             [reservation.quantity, item.id]
           )
-          console.log('Stock devuelto para producto', item.id, '+', reservation.quantity, 'unidades')
+          console.log('Stock devuelto para producto')
           
           await query(
             'DELETE FROM stock_reservations WHERE identifier = ? AND product_id = ?',
             [identifier, item.id]
           )
-          console.log('Reserva eliminada para producto')
+          console.log('Reserva eliminada para el producto')
         }
       }
 
