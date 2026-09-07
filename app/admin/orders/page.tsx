@@ -75,6 +75,7 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  customer_rut?: string
   is_guest?: boolean
   shipping_address?: {
     street: string
@@ -843,15 +844,24 @@ export default function AdminOrdersPage() {
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
                       <div className="space-y-4">
                         <div>
-                          <h4 className="font-medium mb-2">Información de Envío</h4>
+                          <h4 className="font-medium mb-2">Información del Cliente</h4>
                           <div className="text-sm text-muted-foreground space-y-1">
                             <p className="font-medium text-foreground">
                               {order.customer_first_name} {order.customer_last_name}
                             </p>
                             <p>{order.customer_email}</p>
                             <p>{order.customer_phone}</p>
-                            
-                            {/*  MOSTRAR EL MÉTODO DE ENVÍO CORRECTO */}
+                            {order.customer_rut && (
+                              <p className="text-xs font-medium text-foreground mt-1">
+                                RUT: {order.customer_rut}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium mb-2">Información de Envío</h4>
+                          <div className="text-sm text-muted-foreground space-y-1">
                             <p className="text-xs font-medium text-foreground mt-2">
                               Método: {shippingMethodDisplay}
                             </p>

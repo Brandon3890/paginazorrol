@@ -1,4 +1,3 @@
-// app/api/admin/orders/all/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -23,6 +22,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para ver todos los pedidos' }, { status: 403 })
     }
 
+    // INCLUIR customer_rut EN LA CONSULTA
     const orders = await query(
       `SELECT 
         o.*, 
@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         u.last_name, 
         u.phone, 
         u.is_guest,
+        o.customer_rut,
         o.shipping_type,
         o.shipping_details
        FROM orders o 
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
                 }
               }
             } catch (error) {
-              console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+              console.error(`Error obteniendo imagen para producto :`, error)
             }
             
             return item
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
           customer_first_name: order.first_name || '',
           customer_last_name: order.last_name || '',
           customer_phone: order.phone || '',
+          customer_rut: order.customer_rut || '',  
           is_guest: order.is_guest === 1
         }
       })

@@ -1,4 +1,3 @@
-// app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -27,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    // ✅ INCLUIR INFORMACIÓN DE LA BOLETA
+    //  INCLUIR INFORMACIÓN DE LA BOLETA Y CUSTOMER_RUT
     const orders = await query(
       `SELECT 
         o.*, 
@@ -36,6 +35,7 @@ export async function GET(
         u.last_name, 
         u.phone, 
         u.is_guest,
+        o.customer_rut,
         o.transbank_payment_type,
         o.transbank_installments_number,
         o.transbank_transaction_date,
@@ -84,7 +84,7 @@ export async function GET(
             }
           }
         } catch (error) {
-          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
+          console.error(`Error obteniendo imagen para el producto: `, error)
         }
         
         return item
@@ -117,7 +117,7 @@ export async function GET(
       }
     }
 
-    // ✅ CONSTRUIR INFORMACIÓN DE LA BOLETA
+    //  CONSTRUIR INFORMACIÓN DE LA BOLETA
     const boletaInfo = order.boleta_folio ? {
       folio: order.boleta_folio,
       estado_sii: order.boleta_estado || 'emitida',
@@ -212,6 +212,7 @@ export async function GET(
       customer_first_name: order.first_name || '',
       customer_last_name: order.last_name || '',
       customer_phone: order.phone || '',
+      customer_rut: order.customer_rut || '',
       is_guest: order.is_guest === 1,
       boleta_emitida: order.boleta_folio ? 1 : 0,
       boleta_info: boletaInfo,
@@ -287,7 +288,7 @@ export async function PATCH(
       [status, orderId]
     )
 
-    console.log(`Admin: Order ${orderId} status updated to ${status}`)
+    console.log(`Admin: Order status updated to ${status}`)
 
     return NextResponse.json({ success: true, message: 'Estado actualizado correctamente' })
 

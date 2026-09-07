@@ -1,4 +1,3 @@
-// app/admin/orders/[id]/page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -268,7 +267,7 @@ export default function AdminOrderDetailPage() {
       })
       
       const data = await response.json()
-      console.log(' Documentos encontrados:', data)
+      console.log(' Documentos encontrados')
       
       if (data.success && data.data && data.data.length > 0) {
         const montoOrden = Math.round(order.total)
@@ -652,6 +651,18 @@ export default function AdminOrderDetailPage() {
                     <Phone className="w-4 h-4 text-muted-foreground" />
                     <p className="text-sm">{order.customer_phone}</p>
                   </div>
+                )}
+                {order.customer_rut && (
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                    <span className="text-muted-foreground text-sm">RUT:</span>
+                    <span className="text-sm font-mono font-medium">{order.customer_rut}</span>
+                  </div>
+                )}
+                {order.is_guest && (
+                  <Badge variant="outline" className="mt-2 bg-purple-50 text-purple-700 border-purple-200">
+                    <User className="w-3 h-3 mr-1" />
+                    Invitado
+                  </Badge>
                 )}
               </CardContent>
             </Card>
