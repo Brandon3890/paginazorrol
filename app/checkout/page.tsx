@@ -679,7 +679,9 @@ export default function CheckoutPage() {
     return chilexpressOptions.find(opt => opt.type === "branch_pickup")
   }
 
-  // Función para aplicar cupón
+  // =====================================================
+  // APLICAR CUPÓN - CORREGIDO (NO USA EL CUPÓN)
+  // =====================================================
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
       setCouponError('Ingresa un código de cupón')
@@ -724,9 +726,9 @@ export default function CheckoutPage() {
       const coupon = data.coupon
       const discount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
       
-      await useCoupon(coupon.id)
+      // ❌ NO usar el cupón aquí - SOLO validar y aplicar descuento visual
+      // await useCoupon(coupon.id)  // ← ELIMINADO
 
-      // CORREGIDO: applyCoupon espera 3 argumentos separados
       applyCoupon(
         coupon.code,
         Math.round(discount),
@@ -897,10 +899,11 @@ export default function CheckoutPage() {
       if (isGuestUser) {
         rutToUse = guestData.rut.trim()
       } else {
-        // Usuario autenticado: shippingRut (ingresado en checkout) o user.rut
         rutToUse = shippingRut || user?.rut || ''
       }
-            
+      
+      console.log('RUT enviado a la API')
+      
       const orderPayload: any = {
         items: items.map((item) => ({
           id: item.id,
@@ -915,7 +918,7 @@ export default function CheckoutPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
-          rut: rutToUse  // ← El RUT se envía aquí
+          rut: rutToUse
         },
         shippingAddress: shippingAddressData,
         totals: {
@@ -936,7 +939,7 @@ export default function CheckoutPage() {
       if (isGuestUser) {
         const guest = getGuestSession()
         if (guest) {
-          orderPayload.guestSessionId = guest.sessionId
+          orderPayload.guestSessionId = guest.sessionId 
         }
       }
       
@@ -977,7 +980,7 @@ export default function CheckoutPage() {
           amount: isBodegaPickupSelected ? totalAfterDiscount : finalTotal,
           isGuest: isGuestUser,
           guestEmail: isGuestUser ? formData.email : undefined,
-          customerRut: rutToUse  // ← ENVIAR EL RUT AQUÍ
+          customerRut: rutToUse
         }),
       })
 
@@ -1234,7 +1237,7 @@ export default function CheckoutPage() {
                         RUT para envío <span className="text-red-500">*</span>
                       </Label>
                       <p className="text-xs text-amber-700 mb-2">
-                        Se requiere un RUT válido para el envío. Se usará solo para el envío.
+                        Se requiere un RUT Válido. Se usará solo para el envío.
                       </p>
                       <Input
                         required

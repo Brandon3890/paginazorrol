@@ -15,12 +15,11 @@ function generateSimpleOrderNumber(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log(' Payment create request body:', body)
     
     const { orderId, amount, isGuest, guestEmail, customerRut } = body
 
     if (!orderId || !amount) {
-      console.log(' Missing required fields')
+      console.log(' Missing required fields:', { orderId, amount })
       return NextResponse.json(
         { error: 'Faltan datos requeridos: orderId y amount' },
         { status: 400 }
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest) {
       }
       
       if (!userId) {
-        console.log(' No se encontró usuario autenticado')
+        console.log('No se encontró usuario autenticado')
         return NextResponse.json(
           { error: 'No autorizado' },
           { status: 401 }
@@ -99,7 +98,7 @@ export async function POST(request: NextRequest) {
     const order = orders[0]
 
     // =====================================================
-    //  Usar el RUT que viene del checkout
+    // IMPORTANTE: Usar el RUT que viene del checkout
     // =====================================================
     const rutToUse = customerRut || userRut || null
     
@@ -125,7 +124,7 @@ export async function POST(request: NextRequest) {
       [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, rutToUse, orderId]
     )
 
-    console.log(' Orden actualizada con RUT:', rutToUse)
+    console.log('Orden actualizada con RUT')
 
     // Crear transacción en Transbank
     const transaction = await transbankService.createTransaction({
@@ -135,7 +134,7 @@ export async function POST(request: NextRequest) {
       return_url: returnUrl
     })
 
-    console.log(' Transacción creada exitosamente')
+    console.log('Transacción creada exitosamente')
 
     return NextResponse.json({
       success: true,
@@ -149,7 +148,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error(' Error creando transacción:', error)
+    console.error('Error creando transacción:', error)
     return NextResponse.json(
       { 
         error: 'Error interno del servidor al crear transacción',

@@ -26,7 +26,7 @@ const BODEGA_ADDRESS = {
   communeName: 'San Miguel',
   postalCode: '8900000',
   department: '',
-  deliveryInstructions: 'Retiro en bodega - Horario 12:00 a 18:00 hrs'
+  deliveryInstructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs'
 }
 
 export async function POST(request: NextRequest) {
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       shippingDetails,
       acceptedTerms
     } = body
+
 
     // Validar términos y condiciones
     if (!acceptedTerms) {
@@ -76,22 +77,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    //  BUSCAR O CREAR USUARIO INVITADO POR EMAIL
-    let userId = null
-    let isGuestUser = true
-    
-    // Buscar usuario existente por email (invitado o registrado)
+    // Buscar usuario por email
     const existingUser = await query(
-      'SELECT id, is_guest, rut, email, first_name, last_name, phone FROM users WHERE email = ?',
+      'SELECT id, is_guest, rut FROM users WHERE email = ?',
       [customerInfo.email]
     ) as any[]
+    
+    let userId = null
+    let isGuestUser = true
+    let userRut = null
     
     if (existingUser.length > 0) {
       userId = existingUser[0].id
       isGuestUser = existingUser[0].is_guest === 1
-      console.log(` Usuario existente encontrado`)
+      userRut = existingUser[0].rut
+      console.log(`Usuario existente encontrado`)
     } else {
-      //  CREAR NUEVO USUARIO INVITADO (si no existe)
+      // Crear nuevo usuario invitado
       const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
       
       const insertResult = await query(
@@ -114,12 +116,59 @@ export async function POST(request: NextRequest) {
         'UPDATE users SET rut = ? WHERE id = ?',
         [guestRut, userId]
       )
-      console.log(` Usuario invitado`)
+      userRut = guestRut
+      console.log(`Nuevo usuario invitado `)
+    }
+
+    // =====================================================
+    // ASOCIAR RESERVA AL USUARIO INVITADO
+    // =====================================================
+    if (userId && guestSessionId) {
+      const identifier = `guest_${guestSessionId}`;
+      
+      // Buscar reserva por identifier
+      const reservations = await query(
+        `SELECT id FROM stock_reservations WHERE identifier = ? AND expires_at > NOW()`,
+        [identifier]
+      ) as any[];
+      
+      if (reservations.length > 0) {
+        await query(
+          `UPDATE stock_reservations SET user_id = ? WHERE identifier = ? AND expires_at > NOW()`,
+          [userId, identifier]
+        );
+        console.log(`Reserva asociada al usuario`);
+      } else {
+        // Si no se encontró por identifier, buscar reservas con user_id NULL
+        const reservationsByRut = await query(
+          `SELECT sr.id FROM stock_reservations sr
+           WHERE sr.user_id IS NULL 
+           AND sr.expires_at > NOW()
+           AND sr.identifier LIKE 'guest_%'
+           AND NOT EXISTS (
+             SELECT 1 FROM stock_reservations sr2 
+             WHERE sr2.user_id = ? 
+             AND sr2.product_id = sr.product_id 
+             AND sr2.expires_at > NOW()
+           )`,
+          [userId]
+        ) as any[];
+        
+        if (reservationsByRut.length > 0) {
+          for (const res of reservationsByRut) {
+            await query(
+              `UPDATE stock_reservations SET user_id = ? WHERE id = ?`,
+              [userId, res.id]
+            );
+          }
+          console.log(`${reservationsByRut.length} reservas asociadas al usuario `);
+        }
+      }
     }
 
     const orderNumber = generateOrderNumber()
 
-    // Validar dirección (solo si no es retiro en bodega)
+    // Validar dirección
     const isBodegaPickup = shippingType === 'bodega_pickup'
     if (!isBodegaPickup && (!shippingAddress?.street || !shippingAddress?.communeName)) {
       return NextResponse.json(
@@ -130,10 +179,8 @@ export async function POST(request: NextRequest) {
 
     let shippingAddressId = null
 
-    // Solo guardar la dirección en user_addresses si NO es retiro en bodega
     if (!isBodegaPickup && shippingAddress) {
       if (!isGuestUser) {
-        // Usuario registrado - verificar si ya tiene esta dirección
         const existingAddresses = await query(
           `SELECT id FROM user_addresses 
            WHERE user_id = ? 
@@ -144,7 +191,7 @@ export async function POST(request: NextRequest) {
 
         if (existingAddresses.length > 0) {
           shippingAddressId = existingAddresses[0].id
-          console.log(` Usando dirección existente`)
+          console.log(`Usando dirección existente`)
         }
       }
       
@@ -179,44 +226,37 @@ export async function POST(request: NextRequest) {
 
     const tax = Math.round(totals.total * 0.19)
 
-    // Usar dirección de bodega si corresponde
-    let finalShippingAddress = shippingAddress
-    if (isBodegaPickup) {
-      finalShippingAddress = BODEGA_ADDRESS
-    }
-
-    //  DATOS DEL CLIENTE
-    const customerRut = isGuestUser ? '66666666-6' : (customerInfo?.rut || '66666666-6')
+    const rutCliente = customerInfo?.rut || userRut || '66666666-6'
     const customerEmail = customerInfo?.email || null
     const customerFirstName = customerInfo?.firstName || null
     const customerLastName = customerInfo?.lastName || null
     const customerPhone = customerInfo?.phone || null
 
 
-    //  CREAR ORDEN CON TODOS LOS DATOS DEL CLIENTE
+    // INSERTAR LA ORDEN
     const orderResult = await query(
       `INSERT INTO orders (
-        user_id, 
-        customer_rut, 
+        user_id,
+        customer_rut,
         customer_email,
         customer_first_name,
         customer_last_name,
         customer_phone,
-        order_number, 
-        status, 
-        subtotal, 
-        discount, 
-        shipping, 
-        tax, 
+        order_number,
+        status,
+        subtotal,
+        discount,
+        shipping,
+        tax,
         total,
-        coupon_id, 
-        coupon_code, 
-        shipping_address_id, 
-        payment_method, 
-        payment_status, 
+        coupon_id,
+        coupon_code,
+        shipping_address_id,
+        payment_method,
+        payment_status,
         notes,
-        shipping_type, 
-        shipping_details, 
+        shipping_type,
+        shipping_details,
         created_at,
         updated_at,
         boleta_emitida,
@@ -224,7 +264,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 0, 0)`,
       [
         userId,
-        customerRut,
+        rutCliente,
         customerEmail,
         customerFirstName,
         customerLastName,
@@ -279,11 +319,13 @@ export async function POST(request: NextRequest) {
       orderId,
       orderNumber,
       userId,
-      isGuest: isGuestUser
+      isGuest: isGuestUser,
+      customerEmail: customerEmail,
+      customerRut: rutCliente
     })
 
   } catch (error: any) {
-    console.error(' Error creando orden de invitado:', error)
+    console.error('Error creando orden de invitado:', error)
     return NextResponse.json(
       { error: 'Error al crear la orden: ' + error.message },
       { status: 500 }

@@ -1,3 +1,4 @@
+// app/api/orders/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -63,7 +64,6 @@ export async function POST(request: NextRequest) {
       acceptedTerms
     } = body
 
-
     // Validar términos y condiciones
     if (!acceptedTerms) {
       return NextResponse.json(
@@ -122,7 +122,6 @@ export async function POST(request: NextRequest) {
             userFirstName = user.first_name
             userLastName = user.last_name
             userPhone = user.phone
-            console.log(' Usuario autenticado encontrado')
           }
         }
       } catch (error) {
@@ -131,7 +130,18 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================
-    // 2. DATOS DEL CLIENTE (prioridad: customerInfo > usuario)
+    // 2. VERIFICAR QUE EL USUARIO ESTÁ AUTENTICADO
+    // =====================================================
+    if (!userId) {
+      console.log(' Usuario no autenticado')
+      return NextResponse.json(
+        { error: 'Usuario no autenticado' },
+        { status: 401 }
+      )
+    }
+
+    // =====================================================
+    // 3. DATOS DEL CLIENTE
     // =====================================================
     const customerRut = customerInfo?.rut || userRut || null
     const customerEmail = customerInfo?.email || userEmail || null
@@ -139,8 +149,9 @@ export async function POST(request: NextRequest) {
     const customerLastName = customerInfo?.lastName || userLastName || null
     const customerPhone = customerInfo?.phone || userPhone || null
 
+
     // =====================================================
-    // 3. CALCULAR TOTALES
+    // 4. CALCULAR TOTALES
     // =====================================================
     const subtotal = totals?.subtotal || 0
     const discount = totals?.discount || 0
@@ -149,40 +160,58 @@ export async function POST(request: NextRequest) {
     const total = totals?.total || 0
 
     // =====================================================
-    // 4. GENERAR NÚMERO DE ORDEN
+    // 5. GENERAR NÚMERO DE ORDEN
     // =====================================================
     const orderNumber = generateOrderNumber()
 
     // =====================================================
-    // 5. INSERTAR DIRECCIÓN (si se proporcionó)
+    // 6. INSERTAR DIRECCIÓN (si se proporcionó)
     // =====================================================
     let shippingAddressId = null
-    if (shippingAddress) {
-      const addressResult = await query(
-        `INSERT INTO user_addresses (
-          user_id, title, street, has_no_number, region_iso, region_name, 
-          commune_name, postal_code, department, delivery_instructions, is_default
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId,
-          'Dirección de envío',
-          shippingAddress.street || 'No especificada',
-          shippingAddress.hasNoNumber || 0,
-          shippingAddress.regionIso || 'CL-RM',
-          shippingAddress.regionName || 'Región Metropolitana',
-          shippingAddress.communeName || 'Santiago',
-          shippingAddress.postalCode || '000000',
-          shippingAddress.department || '',
-          shippingAddress.deliveryInstructions || '',
-          0
-        ]
-      ) as any
-      shippingAddressId = addressResult.insertId
-      console.log('Dirección guardada')
+    
+    // Solo insertar dirección si hay un userId válido
+    if (shippingAddress && userId) {
+      // Verificar si la dirección ya existe
+      const existingAddresses = await query(
+        `SELECT id FROM user_addresses 
+         WHERE user_id = ? 
+         AND street = ? 
+         AND commune_name = ?`,
+        [userId, shippingAddress.street, shippingAddress.communeName]
+      ) as any[]
+
+      if (existingAddresses.length > 0) {
+        shippingAddressId = existingAddresses[0].id
+        console.log(` Usando dirección existente`)
+      } else {
+        const addressResult = await query(
+          `INSERT INTO user_addresses (
+            user_id, title, street, has_no_number, region_iso, region_name, 
+            commune_name, postal_code, department, delivery_instructions, is_default
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,  // ← Ahora userId no es null
+            'Dirección de envío',
+            shippingAddress.street || 'No especificada',
+            shippingAddress.hasNoNumber || 0,
+            shippingAddress.regionIso || 'CL-RM',
+            shippingAddress.regionName || 'Región Metropolitana',
+            shippingAddress.communeName || 'Santiago',
+            shippingAddress.postalCode || '000000',
+            shippingAddress.department || '',
+            shippingAddress.deliveryInstructions || '',
+            0
+          ]
+        ) as any
+        shippingAddressId = addressResult.insertId
+        console.log(` Nueva dirección creada `)
+      }
+    } else if (shippingAddress && !userId) {
+      console.log(' No se puede guardar dirección sin Id')
     }
 
     // =====================================================
-    // 6. INSERTAR LA ORDEN
+    // 7. INSERTAR LA ORDEN
     // =====================================================
 
     const orderResult = await query(
@@ -238,9 +267,10 @@ export async function POST(request: NextRequest) {
 
     const orderId = orderResult.insertId
 
+    console.log('Orden creada')
 
     // =====================================================
-    // 7. INSERTAR ITEMS DE LA ORDEN
+    // 8. INSERTAR ITEMS DE LA ORDEN
     // =====================================================
     for (const item of items) {
       await query(
@@ -258,10 +288,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`${items.length} productos agregados a la orden`)
+    console.log(` ${items.length} productos agregados a la orden`)
 
     // =====================================================
-    // 8. CONFIRMAR RESERVA DE STOCK
+    // 9. CONFIRMAR RESERVA DE STOCK
     // =====================================================
     if (userId) {
       try {
@@ -283,7 +313,7 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================
-    // 9. DEVOLVER RESPUESTA
+    // 10. DEVOLVER RESPUESTA
     // =====================================================
     return NextResponse.json({
       success: true,
@@ -291,11 +321,12 @@ export async function POST(request: NextRequest) {
       orderNumber: orderNumber,
       userId: userId,
       customerRut: customerRut,
+      customerEmail: customerEmail,
       message: 'Orden creada exitosamente'
     })
 
   } catch (error: any) {
-    console.error('Error al crear la orden:', error)
+    console.error(' Error al crear la orden:', error)
     return NextResponse.json(
       { error: error.message || 'Error al crear la orden' },
       { status: 500 }
