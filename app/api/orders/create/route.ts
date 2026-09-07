@@ -1,6 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
+interface OrderItem {
+  id: number
+  name: string
+  price: number
+  quantity: number
+  image?: string
+  category?: string
+}
+
+interface CustomerInfo {
+  email: string
+  firstName: string
+  lastName: string
+  phone: string
+  rut: string
+}
+
+interface ShippingAddress {
+  street: string
+  hasNoNumber?: boolean
+  regionIso?: string
+  regionName?: string
+  communeName?: string
+  postalCode?: string
+  department?: string
+  deliveryInstructions?: string
+}
+
+interface Totals {
+  subtotal: number
+  discount: number
+  shipping: number
+  tax: number
+  total: number
+}
+
 function generateOrderNumber(): string {
   const now = new Date()
   const year = now.getFullYear()
@@ -27,6 +63,7 @@ export async function POST(request: NextRequest) {
       acceptedTerms
     } = body
 
+
     // Validar términos y condiciones
     if (!acceptedTerms) {
       return NextResponse.json(
@@ -43,13 +80,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    //  OBTENER USUARIO DESDE LA BASE DE DATOS
+    // =====================================================
+    // 1. OBTENER USUARIO DESDE LA BASE DE DATOS
+    // =====================================================
     let userId = null
-    let userRut = null
-    let userEmail = null
-    let userFirstName = null
-    let userLastName = null
-    let userPhone = null
+    let userRut: string | null = null
+    let userEmail: string | null = null
+    let userFirstName: string | null = null
+    let userLastName: string | null = null
+    let userPhone: string | null = null
     
     const authHeader = request.headers.get('authorization')
     let token = null
@@ -87,29 +126,36 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (error) {
-        console.log('Error verificando token:', error)
+        console.log(' Error verificando token:', error)
       }
     }
 
-    //  DATOS DEL CLIENTE (prioridad: customerInfo > usuario)
+    // =====================================================
+    // 2. DATOS DEL CLIENTE (prioridad: customerInfo > usuario)
+    // =====================================================
     const customerRut = customerInfo?.rut || userRut || null
     const customerEmail = customerInfo?.email || userEmail || null
     const customerFirstName = customerInfo?.firstName || userFirstName || null
     const customerLastName = customerInfo?.lastName || userLastName || null
     const customerPhone = customerInfo?.phone || userPhone || null
 
+    // =====================================================
+    // 3. CALCULAR TOTALES
+    // =====================================================
+    const subtotal = totals?.subtotal || 0
+    const discount = totals?.discount || 0
+    const shipping = totals?.shipping || 0
+    const tax = totals?.tax || 0
+    const total = totals?.total || 0
 
-    // Calcular totales
-    const subtotal = totals.subtotal || 0
-    const discount = totals.discount || 0
-    const shipping = totals.shipping || 0
-    const tax = totals.tax || 0
-    const total = totals.total || 0
-
-    // Generar número de orden
+    // =====================================================
+    // 4. GENERAR NÚMERO DE ORDEN
+    // =====================================================
     const orderNumber = generateOrderNumber()
 
-    // Insertar dirección si se proporcionó
+    // =====================================================
+    // 5. INSERTAR DIRECCIÓN (si se proporcionó)
+    // =====================================================
     let shippingAddressId = null
     if (shippingAddress) {
       const addressResult = await query(
@@ -132,9 +178,13 @@ export async function POST(request: NextRequest) {
         ]
       ) as any
       shippingAddressId = addressResult.insertId
+      console.log('Dirección guardada')
     }
 
-    //  INSERTAR LA ORDEN CON TODOS LOS DATOS DEL CLIENTE
+    // =====================================================
+    // 6. INSERTAR LA ORDEN
+    // =====================================================
+
     const orderResult = await query(
       `INSERT INTO orders (
         user_id,
@@ -188,9 +238,10 @@ export async function POST(request: NextRequest) {
 
     const orderId = orderResult.insertId
 
-    console.log(' Orden creada')
 
-    // Insertar items de la orden
+    // =====================================================
+    // 7. INSERTAR ITEMS DE LA ORDEN
+    // =====================================================
     for (const item of items) {
       await query(
         `INSERT INTO order_items (
@@ -207,13 +258,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`Productos agregados a la orden`)
+    console.log(`${items.length} productos agregados a la orden`)
 
+    // =====================================================
+    // 8. CONFIRMAR RESERVA DE STOCK
+    // =====================================================
+    if (userId) {
+      try {
+        await fetch(new URL('/api/cart/reserve-stock', request.url), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: items.map((item: OrderItem) => ({
+              id: item.id,
+              quantity: item.quantity
+            })),
+            action: 'confirm'
+          })
+        })
+        console.log(' Stock confirmado para la orden')
+      } catch (stockError) {
+        console.warn('Error al confirmar stock:', stockError)
+      }
+    }
+
+    // =====================================================
+    // 9. DEVOLVER RESPUESTA
+    // =====================================================
     return NextResponse.json({
       success: true,
       orderId: orderId,
       orderNumber: orderNumber,
       userId: userId,
+      customerRut: customerRut,
       message: 'Orden creada exitosamente'
     })
 

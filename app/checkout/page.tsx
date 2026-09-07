@@ -6,6 +6,7 @@ import { useCartStore } from "@/lib/cart-store"
 import { useAuthStore } from "@/lib/auth-store"
 import { useGuestStore } from "@/lib/guest-store"
 import { useOrderStore } from "@/lib/order-store"
+import { useCouponStore } from "@/lib/coupon-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,10 +14,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store, Home, Mail, Phone } from "lucide-react"
+import { ArrowLeft, Truck, Shield, LogIn, Tag, Loader2, MapPin, Plus, Check, User, ShoppingBag, AlertCircle, Store, Home, Mail, Phone, Gift, X } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -120,6 +120,7 @@ export default function CheckoutPage() {
   const { user, isAuthenticated, loadUserAddresses } = useAuthStore()
   const { createGuestSession, isGuest, clearGuestSession, getGuestSession } = useGuestStore()
   const { addOrder } = useOrderStore()
+  const { validateCoupon, useCoupon, fetchCoupons } = useCouponStore()
   const router = useRouter()
   const { toast } = useToast()
 
@@ -179,6 +180,17 @@ export default function CheckoutPage() {
 
   const [hasAddress, setHasAddress] = useState(false)
 
+  const [deliveryOption, setDeliveryOption] = useState<'bodega' | 'envio' | null>(null)
+
+  const [shippingRut, setShippingRut] = useState('')
+  const [shippingRutError, setShippingRutError] = useState('')
+
+  // Estado para cupón
+  const [couponCode, setCouponCode] = useState('')
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false)
+  const [couponError, setCouponError] = useState('')
+  const [couponSuccess, setCouponSuccess] = useState('')
+
   useEffect(() => {
     const fetchStoreStatus = async () => {
       try {
@@ -203,6 +215,11 @@ export default function CheckoutPage() {
     }
     fetchStoreStatus()
   }, [router, toast])
+
+  // Cargar cupones al montar
+  useEffect(() => {
+    fetchCoupons()
+  }, [fetchCoupons])
 
   const subtotalBeforeDiscount = roundToInteger(getSubtotalPrice())
   const discountAmount = roundToInteger(getDiscountAmount())
@@ -240,6 +257,11 @@ export default function CheckoutPage() {
           lastName: user.lastName || "",
           phone: user.phone || "",
         })
+        if (!user.rut || user.rut === '66666666-6') {
+          setShippingRut('')
+        } else {
+          setShippingRut(user.rut)
+        }
       }
     }
   }, [isAuthenticated, user])
@@ -335,11 +357,6 @@ export default function CheckoutPage() {
         setShippingError(data.error || "No se encontraron tarifas de envio")
       }
       
-      const hasBodega = allOptions.some((o: any) => o.type === "bodega_pickup");
-      if (!hasBodega) {
-        allOptions.push(BODEGA_OPTION);
-      }
-      
       setChilexpressOptions(allOptions)
       
       if (selectedChilexpressOption) {
@@ -384,12 +401,8 @@ export default function CheckoutPage() {
     } catch (error) {
       console.error("Error fetching shipping rates:", error)
       setShippingError("Error al calcular el costo de envio")
-      setChilexpressOptions([BODEGA_OPTION])
-      setSelectedChilexpressOption(BODEGA_OPTION)
-      setShippingCost(0)
-      setShippingMethod("bodega_pickup" as any)
-      setShowBranchSelector(false)
-      setSelectedBranch(null)
+      setChilexpressOptions([])
+      setSelectedChilexpressOption(null)
     } finally {
       setIsLoadingShipping(false)
       isFetchingRef.current = false
@@ -455,12 +468,27 @@ export default function CheckoutPage() {
     if (!guestData.confirmEmail) errors.confirmEmail = "Confirmar email requerido"
     if (guestData.email !== guestData.confirmEmail) errors.confirmEmail = "Los correos no coinciden"
     if (!guestData.phone) errors.phone = "Telefono requerido"
-    if (guestData.rut && !guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
+    if (!guestData.rut) {
+      errors.rut = "RUT requerido"
+    } else if (!guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
       errors.rut = "Formato de RUT invalido (ej: 12345678-5)"
     }
     
     setGuestFormErrors(errors)
     return Object.keys(errors).length === 0
+  }
+
+  const validateShippingRut = () => {
+    if (isAuthenticated && (!shippingRut || shippingRut === '66666666-6')) {
+      setShippingRutError('El RUT es obligatorio para el envío')
+      return false
+    }
+    if (shippingRut && !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
+      setShippingRutError('Formato de RUT invalido (ej: 12345678-5)')
+      return false
+    }
+    setShippingRutError('')
+    return true
   }
 
   const validateManualAddress = () => {
@@ -487,7 +515,7 @@ export default function CheckoutPage() {
       return
     }
     
-    const rutToUse = guestData.rut.trim() || "66666666-6"
+    const rutToUse = guestData.rut.trim()
     
     createGuestSession({
       email: guestData.email,
@@ -511,7 +539,7 @@ export default function CheckoutPage() {
     
     toast({
       title: "Datos guardados",
-      description: "Ahora ingresa tu direccion para cotizar el envio",
+      description: "Ahora elige como deseas recibir tu pedido",
     })
   }
 
@@ -611,6 +639,130 @@ export default function CheckoutPage() {
     router.push('/login?redirect=/checkout')
   }
 
+  const handleSelectBodega = () => {
+    setDeliveryOption('bodega')
+    setSelectedAddress(null)
+    setHasAddress(false)
+    setChilexpressOptions([])
+    setSelectedChilexpressOption(BODEGA_OPTION)
+    setShippingCost(0)
+    setShippingMethod("bodega_pickup" as any)
+    setShowBranchSelector(false)
+    setSelectedBranch(null)
+    setAvailableBranches([])
+    shippingFetchedRef.current = ""
+    
+    toast({
+      title: "Retiro en Bodega seleccionado",
+      description: "Retiraras tu pedido en nuestra bodega sin costo de envio",
+    })
+  }
+
+  const handleSelectEnvio = () => {
+    setDeliveryOption('envio')
+    setSelectedAddress(null)
+    setHasAddress(false)
+    setChilexpressOptions([])
+    setSelectedChilexpressOption(null)
+    setAvailableBranches([])
+    setShowBranchSelector(false)
+    shippingFetchedRef.current = ""
+  }
+
+  const getHomeDeliveryOptions = () => {
+    return chilexpressOptions.filter(opt => 
+      opt.type === "home_delivery" || opt.type === "cash_on_delivery"
+    )
+  }
+
+  const getBranchPickupOption = () => {
+    return chilexpressOptions.find(opt => opt.type === "branch_pickup")
+  }
+
+  // Función para aplicar cupón
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError('Ingresa un código de cupón')
+      return
+    }
+
+    if (appliedCoupon) {
+      removeCoupon()
+      setCouponSuccess('')
+    }
+
+    setIsApplyingCoupon(true)
+    setCouponError('')
+    setCouponSuccess('')
+
+    try {
+      const cartItems = items.map(item => ({
+        id: item.id,
+        categoryId: item.categoryId,
+        subcategoryId: item.subcategoryId,
+        quantity: item.quantity,
+        price: item.price,
+        name: item.name
+      }))
+
+      const response = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: couponCode.trim(),
+          items: cartItems
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.valid) {
+        setCouponError(data.error || 'Cupón no válido')
+        return
+      }
+
+      const coupon = data.coupon
+      const discount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
+      
+      await useCoupon(coupon.id)
+
+      // CORREGIDO: applyCoupon espera 3 argumentos separados
+      applyCoupon(
+        coupon.code,
+        Math.round(discount),
+        {
+          id: coupon.id,
+          code: coupon.code,
+          discountPercentage: coupon.discountPercentage,
+          type: coupon.type
+        }
+      )
+
+      setCouponSuccess(`¡Cupón aplicado! ${coupon.discountPercentage}% de descuento`)
+      setCouponCode('')
+      
+      toast({
+        title: "Cupón aplicado",
+        description: `Se ha aplicado un descuento del ${coupon.discountPercentage}%`,
+      })
+
+    } catch (error) {
+      console.error('Error applying coupon:', error)
+      setCouponError('Error al aplicar el cupón. Intenta nuevamente.')
+    } finally {
+      setIsApplyingCoupon(false)
+    }
+  }
+
+  const handleRemoveCoupon = () => {
+    removeCoupon()
+    setCouponSuccess('')
+    toast({
+      title: "Cupón eliminado",
+      description: "El cupón ha sido removido del pedido",
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -620,14 +772,35 @@ export default function CheckoutPage() {
       return
     }
     
-    const isBodegaPickupSelected = selectedChilexpressOption?.type === "bodega_pickup"
+    if (isAuthenticated) {
+      if (!shippingRut || shippingRut === '66666666-6') {
+        toast({
+          title: "RUT requerido",
+          description: "Por favor ingresa tu RUT para el envío.",
+          variant: "destructive",
+          duration: 5000,
+        })
+        return
+      }
+      if (!shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
+        toast({
+          title: "RUT inválido",
+          description: "Formato de RUT invalido (ej: 12345678-5)",
+          variant: "destructive",
+          duration: 5000,
+        })
+        return
+      }
+    }
+    
+    const isBodegaPickupSelected = deliveryOption === 'bodega'
     
     if (!isBodegaPickupSelected && !selectedAddress) {
       toast({ title: "Error", description: "Selecciona o ingresa una direccion de envio", variant: "destructive" })
       return
     }
 
-    if (!selectedChilexpressOption) {
+    if (!isBodegaPickupSelected && !selectedChilexpressOption) {
       toast({ title: "Error", description: "Selecciona un metodo de envio", variant: "destructive" })
       return
     }
@@ -717,13 +890,17 @@ export default function CheckoutPage() {
         }
       }
       
+      // =====================================================
+      // OBTENER EL RUT CORRECTO PARA EL ENVÍO
+      // =====================================================
       let rutToUse
       if (isGuestUser) {
-        rutToUse = guestData.rut.trim() || "66666666-6"
+        rutToUse = guestData.rut.trim()
       } else {
-        rutToUse = user?.rut
+        // Usuario autenticado: shippingRut (ingresado en checkout) o user.rut
+        rutToUse = shippingRut || user?.rut || ''
       }
-      
+            
       const orderPayload: any = {
         items: items.map((item) => ({
           id: item.id,
@@ -738,7 +915,7 @@ export default function CheckoutPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
-          rut: rutToUse
+          rut: rutToUse  // ← El RUT se envía aquí
         },
         shippingAddress: shippingAddressData,
         totals: {
@@ -789,6 +966,9 @@ export default function CheckoutPage() {
         shippingMethod: isBodegaPickupSelected ? "bodega_pickup" : shippingMethod,
       })
 
+      // =====================================================
+      // CREAR PAGO - ENVIANDO EL RUT
+      // =====================================================
       const paymentResponse = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -796,7 +976,8 @@ export default function CheckoutPage() {
           orderId: orderData.orderId, 
           amount: isBodegaPickupSelected ? totalAfterDiscount : finalTotal,
           isGuest: isGuestUser,
-          guestEmail: isGuestUser ? formData.email : undefined
+          guestEmail: isGuestUser ? formData.email : undefined,
+          customerRut: rutToUse  // ← ENVIAR EL RUT AQUÍ
         }),
       })
 
@@ -885,43 +1066,38 @@ export default function CheckoutPage() {
 
       <div className="grid lg:grid-cols-2 gap-8 items-start">
 
-        {/* COLUMNA IZQUIERDA */}
         <div className="space-y-6">
 
-          {/* Iniciar Sesion / Datos de Invitado */}
+          {/* Información de Contacto combinado */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5" />
-                Iniciar Sesion
+                <User className="w-5 h-5" />
+                Información de Contacto
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {!isAuthenticated && !isGuestMode ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground text-center leading-relaxed">
-                    <span className="font-bold text-foreground">¿Ya tienes cuenta?</span>{" "}
-                    Inicia sesión para{" "}
-                    <span className="font-bold text-foreground">rastrear tu pedido</span>{" "}
-                    y 
-                    <span className="font-bold text-foreground"> conseguir beneficios</span>{" "} 
-                     en el futuro como cliente frecuente.
-                  </p>
-                  <Button
-                    className="w-full"
-                    onClick={handleLoginClick}
-                  >
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Iniciar Sesion
-                  </Button>
+                <>
+                  <div className="space-y-3">
+                    <Button
+                      className="w-full"
+                      onClick={handleLoginClick}
+                    >
+                      <LogIn className="w-4 h-4 mr-2" />
+                      Iniciar Sesion
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                      <span className="font-medium text-foreground">¿Ya tienes cuenta?</span> Inicia sesión para 
+                      <span className="text-blue-600 font-medium"> rastrear tu pedido</span> en tiempo real, 
+                      <span className="text-blue-600 font-medium"> acumular puntos</span> en cada compra y 
+                      <span className="text-blue-600 font-medium"> acceder a beneficios exclusivos</span> como cliente frecuente.
+                    </p>
+                  </div>
 
-                  
-
-
-
-                  <div className="pt-4">
+                  <div className="pt-2">
                     <p className="text-sm font-medium text-center text-muted-foreground mb-4">
-                      O comprar como invitado
+                      O completa tus datos para comprar como invitado
                     </p>
                     
                     <form onSubmit={handleGuestSubmit} className="space-y-4">
@@ -1011,8 +1187,9 @@ export default function CheckoutPage() {
                         )}
                       </div>
                       <div>
-                        <Label>RUT (Opcional)</Label>
+                        <Label>RUT *</Label>
                         <Input
+                          required
                           placeholder="Ej: 12345678-5"
                           value={guestData.rut}
                           onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
@@ -1027,268 +1204,441 @@ export default function CheckoutPage() {
                       </div>
                       <Button type="submit" className="w-full">
                         <User className="w-4 h-4 mr-2" />
-                        Continuar
+                        Continuar como Invitado
                       </Button>
                     </form>
                   </div>
-                </div>
+                </>
               ) : isAuthenticated ? (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-600">
+                  <div className="flex items-center gap-2 text-black-600">
+                    <Check className="w-4 h-4" />
                     <span className="font-medium">Sesion iniciada</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {user?.email}
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span>{user?.firstName} {user?.lastName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                    <span>{user?.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    <span>{user?.phone}</span>
+                  </div>
+                  
+                  {(!user?.rut || user?.rut === '66666666-6') && (
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <Label className="text-sm font-medium text-amber-800">
+                        RUT para envío <span className="text-red-500">*</span>
+                      </Label>
+                      <p className="text-xs text-amber-700 mb-2">
+                        Se requiere un RUT válido para el envío. Se usará solo para el envío.
+                      </p>
+                      <Input
+                        required
+                        placeholder="Ej: 12345678-5"
+                        value={shippingRut}
+                        onChange={(e) => {
+                          setShippingRut(e.target.value)
+                          setShippingRutError('')
+                        }}
+                        className={shippingRutError ? "border-red-500" : ""}
+                      />
+                      {shippingRutError && (
+                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {shippingRutError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {user?.rut && user.rut !== '66666666-6' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">RUT: {user.rut}</span>
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Podras ver el estado de tu pedido y acumular beneficios como cliente frecuente.
                   </p>
                 </div>
               ) : isGuestMode ? (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-600">
+                  <div className="flex items-center gap-2 text-black-600">
                     <User className="w-4 h-4" />
                     <span className="font-medium">Comprando como invitado</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {formData.email}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span>{formData.firstName} {formData.lastName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                    <span>{formData.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    <span>{formData.phone}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">RUT: {guestData.rut}</span>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Te notificaremos cuando tu pedido este listo para retiro via email o telefono.
                   </p>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="px-3 py-2 h-auto text-sm font-medium text-600"
-                    onClick={() => {
-                      setIsGuestMode(false)
-                      setShowGuestForm(true)
-                    }}
-                  >
-                    Cambiar datos
-                  </Button>
-
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setIsGuestMode(false)
+                        setShowGuestForm(true)
+                      }}
+                    >
+                      Cambiar datos
+                    </Button>
+                  </div>
                 </div>
               ) : null}
             </CardContent>
           </Card>
 
-          {/* Informacion de Contacto */}
-          {(isAuthenticated || isGuestMode) && (
+          {/* ¿Cómo deseas recibir tu pedido? */}
+          {(isGuestMode || isAuthenticated) && !deliveryOption && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Informacion de Contacto</span>
-                  {isGuestMode && !isAuthenticated && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditingGuestData(!editingGuestData)}
-                    >
-                      {editingGuestData ? "Cancelar" : "Editar"}
-                    </Button>
-                  )}
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  ¿Cómo deseas recibir tu pedido?
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isGuestMode && !isAuthenticated && editingGuestData ? (
-                  <form onSubmit={handleGuestSubmit} className="space-y-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <Label>Nombre *</Label>
-                        <Input
-                          required
-                          value={guestData.firstName}
-                          onChange={(e) => setGuestData({...guestData, firstName: e.target.value})}
-                          placeholder="Tu nombre"
-                          className={guestFormErrors.firstName ? "border-red-500" : ""}
-                        />
-                        {guestFormErrors.firstName && (
-                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {guestFormErrors.firstName}
-                          </p>
-                        )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    className="border-2 rounded-lg p-6 cursor-pointer hover:border-green-500 transition-all hover:shadow-md text-center"
+                    onClick={handleSelectBodega}
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+                        <Store className="w-7 h-7 text-green-600" />
                       </div>
                       <div>
-                        <Label>Apellido *</Label>
-                        <Input
-                          required
-                          value={guestData.lastName}
-                          onChange={(e) => setGuestData({...guestData, lastName: e.target.value})}
-                          placeholder="Tu apellido"
-                          className={guestFormErrors.lastName ? "border-red-500" : ""}
-                        />
-                        {guestFormErrors.lastName && (
-                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {guestFormErrors.lastName}
-                          </p>
-                        )}
+                        <h3 className="font-semibold text-lg">Retiro en Bodega</h3>
+                        <p className="text-sm text-muted-foreground mt-1">Sin costo de envio</p>
+                        <p className="text-xs text-muted-foreground mt-2">Arcangel 1200, San Miguel</p>
+                        <p className="text-xs text-muted-foreground">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
                       </div>
-                    </div>
-                    <div>
-                      <Label>Email *</Label>
-                      <Input
-                        type="email"
-                        required
-                        value={guestData.email}
-                        onChange={(e) => setGuestData({...guestData, email: e.target.value})}
-                        placeholder="correo@ejemplo.com"
-                        className={guestFormErrors.email ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.email && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.email}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label>Confirmar Email *</Label>
-                      <Input
-                        type="email"
-                        required
-                        value={guestData.confirmEmail}
-                        onChange={(e) => setGuestData({...guestData, confirmEmail: e.target.value})}
-                        placeholder="confirma tu correo"
-                        className={guestFormErrors.confirmEmail ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.confirmEmail && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.confirmEmail}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label>Telefono *</Label>
-                      <Input
-                        type="tel"
-                        required
-                        value={guestData.phone}
-                        onChange={(e) => setGuestData({...guestData, phone: e.target.value})}
-                        placeholder="+569 XXXX XXXX"
-                        className={guestFormErrors.phone ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.phone && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.phone}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label>RUT (Opcional)</Label>
-                      <Input
-                        placeholder="Ej: 12345678-5"
-                        value={guestData.rut}
-                        onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
-                        className={guestFormErrors.rut ? "border-red-500" : ""}
-                      />
-                      {guestFormErrors.rut && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {guestFormErrors.rut}
-                        </p>
-                      )}
-                    </div>
-                    <Button type="submit" className="w-full">
-                      Guardar datos
-                    </Button>
-                  </form>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-muted-foreground" />
-                      <span>{formData.firstName} {formData.lastName}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-muted-foreground" />
-                      <span>{formData.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <span>{formData.phone}</span>
+                      <Button variant="outline" className="mt-2 w-full border-green-500 text-green-600 hover:bg-green-50 hover:text-green-600">
+                        Seleccionar
+                      </Button>
                     </div>
                   </div>
-                )}
+
+                  <div
+                    className="border-2 rounded-lg p-6 cursor-pointer hover:border-blue-500 transition-all hover:shadow-md text-center"
+                    onClick={handleSelectEnvio}
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Home className="w-7 h-7 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">Envío a Domicilio</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {isAuthenticated ? "Usa tus direcciones guardadas" : "Ingresa tu dirección"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">El costo de envío se calculará según tu ubicación</p>
+                      </div>
+                      <Button variant="outline" className="mt-2 w-full border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-600">
+                        Seleccionar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Direccion de Envio */}
-          {(isAuthenticated || isGuestMode) && (
+          {/* Retiro en Bodega */}
+          {deliveryOption === 'bodega' && (
             <Card>
-              <CardHeader>
-                <CardTitle>Direccion de Envio</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Retiro en Bodega</CardTitle>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setDeliveryOption(null)
+                    setSelectedChilexpressOption(null)
+                    setShippingCost(0)
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Cambiar opción
+                </Button>
               </CardHeader>
+              <CardContent>
+                <div className="p-4 border rounded-lg bg-green-50 border-green-200">
+                  <div className="flex items-start gap-3">
+                    <Store className="w-5 h-5 text-green-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-green-800">Retiro en Bodega</p>
+                      <p className="text-sm text-green-700 mt-1">
+                        Arcangel 1200, San Miguel
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        Horario: Lunes a Viernes 10:00 - 18:00 hrs
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        Sin costo de envio
+                      </p>
+                      <div className="mt-3 p-3 bg-green-100 rounded-lg border border-green-200">
+                        <p className="text-xs text-green-800 flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>
+                            <strong>Se notificara cuando este disponible para retiro</strong>
+                            <br />
+                            Te avisaremos por correo electronico o telefono cuando tu pedido este listo para retirar.
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Dirección de Envío */}
+          {deliveryOption === 'envio' && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Dirección de Envío
+                </CardTitle>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDeliveryOption(null)
+                    setSelectedAddress(null)
+                    setHasAddress(false)
+                    setChilexpressOptions([])
+                    setSelectedChilexpressOption(null)
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Cambiar opción
+                </Button>
+              </CardHeader>
+
               <CardContent>
                 {isAuthenticated && !isGuestMode ? (
                   <>
                     {loadingAddresses ? (
-                      <div className="text-center py-6">
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                        <p className="mt-2">Cargando direcciones...</p>
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mb-3" />
+                        <p className="text-sm text-muted-foreground">
+                          Cargando direcciones...
+                        </p>
                       </div>
                     ) : uniqueAddresses.length > 0 ? (
-                      <>
-                        <Select
-                          value={selectedAddress?.id?.toString()}
-                          onValueChange={(value) => {
-                            if (user && user.addresses) {
-                              const address = user.addresses.find(addr => addr.id.toString() === value)
-                              if (address) {
-                                setSelectedAddress(address)
-                                setHasAddress(true)
-                                setChilexpressOptions([])
-                                setSelectedChilexpressOption(null)
-                                setAvailableBranches([])
-                                setShowBranchSelector(false)
-                                shippingFetchedRef.current = ""
+                      <div className="space-y-4">
+
+                        <div className="relative">
+                          <Select
+                            value={selectedAddress?.id?.toString()}
+                            onValueChange={(value) => {
+                              if (user && user.addresses) {
+                                const address = user.addresses.find(
+                                  addr => addr.id.toString() === value
+                                )
+
+                                if (address) {
+                                  setSelectedAddress(address)
+                                  setHasAddress(true)
+                                  setChilexpressOptions([])
+                                  setSelectedChilexpressOption(null)
+                                  setAvailableBranches([])
+                                  setShowBranchSelector(false)
+                                  shippingFetchedRef.current = ""
+                                }
                               }
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona una direccion" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {uniqueAddresses.map((address) => (
-                              <SelectItem key={address.id} value={address.id.toString()}>
-                                {address.title} - {address.street}, {address.communeName}
-                                {address.isDefault && " (Predeterminada)"}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Link href="/profile" className="mt-4 block">
-                          <Button variant="outline" size="sm">
-                            <Plus className="w-4 h-4 mr-2" />Gestionar direcciones
+                            }}
+                          >
+                            <SelectTrigger className="h-12">
+                              <SelectValue placeholder="Selecciona una dirección" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                              {uniqueAddresses.map((address) => (
+                                <SelectItem
+                                  key={address.id}
+                                  value={address.id.toString()}
+                                  className="group"
+                                >
+                                  <div className="flex flex-col items-start">
+                                    <span className="font-medium group-hover:text-white group-focus:text-white">
+                                      {address.title}
+                                    </span>
+
+                                    <span className="text-xs text-muted-foreground group-hover:text-white group-focus:text-white">
+                                      {address.street}, {address.communeName}
+                                      {address.isDefault && " (Predeterminada)"}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {selectedAddress && (
+                          <div className="p-4 rounded-lg">
+                            <div className="flex items-start gap-3">
+
+                              <div className="mt-0.5">
+                                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                                  <Check className="w-4 h-4 text-black" />
+                                </div>
+                              </div>
+
+                              <div className="flex-1">
+
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold text-gray-900">
+                                    {selectedAddress.title}
+                                  </p>
+
+                                  {selectedAddress.isDefault && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="h-5 text-xs bg-gray-100 text-gray-900 border-0"
+                                    >
+                                      Predeterminada
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <p className="text-sm text-gray-800">
+                                  {selectedAddress.street}
+                                </p>
+
+                                <p className="text-sm text-gray-800">
+                                  {selectedAddress.communeName},{" "}
+                                  {selectedAddress.regionName}
+                                </p>
+
+                                <p className="text-sm text-gray-800">
+                                  Código Postal: {selectedAddress.postalCode}
+                                </p>
+
+                                {selectedAddress.department && (
+                                  <p className="text-sm text-gray-800">
+                                    Depto: {selectedAddress.department}
+                                  </p>
+                                )}
+
+                                {selectedAddress.deliveryInstructions && (
+                                  <p className="text-sm text-gray-800 mt-1 italic">
+                                    "{selectedAddress.deliveryInstructions}"
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 mt-4 pt-4 border-t border-gray-300">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="px-3 py-2 h-auto text-sm font-semibold hover:text-white rounded-md"
+                                onClick={() => {
+                                  setSelectedAddress(null)
+                                  setHasAddress(false)
+                                  setChilexpressOptions([])
+                                  setSelectedChilexpressOption(null)
+                                }}
+                              >
+                                <ArrowLeft className="w-3 h-3 mr-1" />
+                                Cambiar dirección
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        <Link href="/profile" className="block">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Gestionar direcciones
                           </Button>
                         </Link>
-                      </>
+                      </div>
+
                     ) : (
-                      <div className="text-center py-6">
-                        <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground mb-4">No tienes direcciones guardadas</p>
+
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                          <MapPin className="w-8 h-8 text-muted-foreground" />
+                        </div>
+
+                        <p className="text-sm font-medium">
+                          No tienes direcciones guardadas
+                        </p>
+
+                        <p className="text-xs text-muted-foreground mt-1 mb-4">
+                          Agrega una dirección en tu perfil para continuar
+                        </p>
+
                         <Link href="/profile">
-                          <Button>Agregar direccion en tu perfil</Button>
+                          <Button size="sm">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Agregar dirección
+                          </Button>
                         </Link>
                       </div>
                     )}
                   </>
+
                 ) : isGuestMode && !isAuthenticated ? (
+
                   !hasAddress ? (
-                    <form onSubmit={handleManualAddressSubmit} className="space-y-4">
+
+                    <form
+                      onSubmit={handleManualAddressSubmit}
+                      className="space-y-4"
+                    >
+
                       <div>
-                        <Label>Calle y numero *</Label>
+                        <Label className="text-sm font-medium">
+                          Calle y número{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+
                         <Input
                           name="street"
                           required
                           value={manualAddress.street}
                           onChange={handleManualAddressChange}
                           placeholder="Ej: Av. Providencia 1234"
-                          className={manualAddressErrors.street ? "border-red-500" : ""}
+                          className={`mt-1.5 h-11 ${
+                            manualAddressErrors.street
+                              ? "border-red-500"
+                              : ""
+                          }`}
                         />
+
                         {manualAddressErrors.street && (
                           <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                             <AlertCircle className="w-3 h-3" />
@@ -1296,24 +1646,41 @@ export default function CheckoutPage() {
                           </p>
                         )}
                       </div>
+
                       <div className="grid md:grid-cols-2 gap-4">
+
                         <div>
-                          <Label>Region *</Label>
+                          <Label className="text-sm font-medium">
+                            Región{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+
                           <select
                             name="regionIso"
                             required
                             value={manualAddress.regionIso}
                             onChange={handleManualAddressChange}
-                            className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.regionIso ? "border-red-500" : ""}`}
+                            className={`mt-1.5 w-full h-11 px-3 border rounded-md text-sm bg-background ${
+                              manualAddressErrors.regionIso
+                                ? "border-red-500"
+                                : "border-input"
+                            }`}
                             disabled={loadingRegions}
                           >
-                            <option value="">Selecciona una region</option>
+                            <option value="">
+                              Selecciona una región
+                            </option>
+
                             {regions.map(region => (
-                              <option key={region.region_iso_3166_2} value={region.region_iso_3166_2}>
+                              <option
+                                key={region.region_iso_3166_2}
+                                value={region.region_iso_3166_2}
+                              >
                                 {region.name}
                               </option>
                             ))}
                           </select>
+
                           {manualAddressErrors.regionIso && (
                             <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                               <AlertCircle className="w-3 h-3" />
@@ -1321,23 +1688,42 @@ export default function CheckoutPage() {
                             </p>
                           )}
                         </div>
+
                         <div>
-                          <Label>Comuna *</Label>
+                          <Label className="text-sm font-medium">
+                            Comuna{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+
                           <select
                             name="communeName"
                             required
                             value={manualAddress.communeName}
                             onChange={handleManualAddressChange}
-                            disabled={!manualAddress.regionIso || loadingRegions}
-                            className={`w-full p-2 border rounded-md text-sm ${manualAddressErrors.communeName ? "border-red-500" : ""}`}
+                            disabled={
+                              !manualAddress.regionIso ||
+                              loadingRegions
+                            }
+                            className={`mt-1.5 w-full h-11 px-3 border rounded-md text-sm bg-background ${
+                              manualAddressErrors.communeName
+                                ? "border-red-500"
+                                : "border-input"
+                            }`}
                           >
-                            <option value="">Selecciona una comuna</option>
+                            <option value="">
+                              Selecciona una comuna
+                            </option>
+
                             {selectedRegion?.communes.map(commune => (
-                              <option key={commune.name} value={commune.name}>
+                              <option
+                                key={commune.name}
+                                value={commune.name}
+                              >
                                 {commune.name}
                               </option>
                             ))}
                           </select>
+
                           {manualAddressErrors.communeName && (
                             <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                               <AlertCircle className="w-3 h-3" />
@@ -1346,82 +1732,144 @@ export default function CheckoutPage() {
                           )}
                         </div>
                       </div>
+
                       <div>
-                        <Label>Codigo Postal *</Label>
+                        <Label className="text-sm font-medium">
+                          Código Postal{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+
                         <Input
                           name="postalCode"
                           required
                           value={manualAddress.postalCode}
                           onChange={handleManualAddressChange}
                           placeholder="Ej: 7500000"
-                          className={manualAddressErrors.postalCode ? "border-red-500" : ""}
+                          className={`mt-1.5 h-11 ${
+                            manualAddressErrors.postalCode
+                              ? "border-red-500"
+                              : ""
+                          }`}
                         />
+
                         {manualAddressErrors.postalCode && (
                           <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                             <AlertCircle className="w-3 h-3" />
                             {manualAddressErrors.postalCode}
                           </p>
                         )}
+
                         <p className="text-xs text-muted-foreground mt-1">
-                          Ingresa el codigo postal de tu direccion
+                          Ingresa el código postal de tu dirección
                         </p>
                       </div>
+
                       <div>
-                        <Label>Departamento (Opcional)</Label>
+                        <Label className="text-sm font-medium">
+                          Departamento (Opcional)
+                        </Label>
+
                         <Input
                           name="department"
                           value={manualAddress.department}
                           onChange={handleManualAddressChange}
                           placeholder="Depto, oficina, etc."
+                          className="mt-1.5 h-11"
                         />
                       </div>
+
                       <div>
-                        <Label>Instrucciones de entrega</Label>
+                        <Label className="text-sm font-medium">
+                          Instrucciones de entrega
+                        </Label>
+
                         <Textarea
                           name="deliveryInstructions"
                           value={manualAddress.deliveryInstructions}
                           onChange={handleManualAddressChange}
                           rows={2}
                           placeholder="Referencias, horario, etc."
+                          className="mt-1.5 resize-none"
                         />
                       </div>
-                      <Button type="submit" className="w-full">
-                        Guardar direccion y cotizar envio
-                      </Button>
-                    </form>
-                  ) : (
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium">{selectedAddress?.street}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedAddress?.communeName}, {selectedAddress?.regionName}
-                      </p>
-                      <p className="text-sm text-muted-foreground"> {selectedAddress?.postalCode}</p>
-                      {selectedAddress?.department && <p className="text-sm">Depto: {selectedAddress.department}</p>}
-                      {selectedAddress?.deliveryInstructions && (
-                        <p className="text-sm text-muted-foreground mt-1">{selectedAddress.deliveryInstructions}</p>
-                      )}
+
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => {
-                          setSelectedAddress(null)
-                          setHasAddress(false)
-                          setManualAddress({
-                            street: '',
-                            regionIso: '',
-                            regionName: '',
-                            communeName: '',
-                            postalCode: '',
-                            department: '',
-                            deliveryInstructions: ''
-                          })
-                          setChilexpressOptions([])
-                          setSelectedChilexpressOption(null)
-                        }}
+                        type="submit"
+                        className="w-full h-11"
                       >
-                        Cambiar direccion
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Guardar dirección y cotizar envío
                       </Button>
+
+                    </form>
+
+                  ) : (
+
+                    <div className="p-4 rounded-lg">
+                      <div className="flex items-start gap-3">
+
+                        <div className="mt-0.5">
+                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                            <Check className="w-4 h-4 text-black" />
+                          </div>
+                        </div>
+
+                        <div className="flex-1">
+                          <p className="font-semibold text-gray-900">
+                            {selectedAddress?.street}
+                          </p>
+
+                          <p className="text-sm text-gray-800">
+                            {selectedAddress?.communeName},{" "}
+                            {selectedAddress?.regionName}
+                          </p>
+
+                          <p className="text-sm text-gray-800">
+                            Código Postal: {selectedAddress?.postalCode}
+                          </p>
+
+                          {selectedAddress?.department && (
+                            <p className="text-sm text-gray-800">
+                              Depto: {selectedAddress.department}
+                            </p>
+                          )}
+
+                          {selectedAddress?.deliveryInstructions && (
+                            <p className="text-sm text-gray-800 mt-1 italic">
+                              "{selectedAddress.deliveryInstructions}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-4 pt-4 border-t border-gray-300">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="px-3 py-2 h-auto text-sm font-semibold hover:text-white rounded-md"
+
+                          onClick={() => {
+                            setSelectedAddress(null)
+                            setHasAddress(false)
+
+                            setManualAddress({
+                              street: '',
+                              regionIso: '',
+                              regionName: '',
+                              communeName: '',
+                              postalCode: '',
+                              department: '',
+                              deliveryInstructions: ''
+                            })
+
+                            setChilexpressOptions([])
+                            setSelectedChilexpressOption(null)
+                          }}
+                        >
+                          <ArrowLeft className="w-3 h-3 mr-1" />
+                          Cambiar dirección
+                        </Button>
+                      </div>
                     </div>
                   )
                 ) : null}
@@ -1429,8 +1877,460 @@ export default function CheckoutPage() {
             </Card>
           )}
 
-          {/* Metodo de Envio */}
-          {hasAddress && selectedAddress && (
+          {/* MÉTODO DE ENVÍO */}
+          {deliveryOption === "envio" && hasAddress && selectedAddress && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="w-5 h-5" />
+                  Método de Envío
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+
+                {isLoadingShipping ? (
+                  <div className="text-center py-6">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Cargando direcciones de envío...
+                    </p>
+                  </div>
+
+                ) : chilexpressOptions.length === 0 ? (
+
+                  <div className="text-center py-6">
+                    <p className="text-sm text-muted-foreground">
+                      No hay opciones de envío disponibles para esta dirección.
+                    </p>
+                  </div>
+
+                ) : (
+
+                  <div className="space-y-4">
+
+                    <div className="space-y-3">
+
+                      {getBranchPickupOption() && (
+                        <div
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            selectedChilexpressOption?.type === "branch_pickup"
+                              ? "border-black bg-gray-50 ring-2 ring-gray-300"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          }`}
+                          onClick={() => {
+                            const option = getBranchPickupOption();
+
+                            if (option) {
+                              setSelectedChilexpressOption(option);
+                              setShippingCost(option.price ?? 0);
+
+                              if (
+                                option.branches &&
+                                option.branches.length > 0
+                              ) {
+                                setAvailableBranches(option.branches);
+                                setShowBranchSelector(true);
+                                setSelectedBranch(null);
+                              }
+                            }
+                          }}
+                        >
+
+                          <div className="flex items-start gap-3">
+
+                            <div className="flex items-center mt-1">
+                              <div
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                  selectedChilexpressOption?.type ===
+                                  "branch_pickup"
+                                    ? "border-black bg-black"
+                                    : "border-gray-400 bg-white"
+                                }`}
+                              >
+                                {selectedChilexpressOption?.type ===
+                                  "branch_pickup" && (
+                                  <div className="w-2 h-2 rounded-full bg-white" />
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex-1">
+
+                              <div className="font-medium flex items-center gap-2">
+                                <Store className="w-4 h-4" />
+
+                                Retiro en Sucursal Chilexpress
+                              </div>
+
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Retira tu pedido en una sucursal Chilexpress.
+                              </div>
+
+                            </div>
+
+                            <div className="text-right font-medium">
+                              {getBranchPickupOption()?.price === 0 ? (
+                                <span className="text-green-600">
+                                  Gratis
+                                </span>
+                              ) : (
+                                <span>
+                                  $
+                                  {formatCLP(
+                                    getBranchPickupOption()?.price || 0
+                                  )}
+                                </span>
+                              )}
+                            </div>
+
+                          </div>
+                        </div>
+                      )}
+
+                      {getHomeDeliveryOptions().length > 0 && (
+                        <div
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            selectedChilexpressOption &&
+                            selectedChilexpressOption.type !== "branch_pickup"
+                              ? "border-black bg-gray-50 ring-2 ring-gray-300"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          }`}
+                          onClick={() => {
+
+                            const homeOptions =
+                              getHomeDeliveryOptions();
+
+                            if (homeOptions.length > 0) {
+
+                              const currentIsHomeDelivery =
+                                selectedChilexpressOption &&
+                                selectedChilexpressOption.type !==
+                                  "branch_pickup";
+
+                              const optionToSelect =
+                                currentIsHomeDelivery
+                                  ? selectedChilexpressOption
+                                  : homeOptions[0];
+
+                              setSelectedChilexpressOption(
+                                optionToSelect
+                              );
+
+                              setShippingCost(
+                                optionToSelect?.price ?? 0
+                              );
+
+                              setShowBranchSelector(false);
+                              setSelectedBranch(null);
+                              setAvailableBranches([]);
+                            }
+                          }}
+                        >
+
+                          <div className="flex items-start gap-3">
+
+                            <div className="flex items-center mt-1">
+                              <div
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                  selectedChilexpressOption &&
+                                  selectedChilexpressOption.type !==
+                                    "branch_pickup"
+                                    ? "border-black bg-black"
+                                    : "border-gray-400 bg-white"
+                                }`}
+                              >
+                                {selectedChilexpressOption &&
+                                  selectedChilexpressOption.type !==
+                                    "branch_pickup" && (
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                  )}
+                              </div>
+                            </div>
+
+                            <div className="flex-1">
+
+                              <div className="font-medium flex items-center gap-2">
+                                <Truck className="w-4 h-4" />
+
+                                Envío a domicilio
+                              </div>
+
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Recibe tu pedido directamente en tu dirección.
+                              </div>
+
+                            </div>
+
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+
+                    {selectedChilexpressOption?.type === "branch_pickup" && (
+                      <div className="space-y-4">
+
+                        {showBranchSelector &&
+                          availableBranches.length > 0 && (
+                            <div className="p-4 border rounded-lg bg-gray-50 border-gray-200">
+
+                              <Label className="font-semibold flex items-center gap-2 mb-3">
+
+                                <MapPin className="w-4 h-4" />
+
+                                Selecciona la sucursal donde deseas retirar
+
+                                <Badge
+                                  variant="secondary"
+                                  className="ml-2"
+                                >
+                                  {availableBranches.length} sucursales
+                                </Badge>
+
+                              </Label>
+
+                              <div className="space-y-2 max-h-64 overflow-y-auto">
+
+                                {availableBranches.map(
+                                  (branch: any, idx: number) => {
+
+                                    const isBranchSelected =
+                                      selectedBranch?.id === branch.id;
+
+                                    return (
+                                      <div
+                                        key={branch.id || idx}
+                                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                                          isBranchSelected
+                                            ? "border-black bg-gray-100 ring-2 ring-gray-300"
+                                            : "border-gray-200 bg-white hover:border-gray-400"
+                                        }`}
+                                        onClick={() => {
+
+                                          setSelectedBranch(branch);
+
+                                          const updatedOption = {
+                                            ...selectedChilexpressOption,
+                                            selectedBranch: branch,
+                                            deliveryDescription:
+                                              `Retiro en ${branch.name} - ${branch.address}`,
+                                          };
+
+                                          setSelectedChilexpressOption(
+                                            updatedOption
+                                          );
+
+                                          setShowBranchSelector(false);
+                                        }}
+                                      >
+
+                                        <div className="flex items-start justify-between">
+
+                                          <div className="flex-1">
+
+                                            <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+
+                                              {branch.name}
+
+                                              {isBranchSelected && (
+                                                <Badge className="bg-black text-white text-xs">
+                                                  Seleccionada
+                                                </Badge>
+                                              )}
+
+                                            </div>
+
+                                            <div className="text-xs text-muted-foreground mt-1">
+                                              {branch.address}
+                                            </div>
+
+                                            {branch.telephone &&
+                                              branch.telephone !==
+                                                "No disponible" && (
+                                                <div className="text-xs text-muted-foreground mt-1">
+                                                  Teléfono:{" "}
+                                                  {branch.telephone}
+                                                </div>
+                                              )}
+
+                                          </div>
+
+                                          {isBranchSelected && (
+                                            <Check className="w-5 h-5 text-black flex-shrink-0" />
+                                          )}
+
+                                        </div>
+
+                                      </div>
+                                    );
+                                  }
+                                )}
+
+                              </div>
+
+                            </div>
+                          )}
+
+                        {selectedBranch && (
+                          <div className="p-3 border rounded-lg bg-gray-50">
+
+                            <div className="flex items-center gap-2">
+
+                              <Check className="w-4 h-4 text-green-600" />
+
+                              <div>
+                                <p className="text-sm font-medium">
+                                  Sucursal seleccionada
+                                </p>
+
+                                <p className="text-sm text-muted-foreground">
+                                  {selectedBranch.name}
+                                </p>
+
+                                <p className="text-xs text-muted-foreground">
+                                  {selectedBranch.address}
+                                </p>
+                              </div>
+
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+                    )}
+
+                    {selectedChilexpressOption &&
+                      selectedChilexpressOption.type !== "branch_pickup" && (
+                        <div className="space-y-3">
+
+                          <p className="text-sm font-medium text-muted-foreground">
+                            Selecciona el tipo de envío
+                          </p>
+
+                          {getHomeDeliveryOptions().map(
+                            (option, index) => {
+
+                              const uniqueId =
+                                option.id ??
+                                `home_delivery_${index}`;
+
+                              const price =
+                                option.price ?? 0;
+
+                              const isCashOnDelivery =
+                                option.isCashOnDelivery ||
+                                option.type ===
+                                  "cash_on_delivery";
+
+                              const isSelected =
+                                selectedChilexpressOption?.id ===
+                                option.id;
+
+                              return (
+                                <div
+                                  key={uniqueId}
+                                  className={`flex items-start gap-3 border rounded-lg p-4 cursor-pointer transition-all ${
+                                    isSelected
+                                      ? "border-black bg-gray-50 ring-2 ring-gray-300"
+                                      : "border-gray-200 bg-white hover:bg-gray-50"
+                                  }`}
+                                  onClick={() => {
+
+                                    setSelectedChilexpressOption(
+                                      option
+                                    );
+
+                                    setShippingCost(
+                                      option.price ?? 0
+                                    );
+
+                                    setShowBranchSelector(false);
+                                    setSelectedBranch(null);
+                                    setAvailableBranches([]);
+
+                                  }}
+                                >
+
+                                  <div className="flex items-center mt-1">
+
+                                    <div
+                                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                        isSelected
+                                          ? "border-black bg-black"
+                                          : "border-gray-400 bg-white"
+                                      }`}
+                                    >
+
+                                      {isSelected && (
+                                        <div className="w-2 h-2 rounded-full bg-white" />
+                                      )}
+
+                                    </div>
+
+                                  </div>
+
+                                  <div className="flex-1">
+
+                                    <div className="flex items-center justify-between">
+
+                                      <div>
+
+                                        <div className="font-medium flex items-center gap-2">
+
+                                          {option.name}
+
+                                        </div>
+
+                                        <div className="text-sm text-muted-foreground mt-1">
+                                          {option.deliveryDescription}
+                                        </div>
+
+                                        {option.conditions && (
+                                          <div className="text-xs text-muted-foreground mt-1">
+                                            {option.conditions}
+                                          </div>
+                                        )}
+
+                                      </div>
+
+                                      <div className="text-right font-medium ml-4">
+
+                                        {price === 0 ? (
+                                          <span className="text-green-600">
+                                            Gratis
+                                          </span>
+                                        ) : (
+                                          <span>
+                                            $
+                                            {formatCLP(price)}
+                                          </span>
+                                        )}
+
+                                      </div>
+
+                                    </div>
+
+                                  </div>
+
+                                </div>
+                              );
+                            }
+                          )}
+
+                        </div>
+                      )}
+
+                  </div>
+                )}
+
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mostrar mensaje si no hay opciones de envío disponibles */}
+          {deliveryOption === 'envio' && hasAddress && selectedAddress && chilexpressOptions.length === 0 && !isLoadingShipping && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1439,197 +2339,104 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoadingShipping ? (
-                  <div className="text-center py-6">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Calculando opciones de envio...</p>
-                  </div>
-                ) : chilexpressOptions.length > 0 ? (
-                  <div className="space-y-4">
-                    <RadioGroup
-                      value={selectedChilexpressOption?.id || selectedChilexpressOption?.type}
-                      onValueChange={(value) => {
-                        const option = chilexpressOptions.find(o =>
-                          o.id === value || o.type === value
-                        );
-                        if (option) {
-                          setSelectedChilexpressOption(option);
-                          setShippingCost(option.price ?? 0);
-                          
-                          if (option.type === "bodega_pickup") {
-                            setShippingMethod("bodega_pickup" as any);
-                            setShowBranchSelector(false);
-                            setSelectedBranch(null);
-                          } else {
-                            setShippingMethod(option.serviceTypeCode === 2 || option.serviceTypeCode === 3 ? "express" : "standard");
-                            if (option.type === "branch_pickup" && option.branches && option.branches.length > 0) {
-                              setAvailableBranches(option.branches);
-                              setShowBranchSelector(true);
-                              setSelectedBranch(null);
-                            } else {
-                              setShowBranchSelector(false);
-                              setSelectedBranch(null);
-                              setAvailableBranches([]);
-                            }
-                          }
-                        }
-                      }}
+                <div className="text-center py-6 text-muted-foreground">
+                  <p>No hay metodos de envio disponibles para esta direccion</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => {
+                      setDeliveryOption(null)
+                      setSelectedAddress(null)
+                      setHasAddress(false)
+                      setChilexpressOptions([])
+                      setSelectedChilexpressOption(null)
+                    }}
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    Volver a opciones
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cupón de descuento */}
+          {(isGuestMode || isAuthenticated) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gift className="w-5 h-5" />
+                  Cupón de descuento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div>
+                      <p className="font-medium text-green-800 flex items-center gap-2">
+                        <Tag className="w-4 h-4" />
+                        Cupón aplicado: <strong>{appliedCoupon}</strong>
+                      </p>
+                      <p className="text-sm text-green-600">
+                        Descuento: {couponDetails?.discountPercentage || 0}%
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveCoupon}
+                      className="text-red-600 hover:text-red-800 hover:bg-red-50"
                     >
-                      <div className="space-y-3">
-                        {chilexpressOptions.map((option) => {
-                          const uniqueId = option.id || option.type || `option_${Math.random()}`;
-                          const isBodegaPickup = option.type === "bodega_pickup";
-                          const isCashOnDelivery = option.isCashOnDelivery || option.type === "cash_on_delivery";
-                          const isBranchPickup = option.type === "branch_pickup";
-                          const price = option.price ?? 0;
-                          
-                          return (
-                            <div
-                              key={uniqueId}
-                              className={`flex items-start space-x-3 border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
-                                isBodegaPickup ? "bg-green-50 border-green-200" :
-                                isCashOnDelivery ? "bg-amber-50 border-amber-200" : 
-                                isBranchPickup ? "bg-blue-50 border-blue-200" : ""
-                              }`}
-                            >
-                              <RadioGroupItem value={uniqueId} id={uniqueId} className="mt-1" />
-                              <Label htmlFor={uniqueId} className="flex-1 cursor-pointer">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="font-medium flex items-center gap-2">
-                                      {isBodegaPickup && <Store className="w-4 h-4 text-green-600" />}
-                                      {isBranchPickup && <Store className="w-4 h-4 text-blue-600" />}
-                                      {option.name}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground mt-1">
-                                      {option.deliveryDescription}
-                                    </div>
-                                    {option.conditions && (
-                                      <div className="text-xs text-muted-foreground mt-1">
-                                        {option.conditions}
-                                      </div>
-                                    )}
-                                    {isBranchPickup && option.branches && (
-                                      <div className="text-xs text-muted-foreground mt-1">
-                                        {option.branches.length} sucursales disponibles en tu comuna
-                                      </div>
-                                    )}
-                                    {isBodegaPickup && (
-                                      <>
-                                        <div className="text-xs text-green-600 mt-1">
-                                          Arcangel 1200, San Miguel
-                                        </div>
-                                        <div className="text-xs text-green-600 mt-1">
-                                          <AlertCircle className="w-3 h-3 inline mr-1" />
-                                          Se notificara cuando este disponible para retiro
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                  <div className="text-right font-medium ml-4">
-                                    {price === 0 ? (
-                                      <span className="text-green-600">Gratis</span>
-                                    ) : (
-                                      <div>${formatCLP(price)}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </Label>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </RadioGroup>
-                    
-                    {showBranchSelector && selectedChilexpressOption?.type === "branch_pickup" && availableBranches.length > 0 && (
-                      <div className="mt-4 p-4 border rounded-lg bg-blue-50 border-blue-200">
-                        <Label className="font-semibold flex items-center gap-2 mb-3">
-                          <MapPin className="w-4 h-4 text-blue-600" />
-                          Selecciona la sucursal donde deseas retirar
-                          <Badge variant="secondary" className="ml-2">
-                            {availableBranches.length} sucursales disponibles
-                          </Badge>
-                        </Label>
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {availableBranches.map((branch: any, idx: number) => (
-                            <div
-                              key={branch.id || idx}
-                              className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                                selectedBranch?.id === branch.id
-                                  ? "border-blue-500 bg-blue-100 ring-2 ring-blue-200"
-                                  : "border-gray-200 bg-white hover:border-blue-300"
-                              }`}
-                              onClick={() => {
-                                setSelectedBranch(branch);
-                                const updatedOption = {
-                                  ...selectedChilexpressOption,
-                                  selectedBranch: branch,
-                                  deliveryDescription: `Retiro en ${branch.name} - ${branch.address}`,
-                                };
-                                setSelectedChilexpressOption(updatedOption);
-                                setShowBranchSelector(false);
-                              }}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
-                                    {branch.name}
-                                    {selectedBranch?.id === branch.id && (
-                                      <Badge className="bg-blue-600 text-white text-xs">Seleccionada</Badge>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {branch.address}
-                                  </div>
-                                  {branch.telephone && branch.telephone !== "No disponible" && (
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      Telefono: {branch.telephone}
-                                    </div>
-                                  )}
-                                </div>
-                                {selectedBranch?.id === branch.id && (
-                                  <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        {selectedBranch && (
-                          <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
-                            <p className="text-xs text-green-700 flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              Sucursal seleccionada: <strong>{selectedBranch.name}</strong>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    <p className="text-sm">Cargando opciones de envio...</p>
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Ingresa tu código de cupón"
+                        value={couponCode}
+                        onChange={(e) => {
+                          setCouponCode(e.target.value.toUpperCase())
+                          setCouponError('')
+                          setCouponSuccess('')
+                        }}
+                        className="flex-1 h-11"
+                        disabled={isApplyingCoupon}
+                      />
+                      <Button
+                        onClick={handleApplyCoupon}
+                        disabled={isApplyingCoupon || !couponCode.trim()}
+                        className="h-11 px-6"
+                      >
+                        {isApplyingCoupon ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          'Aplicar'
+                        )}
+                      </Button>
+                    </div>
+                    {couponError && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="w-4 h-4" />
+                        {couponError}
+                      </p>
+                    )}
+                    {couponSuccess && (
+                      <p className="text-sm text-green-600 flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        {couponSuccess}
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
           )}
 
-          {/* Metodo de Pago */}
-          {hasAddress && selectedAddress && (
-            <Card>
-              <CardHeader><CardTitle>Metodo de Pago</CardTitle></CardHeader>
-              <CardContent>
-                <div className="border rounded-lg p-4 bg-blue-50">
-                  <h4 className="font-semibold">Transbank Webpay</h4>
-                  <p className="text-sm">Paga seguro con tarjetas de credito, debito y prepago</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Notas del Pedido */}
-          {(isAuthenticated || isGuestMode) && (
+          {(isGuestMode || isAuthenticated) && (
             <Card>
               <CardHeader><CardTitle>Notas del Pedido</CardTitle></CardHeader>
               <CardContent>
@@ -1643,6 +2450,20 @@ export default function CheckoutPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Metodo de Pago */}
+          {deliveryOption && (
+            <Card>
+              <CardHeader><CardTitle>Metodo de Pago</CardTitle></CardHeader>
+              <CardContent>
+                <div className="border rounded-lg p-4 bg-blue-50">
+                  <h4 className="font-semibold">Transbank Webpay</h4>
+                  <p className="text-sm">Paga seguro con tarjetas de credito, debito y prepago</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
         </div>
 
         {/* COLUMNA DERECHA - RESUMEN */}
@@ -1714,8 +2535,8 @@ export default function CheckoutPage() {
                 )}
                 
                 {selectedBranch && selectedChilexpressOption?.type === "branch_pickup" && (
-                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-xs text-blue-700 flex items-start gap-2">
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs text-amber-700 flex items-start gap-2">
                       <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
                       <span>
                         Retiraras tu pedido en: <strong>{selectedBranch.name}</strong>
@@ -1726,7 +2547,7 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {selectedChilexpressOption?.type === "bodega_pickup" && (
+                {deliveryOption === 'bodega' && (
                   <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-xs text-green-700 flex items-center gap-2">
                       <Store className="w-4 h-4 text-green-600" />
@@ -1775,11 +2596,12 @@ export default function CheckoutPage() {
                 disabled={
                   isProcessing ||
                   isLoadingShipping ||
-                  !hasAddress ||
-                  !selectedAddress ||
-                  !selectedChilexpressOption ||
+                  (deliveryOption !== 'bodega' && !hasAddress) ||
+                  (deliveryOption !== 'bodega' && !selectedAddress) ||
+                  (deliveryOption !== 'bodega' && !selectedChilexpressOption) ||
                   !acceptedTerms ||
-                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch)
+                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch) ||
+                  (isAuthenticated && (!shippingRut || shippingRut === '66666666-6'))
                 }
                 onClick={handleSubmit}
               >
@@ -1787,6 +2609,12 @@ export default function CheckoutPage() {
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Procesando...</>
                 ) : isLoadingShipping ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Calculando envio...</>
+                ) : !deliveryOption ? (
+                  "Selecciona una opcion de entrega"
+                ) : deliveryOption === 'bodega' ? (
+                  `Pagar $${formatCLP(finalTotal)}`
+                ) : isAuthenticated && (!shippingRut || shippingRut === '66666666-6') ? (
+                  "Ingresa tu RUT para el envío"
                 ) : !hasAddress ? (
                   "Ingresa una direccion de envio"
                 ) : !selectedChilexpressOption ? (
@@ -1804,7 +2632,7 @@ export default function CheckoutPage() {
                 </p>
               )}
               
-              {!acceptedTerms && hasAddress && (
+              {!acceptedTerms && deliveryOption && (
                 <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   Debes aceptar los Terminos y Condiciones para continuar

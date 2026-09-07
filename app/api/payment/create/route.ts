@@ -15,12 +15,12 @@ function generateSimpleOrderNumber(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log('Payment create request body:', body)
+    console.log(' Payment create request body:', body)
     
-    const { orderId, amount, isGuest, guestEmail } = body
+    const { orderId, amount, isGuest, guestEmail, customerRut } = body
 
     if (!orderId || !amount) {
-      console.log(' Missing required fields:', { orderId, amount })
+      console.log(' Missing required fields')
       return NextResponse.json(
         { error: 'Faltan datos requeridos: orderId y amount' },
         { status: 400 }
@@ -67,9 +67,9 @@ export async function POST(request: NextRequest) {
           const { payload } = await jwtVerify(token, JWT_SECRET)
           userId = payload.userId as string
           userRut = payload.rut as string || null
-          console.log('Usuario autenticado encontrado')
+          console.log(' Usuario autenticado encontrado')
         } catch (error) {
-          console.log('Error verificando token:', error)
+          console.log(' Error verificando token:', error)
         }
       }
       
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     ) as any[]
 
     if (orders.length === 0) {
-      console.log(' Orden no encontrada:', { orderId, userId })
+      console.log(' Orden no encontrada')
       return NextResponse.json(
         { error: 'Orden no encontrada' },
         { status: 404 }
@@ -98,13 +98,19 @@ export async function POST(request: NextRequest) {
 
     const order = orders[0]
 
-    //  GENERAR NUEVO NÚMERO DE ORDEN
+    // =====================================================
+    //  Usar el RUT que viene del checkout
+    // =====================================================
+    const rutToUse = customerRut || userRut || null
+    
+
+    // GENERAR NUEVO NÚMERO DE ORDEN
     const newOrderNumber = generateSimpleOrderNumber()
     const transbankBuyOrder = `TBK${Date.now()}${Math.floor(Math.random() * 10000)}`
     const sessionId = `SES${Date.now()}${Math.random().toString(36).substring(2, 15)}`
     const returnUrl = `${process.env.NEXTAUTH_URL}/api/payment/response`
 
-    //  ACTUALIZAR LA ORDEN (SOLO DATOS DE PAGO, NO VALIDAR TÉRMINOS)
+    // ACTUALIZAR LA ORDEN CON EL RUT CORRECTO
     await query(
       `UPDATE orders SET 
         order_number = ?,
@@ -116,10 +122,10 @@ export async function POST(request: NextRequest) {
         customer_rut = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, userRut, orderId]
+      [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, rutToUse, orderId]
     )
 
-    console.log(' Orden actualizada, creando transacción')
+    console.log(' Orden actualizada con RUT:', rutToUse)
 
     // Crear transacción en Transbank
     const transaction = await transbankService.createTransaction({
@@ -138,11 +144,12 @@ export async function POST(request: NextRequest) {
       orderNumber: newOrderNumber,
       transbankBuyOrder: transbankBuyOrder,
       sessionId: sessionId,
-      orderId: orderId
+      orderId: orderId,
+      customerRut: rutToUse
     })
 
   } catch (error: any) {
-    console.error(' Error creando transacción :', error)
+    console.error(' Error creando transacción:', error)
     return NextResponse.json(
       { 
         error: 'Error interno del servidor al crear transacción',
