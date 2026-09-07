@@ -122,12 +122,6 @@ export default function LoginPage() {
           transition={{ duration: 0.4, delay: 0.1 }}
         >
           <Card className="overflow-hidden">
-            <motion.div 
-              className="h-1 bg-gradient-to-r from-orange-500 to-red-500"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            />
 
             <CardHeader className="text-center">
               <motion.div
@@ -149,9 +143,7 @@ export default function LoginPage() {
                 transition={{ delay: 0.4 }}
               >
                 <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-                  <Sparkles className="w-5 h-5 text-orange-500" />
                   {showForgotPassword ? "Recuperar Contraseña" : "Iniciar Sesión"}
-                  <Sparkles className="w-5 h-5 text-orange-500" />
                 </CardTitle>
                 <p className="text-muted-foreground">
                   {showForgotPassword 
