@@ -17,7 +17,9 @@ function extraerShippingAddress(order: any): {
   instructions: string;
 } {
   const shippingType = order.shipping_type || '';
-  const shippingDetails = order.shipping_details ? JSON.parse(order.shipping_details) : null;
+  const shippingDetails = order.shipping_details ? 
+    (typeof order.shipping_details === 'string' ? JSON.parse(order.shipping_details) : order.shipping_details) : 
+    null;
 
   // Caso 1: Retiro en Bodega
   if (shippingType === 'bodega_pickup' && shippingDetails?.selectedBranch) {
@@ -28,25 +30,16 @@ function extraerShippingAddress(order: any): {
       region_name: 'Región Metropolitana',
       postal_code: '8900000',
       department: '',
-      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 12:00 - 18:00 hrs'
+      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 10:00 - 18:00 hrs'
     };
   }
 
   // Caso 2: Retiro en Sucursal
   if (shippingType === 'branch_pickup' && shippingDetails?.selectedBranch) {
     const branch = shippingDetails.selectedBranch;
-    const addressParts = branch.address ? branch.address.split(',') : ['Sucursal Chilexpress'];
-    let commune = 'Santiago';
-    const commonCommunes = ['Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa', 'La Reina', 'Peñalolén', 'Macul', 'San Miguel', 'San Joaquín', 'Estación Central', 'Quinta Normal', 'Renca', 'Independencia', 'Recoleta', 'Huechuraba', 'Conchalí', 'Cerro Navia', 'Lo Prado', 'Pudahuel', 'Maipú', 'Cerrillos', 'Lo Espejo', 'San Bernardo', 'La Cisterna', 'El Bosque', 'La Granja', 'San Ramón', 'La Pintana', 'Lo Barnechea', 'Colina', 'Lampa', 'Tiltil', 'Pirque', 'Puente Alto', 'San José de Maipo', 'Buin', 'Calera de Tango', 'Paine', 'Melipilla', 'Curacaví', 'María Pinto', 'San Pedro', 'Alhué', 'Talagante', 'Peñaflor', 'El Monte', 'Isla de Maipo', 'Padre Hurtado', 'Litueche'];
-    for (const c of commonCommunes) {
-      if (branch.address && branch.address.includes(c)) {
-        commune = c;
-        break;
-      }
-    }
     return {
       street: branch.address || 'Sucursal Chilexpress',
-      commune_name: commune,
+      commune_name: 'Santiago',
       region_name: 'Región Metropolitana',
       postal_code: '000000',
       department: '',
@@ -88,8 +81,10 @@ export async function POST(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 });
     }
 
+    console.log(` Reintentando boleta para orden ${orderId}`);
+
     // ============================================================
-    // 1. OBTENER LA ORDEN CON TODOS SUS DATOS
+    // 1. OBTENER LA ORDEN
     // ============================================================
     const orders = await query(
       `SELECT 
@@ -120,73 +115,49 @@ export async function POST(
     const order = orders[0];
 
     // ============================================================
-    // 2. VALIDACIONES ESTRICTAS
+    // 2. VALIDACIONES
     // ============================================================
 
-    //  2.1 - Solo órdenes con pago aprobado
+    // Solo órdenes con pago aprobado
     if (order.payment_status !== 'paid') {
       return NextResponse.json({
-        error: 'Esta orden no tiene un pago aprobado. No se puede generar boleta.',
+        error: 'Esta orden no tiene un pago aprobado',
         code: 'PAYMENT_NOT_PAID'
       }, { status: 400 });
     }
 
-    //  2.2 - Solo órdenes SIN boleta
-    if (order.boleta_emitida === 1) {
-      // Verificar si realmente tiene boleta en la tabla boletas
-      const boletaExistente = await query(
-        `SELECT id, folio FROM boletas WHERE order_id = ?`,
-        [orderId]
-      ) as any[];
+    // Verificar si ya existe boleta en la tabla boletas
+    const boletaExistente = await query(
+      `SELECT id, folio FROM boletas WHERE order_id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (boletaExistente.length > 0) {
+      // Actualizar la orden
+      await query(
+        `UPDATE orders SET boleta_id = ?, boleta_emitida = 1 WHERE id = ?`,
+        [boletaExistente[0].id, orderId]
+      );
       
-      if (boletaExistente.length > 0) {
-        return NextResponse.json({
-          error: 'Esta orden ya tiene una boleta emitida',
-          code: 'BOLETA_ALREADY_EXISTS',
-          folio: boletaExistente[0].folio
-        }, { status: 400 });
-      } else {
-        // Caso inconsistente: boleta_emitida=1 pero no hay registro en boletas
-        // Corregimos el estado
-        await query(
-          `UPDATE orders SET boleta_emitida = 0 WHERE id = ?`,
-          [orderId]
-        );
-      }
+      return NextResponse.json({
+        success: true,
+        message: `Esta orden ya tiene una boleta. Folio: ${boletaExistente[0].folio}`,
+        folio: boletaExistente[0].folio,
+        boleta_id: boletaExistente[0].id,
+        already_exists: true
+      });
     }
 
-    //  2.3 - Verificar que NO sea una orden de SimpleFactura
-    // Las órdenes antiguas de SimpleFactura tienen boleta_emitida=1 y tienen registros en boletas
-    // Para seguridad, verificamos que la orden sea posterior a la migración a ApiGateway
-    const fechaMigracion = new Date('2026-08-31'); // Fecha de migración a ApiGateway
-    
-    // Si la orden es anterior a la migración, verificar si tiene boleta antigua
-    if (new Date(order.created_at) < fechaMigracion) {
-      const boletaAntigua = await query(
-        `SELECT id, folio FROM boletas WHERE order_id = ?`,
-        [orderId]
-      ) as any[];
-      
-      if (boletaAntigua.length > 0) {
-        return NextResponse.json({
-          error: 'Esta orden tiene una boleta emitida con SimpleFactura. No se puede reemitir.',
-          code: 'SIMPLEFACTURA_LEGACY',
-          folio: boletaAntigua[0].folio
-        }, { status: 400 });
-      }
-    }
-
-    //  2.4 - Verificar límite de reintentos (máximo 3)
+    // Verificar límite de reintentos
     const intentos = order.boleta_intentos || 0;
     if (intentos >= 3) {
       return NextResponse.json({
         error: 'Se excedió el número máximo de reintentos (3). Contacta a soporte.',
-        code: 'MAX_RETRIES_EXCEEDED',
-        maxIntentos: 3
+        code: 'MAX_RETRIES_EXCEEDED'
       }, { status: 400 });
     }
 
-    //  2.5 - Verificar que la orden tenga productos
+    // Verificar que la orden tenga productos
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -219,18 +190,14 @@ export async function POST(
     // ============================================================
     // 4. PREPARAR DATOS PARA LA BOLETA
     // ============================================================
-    let rutCliente = order.customer_rut || '66666666-6';
-    if (order.is_guest === 1) {
-      rutCliente = '66666666-6';
-    }
-
+    const rutCliente = order.customer_rut || '66666666-6';
     const nombreCliente = order.customer_first_name && order.customer_last_name
       ? `${order.customer_first_name} ${order.customer_last_name}`.trim()
-      : order.is_guest === 1 ? 'Consumidor Final' : 'Cliente';
+      : 'Consumidor Final';
 
     const cliente = {
       rut: rutCliente,
-      nombre: nombreCliente || 'Consumidor Final',
+      nombre: nombreCliente,
       direccion: order.shipping_street || 'Santiago',
       comuna: order.shipping_commune || 'Santiago',
       ciudad: order.shipping_region || 'Santiago',
@@ -246,11 +213,14 @@ export async function POST(
 
     const total = parseFloat(order.total);
 
+
     // ============================================================
-    // 5. INTENTAR EMITIR LA BOLETA CON APIGATEWAY
+    // 5. EMITIR LA BOLETA
     // ============================================================
     try {
       const result = await emitirBoletaApiGateway(productos, cliente, total);
+
+      console.log(' Respuesta de ApiGateway:', JSON.stringify(result, null, 2));
 
       const folio = result.data?.folio || result.folio;
       const montoTotal = result.data?.total || result.total || total;
@@ -259,8 +229,10 @@ export async function POST(
         throw new Error('No se obtuvo folio de la boleta');
       }
 
+      console.log(` Boleta emitida. Folio: ${folio}`);
+
       // ============================================================
-      //  GUARDAR EN BASE DE DATOS
+      // 6. GUARDAR EN BASE DE DATOS
       // ============================================================
       const neto = Math.round(total / 1.19);
       const iva = total - neto;
@@ -281,26 +253,31 @@ export async function POST(
           montoTotal,
           iva,
           fechaEmision,
-          'certificacion',
+          'produccion',
           'emitida'
         ]
       ) as any;
 
+      const boletaId = insertResult.insertId;
+
+      // Actualizar la orden
       await query(
         `UPDATE orders SET 
           boleta_id = ?,
           boleta_emitida = 1,
-          boleta_intentos = 0
+          boleta_intentos = 0,
+          boleta_error = NULL
         WHERE id = ?`,
-        [insertResult.insertId, orderId]
+        [boletaId, orderId]
       );
 
+      console.log(` Boleta guardada `);
+
       // ============================================================
-      // 7. OBTENER PDF Y ENVIAR EMAIL
+      // 7. ENVIAR EMAIL CON BOLETA
       // ============================================================
       try {
-        console.log('Obteniendo PDF');
-        
+        // Obtener el PDF
         const resultadoBoletaVerificada = await obtenerBoletaConVerificacion(
           folio,
           fechaEmision
@@ -308,8 +285,6 @@ export async function POST(
 
         if (resultadoBoletaVerificada.success && resultadoBoletaVerificada.pdfBuffer) {
           const pdfBuffer = resultadoBoletaVerificada.pdfBuffer;
-          
-          // Construir dirección de envío
           const shippingAddress = extraerShippingAddress(order);
 
           const emailData = {
@@ -342,12 +317,12 @@ export async function POST(
           };
 
           await sendBoletaEmail(emailData, pdfBuffer, folio);
-          console.log(' Email con boleta enviado a:', order.customer_email);
+          console.log(`Email con boleta enviado a: ${order.customer_email}`);
         } else {
           console.warn(' No se pudo obtener PDF para el email');
         }
       } catch (emailError) {
-        console.error('Error enviando email en reintento:', emailError);
+        console.error('Error enviando email:', emailError);
         // No fallamos el reintento si el email falla
       }
 
@@ -355,14 +330,14 @@ export async function POST(
         success: true,
         message: `Boleta emitida exitosamente. Folio: ${folio}`,
         folio: folio,
-        boleta_id: insertResult.insertId
+        boleta_id: boletaId
       });
 
     } catch (boletaError: any) {
       // ============================================================
       // 8. ERROR - GUARDAR EN BD Y RETORNAR
       // ============================================================
-      console.error('Error emitiendo boleta en reintento:', boletaError.message);
+      console.error('Error emitiendo boleta:', boletaError.message);
       
       await query(
         `UPDATE orders SET boleta_error = ? WHERE id = ?`,

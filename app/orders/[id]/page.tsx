@@ -22,7 +22,8 @@ import {
   Download,
   Eye,
   Check,
-  Store
+  Store,
+  AlertCircle
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -78,6 +79,7 @@ interface Order {
   customer_first_name: string
   customer_last_name: string
   customer_phone: string
+  customer_rut?: string
   boleta_id?: number
   boleta_emitida?: number
   boleta_info?: {
@@ -104,7 +106,6 @@ const statusConfig = {
   cancelled: { label: "Rechazado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-// MAPEO DE ESTADOS DE LA ORDEN A PASOS
 const statusToStepMap: Record<string, number> = {
   'pending': 0,
   'processing': 1,
@@ -114,7 +115,6 @@ const statusToStepMap: Record<string, number> = {
   'cancelled': -1,
 }
 
-// FUNCIÓN PARA OBTENER LOS PASOS DE SEGUIMIENTO
 const getOrderSteps = (order: Order | null) => {
   if (!order) return []
   
@@ -185,7 +185,6 @@ const getOrderSteps = (order: Order | null) => {
   ]
 }
 
-// FUNCIÓN PARA OBTENER EL ESTADO DEL PAGO MOSTRADO
 const getPaymentStatusDisplay = (paymentStatus: string) => {
   switch (paymentStatus) {
     case 'paid':
@@ -201,7 +200,6 @@ const getPaymentStatusDisplay = (paymentStatus: string) => {
   }
 }
 
-// FUNCIÓN PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
 const getShippingMethodDisplay = (order: Order | null): string => {
   if (!order) return 'Método no especificado'
   
@@ -253,7 +251,6 @@ const getShippingMethodDisplay = (order: Order | null): string => {
   return 'Método no especificado'
 }
 
-// FUNCIÓN PARA OBTENER LA CATEGORÍA DE ENVÍO
 const getShippingCategory = (order: Order | null): string => {
   if (!order) return 'unknown'
   
@@ -381,7 +378,6 @@ export default function OrderDetailPage() {
     }
   }
 
-  //  REINTENTAR GENERACIÓN DE BOLETA
   const handleReintentarBoleta = async () => {
     if (!order) return;
     
@@ -394,22 +390,30 @@ export default function OrderDetailPage() {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        toast({
-          title: " Boleta emitida",
-          description: data.message,
-          duration: 5000,
-        });
-        // Recargar la orden para ver los cambios
+        if (data.already_exists) {
+          toast({
+            title: "ℹ️ Boleta ya emitida",
+            description: `Boleta N° ${data.folio} ya había sido generada`,
+            duration: 5000,
+          });
+        } else {
+          toast({
+            title: "✅ Boleta emitida",
+            description: data.message,
+            duration: 5000,
+          });
+        }
         fetchOrder();
       } else {
         toast({
-          title: "❌ No se pudo emitir la boleta",
+          title: "❌ Error",
           description: data.error || "Error al generar la boleta",
           variant: "destructive",
           duration: 5000,
         });
       }
     } catch (error) {
+      console.error('Error en reintentar boleta:', error);
       toast({
         title: "❌ Error",
         description: "Error al conectar con el servidor",
@@ -421,7 +425,6 @@ export default function OrderDetailPage() {
     }
   }
 
-  //  DESCARGAR BOLETA CON APIGATEWAY
   const descargarBoleta = async () => {
     const folio = order?.boleta_info?.folio
     if (!folio) {
@@ -476,7 +479,6 @@ export default function OrderDetailPage() {
     }
   }
 
-  //  VER BOLETA CON APIGATEWAY
   const verBoleta = async () => {
     const folio = order?.boleta_info?.folio
     if (!folio) {
@@ -926,7 +928,7 @@ export default function OrderDetailPage() {
                                             </span>
                                           </p>
                                           <p className={`text-xs ${isDelivered ? 'text-green-600' : 'text-blue-600'} mt-1 pl-6`}>
-                                            Horario: Lunes a Viernes 12:00 - 18:00 hrs
+                                            Horario: Lunes a Viernes 10:00 - 18:00 hrs
                                           </p>
                                         </div>
                                       )}
@@ -1208,7 +1210,7 @@ export default function OrderDetailPage() {
                       <p>Arcangel 1200, San Miguel</p>
                       <p>San Miguel, Región Metropolitana</p>
                       <p>Código Postal: 8900000</p>
-                      <p className="text-xs text-muted-foreground mt-1">Horario: Lunes a Viernes 12:00 - 18:00 hrs</p>
+                      <p className="text-xs text-muted-foreground mt-1">Horario: Lunes a Viernes 10:00 - 18:00 hrs</p>
                     </>
                   ) : (
                     order.shipping_address ? (
@@ -1287,7 +1289,7 @@ export default function OrderDetailPage() {
                 )}
               </Button>
 
-              {/*  BOTÓN PARA REINTENTAR BOLETA - SOLO SIEMPLE CUMPLE TODAS LAS CONDICIONES */}
+              {/* Botón reintentar boleta - solo si NO tiene boleta y el pago está pagado */}
               {!tieneBoleta && order.payment_status === 'paid' && (
                 <Button
                   variant="outline"
@@ -1309,24 +1311,21 @@ export default function OrderDetailPage() {
                 </Button>
               )}
 
+              {/* Descargar boleta - solo si tiene boleta */}
               {tieneBoleta && (
-                <>
-
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={descargarBoleta}
-                    disabled={descargandoPDF}
-                  >
-                    {descargandoPDF ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4 mr-2" />
-                    )}
-
-                    Descargar boleta
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={descargarBoleta}
+                  disabled={descargandoPDF}
+                >
+                  {descargandoPDF ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Descargar boleta
+                </Button>
               )}
             </div>
 

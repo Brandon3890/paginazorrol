@@ -64,23 +64,17 @@ export default function OrderSuccessPage() {
   const [error, setError] = useState<string | null>(null)
   const [cartClearedLocal, setCartClearedLocal] = useState(false)
   
-  // Estado de la boleta - SIMPLIFICADO
   const [boletaInfo, setBoletaInfo] = useState<BoletaInfo | null>(null)
   const [procesando, setProcesando] = useState(false)
   const [boletaError, setBoletaError] = useState<string | null>(null)
   const [boletaEstado, setBoletaEstado] = useState<string | null>(null)
-  const [boletaRechazada, setBoletaRechazada] = useState(false)
   const [procesoCompletado, setProcesoCompletado] = useState(false)
-  const [intentos, setIntentos] = useState(0)
-  const [consultando, setConsultando] = useState(false)
-  
   const [descargandoPDF, setDescargandoPDF] = useState(false)
   const [resendingEmail, setResendingEmail] = useState(false)
 
   // Limpiar carrito
   useEffect(() => {
     if (status === 'success' && !cartClearedLocal && items.length > 0) {
-      console.log('🧹 Limpiando carrito local - pago exitoso confirmado')
       clearCart()
       setCartClearedLocal(true)
       
@@ -101,229 +95,75 @@ export default function OrderSuccessPage() {
     }
   }, [orderId, status, router])
 
-  // ✅ FUNCIÓN PRINCIPAL: EMITIR Y VERIFICAR BOLETA (SIMPLIFICADA)
-  useEffect(() => {
-    const iniciarProceso = async () => {
-      // Condiciones para ejecutar
-      if (status !== 'success' || !order || boletaInfo || procesando || order.boleta_emitida === 1 || procesoCompletado) {
-        return
-      }
+  //  Emitir boleta desde el servidor (API)
+  const emitirBoleta = async () => {
+    if (!order || !orderId) return
 
-      const emittedKey = `boleta_${order.id}`
-      if (sessionStorage.getItem(emittedKey)) {
-        console.log('📌 Boleta ya emitida para esta orden (sessionStorage)')
-        return
-      }
+    // Ya tiene boleta o ya se emitió
+    if (order.boleta_emitida === 1 || boletaInfo) {
+      return
+    }
 
-      setProcesando(true)
-      setBoletaError(null)
-      setBoletaRechazada(false)
-      setConsultando(false)
+    setProcesando(true)
+    setBoletaError(null)
 
-      try {
-        // ============================================================
-        // PASO 1: PREPARAR DATOS DEL CLIENTE
-        // ============================================================
-        const rutCliente = order.customer_rut || '66666666-6'
-        let nombreCliente = 'Consumidor Final'
-        
-        if (order.customer_first_name && order.customer_last_name) {
-          nombreCliente = `${order.customer_first_name} ${order.customer_last_name}`.trim()
-        } else if (order.customer_first_name) {
-          nombreCliente = order.customer_first_name
-        } else if (order.customer_last_name) {
-          nombreCliente = order.customer_last_name
-        }
-        
-        const direccion = order.shipping_address?.street || 'Santiago'
-        const comuna = order.shipping_address?.commune_name || 'Santiago'
-        const ciudad = order.shipping_address?.region_name || 'Santiago'
-        const telefono = order.customer_phone || undefined
-        const email = order.customer_email || undefined
+    try {
+      const response = await fetch('/api/orders/emitir-boleta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: parseInt(orderId) })
+      })
 
-        console.log('📤 Datos del cliente:', { rutCliente, nombreCliente, direccion, comuna, ciudad })
+      const data = await response.json()
 
-        const datosBoleta = {
-          cliente: {
-            rut: rutCliente,
-            nombre: nombreCliente || 'Consumidor Final',
-            direccion: direccion,
-            comuna: comuna,
-            ciudad: ciudad,
-            telefono: telefono,
-            email: email
-          },
-          productos: order.items?.map(item => ({
-            nombre: item.product_name,
-            cantidad: item.quantity,
-            precio: item.product_price
-          })) || [],
-          total: order.total,
-          ordenId: order.id,
-          ordenNumero: order.order_number
-        }
-
-        // ============================================================
-        // PASO 2: EMITIR BOLETA (1 sola vez)
-        // ============================================================
-        console.log('📄 Emitiendo boleta...')
-        
-        const respuesta = await fetch('/api/apigateway/emitir-boleta', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(datosBoleta)
-        })
-
-        const resultado = await respuesta.json()
-
-        if (!resultado.success) {
-          throw new Error(resultado.error || 'Error al emitir boleta')
-        }
-
-        const folio = resultado.folio
-        console.log('✅ Boleta emitida. Folio:', folio)
-
-        // ============================================================
-        // PASO 3: CONSULTAR ESTADO (con reintentos limitados)
-        // ============================================================
-        setConsultando(true)
-        console.log('🔍 Consultando estado de la boleta...')
-
-        let estadoFinal = 'En Proceso'
-        let boletaRechazadaFlag = false
-        let boletaEncontrada = false
-        let intentoActual = 0
-        const maxIntentos = 5 // Máximo 5 intentos
-
-        while (!boletaEncontrada && intentoActual < maxIntentos) {
-          intentoActual++
-          setIntentos(intentoActual)
-
-          // Esperar 3 segundos entre intentos (excepto el primero)
-          if (intentoActual > 1) {
-            console.log(`⏳ Esperando 3 segundos antes del intento ${intentoActual}...`)
-            await new Promise(resolve => setTimeout(resolve, 3000))
-          }
-
-          try {
-            const estadoResponse = await fetch(`/api/apigateway/consultar?folio=${folio}`)
-            const estadoData = await estadoResponse.json()
-            
-            if (estadoData.success && estadoData.data) {
-              const estado = estadoData.data.estado || estadoData.data.estado_boleta || 'En Proceso'
-              estadoFinal = estado
-              boletaEncontrada = true
-              setBoletaEstado(estado)
-              
-              console.log(`📊 Estado encontrado: ${estado}`)
-              
-              // ✅ Si está Aceptada o En Proceso → Enviar email
-              if (estado === 'Aceptada' || estado === 'En Proceso') {
-                console.log(`✅ Boleta en estado "${estado}" - Enviando email...`)
-                break
-              }
-              
-              // ❌ Si está Rechazada → Error
-              if (estado === 'Rechazada') {
-                boletaRechazadaFlag = true
-                console.log('❌ Boleta RECHAZADA')
-                break
-              }
-            } else {
-              console.log(`⚠️ Boleta no encontrada (intento ${intentoActual}/${maxIntentos})`)
-            }
-          } catch (error) {
-            console.warn(`⚠️ Error consultando (intento ${intentoActual}):`, error)
-          }
-        }
-
-        // ============================================================
-        // PASO 4: DECISIÓN FINAL
-        // ============================================================
-
-        // ❌ Caso 1: Rechazada
-        if (boletaRechazadaFlag) {
-          setBoletaRechazada(true)
-          setBoletaError('La boleta fue rechazada por el SII')
-          toast({
-            title: "❌ Boleta Rechazada",
-            description: "La boleta electrónica fue rechazada por el SII. Contacta a soporte.",
-            variant: "destructive",
-            duration: 8000,
-          })
-          setProcesando(false)
-          setConsultando(false)
-          return
-        }
-
-        // ✅ Caso 2: Aceptada o En Proceso (o no encontrada)
-        const estadoFinalMostrar = boletaEncontrada ? estadoFinal : 'En Proceso'
-        
-        if (!boletaEncontrada) {
-          console.log(`⚠️ No se encontró la boleta después de ${maxIntentos} intentos, enviando igual...`)
-        }
-
-        // Guardar información de la boleta
+      if (data.success) {
         setBoletaInfo({
           success: true,
-          folio: folio,
-          data: resultado.data
+          folio: data.folio,
+          data: data
         })
-        
-        sessionStorage.setItem(`boleta_${order.id}`, 'true')
-        setBoletaEstado(estadoFinalMostrar)
+        setBoletaEstado(data.estado || 'emitida')
+        setProcesoCompletado(true)
         
         toast({
-          title: "✅ Boleta generada",
-          description: `Boleta N° ${folio} generada correctamente`,
+          title: " Boleta generada",
+          description: `Boleta N° ${data.folio} generada correctamente`,
           duration: 5000,
         })
 
-        // ============================================================
-        // PASO 5: ENVIAR EMAIL AUTOMÁTICAMENTE (1 sola vez)
-        // ============================================================
-        if (order.customer_email) {
-          console.log('📧 Enviando email automático...')
-          try {
-            const emailResponse = await fetch(`/api/orders/${order.id}/resend-email`, {
-              method: 'POST',
-            })
-            const emailData = await emailResponse.json()
-            if (emailResponse.ok && emailData.success) {
-              console.log('✅ Email enviado a:', order.customer_email)
-              toast({
-                title: "📧 Email enviado",
-                description: `La boleta fue enviada a ${order.customer_email}`,
-                duration: 4000,
-              })
-            } else {
-              console.warn('⚠️ Error enviando email:', emailData.error)
-            }
-          } catch (emailError) {
-            console.warn('⚠️ Error enviando email:', emailError)
-          }
-        }
-
-        setProcesoCompletado(true)
-        console.log('✅ Proceso completado. Folio:', folio, 'Estado:', estadoFinalMostrar)
-
-      } catch (error: any) {
-        console.error('❌ Error en proceso:', error)
-        setBoletaError(error.message || 'Error al generar la boleta')
-      } finally {
-        setProcesando(false)
-        setConsultando(false)
+        // Recargar la orden para actualizar los datos
+        fetchOrderFromMySQL(orderId)
+      } else {
+        setBoletaError(data.error || 'Error al generar la boleta')
+        toast({
+          title: "❌ Error",
+          description: data.error || 'Error al generar la boleta',
+          variant: "destructive",
+        })
       }
+    } catch (error: any) {
+      console.error('Error emitir boleta:', error)
+      setBoletaError(error.message || 'Error al generar la boleta')
+      toast({
+        title: "❌ Error",
+        description: error.message || 'Error al generar la boleta',
+        variant: "destructive",
+      })
+    } finally {
+      setProcesando(false)
     }
+  }
 
-    if (order && status === 'success') {
+  //  Auto-emitir boleta cuando se carga la orden
+  useEffect(() => {
+    if (order && status === 'success' && !procesando && !procesoCompletado && order.boleta_emitida !== 1 && !boletaInfo) {
       const timer = setTimeout(() => {
-        iniciarProceso()
-      }, 1500)
+        emitirBoleta()
+      }, 2000)
 
       return () => clearTimeout(timer)
     }
-  }, [order, status, boletaInfo, procesando, procesoCompletado, toast])
+  }, [order, status, procesando, procesoCompletado, boletaInfo])
 
   const fetchOrderFromMySQL = async (id: string) => {
     try {
@@ -334,11 +174,6 @@ export default function OrderSuccessPage() {
       
       if (response.ok) {
         const orderData = await response.json()
-        console.log('📦 Orden cargada:', {
-          id: orderData.id,
-          boleta_emitida: orderData.boleta_emitida,
-          boleta_info: orderData.boleta_info
-        })
         
         if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
           setBoletaInfo({
@@ -508,56 +343,31 @@ export default function OrderSuccessPage() {
   const StatusIcon = statusConfig.icon
   const tieneBoleta = boletaInfo?.folio || order?.boleta_info?.folio
 
-  // ✅ Renderizar estado de la boleta - SIMPLIFICADO
   const renderBoletaStatus = () => {
     if (!status || status !== 'success') return null
 
-    // ✅ Rechazada
-    if (boletaRechazada) {
-      return (
-        <div className="border rounded-lg p-4 border-red-200 bg-red-50">
-          <div className="text-center space-y-3">
-            <XCircle className="w-8 h-8 mx-auto text-red-500" />
-            <p className="font-medium text-red-700">Boleta Rechazada</p>
-            <p className="text-sm text-red-600">
-              La boleta electrónica fue rechazada por el SII. 
-              Por favor contacta a soporte para resolver este problema.
-            </p>
-            <Button 
-              size="sm" 
-              variant="outline"
-              className="border-red-300 text-red-700 hover:bg-red-100"
-              onClick={() => {
-                setBoletaRechazada(false)
-                setBoletaError(null)
-                setProcesando(false)
-                setProcesoCompletado(false)
-                setBoletaInfo(null)
-                setIntentos(0)
-              }}
-            >
-              Reintentar
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
-    // ✅ Ya tiene boleta
+    //  Ya tiene boleta
     if (tieneBoleta) {
-      const mostrarEstado = boletaEstado && boletaEstado !== 'En Proceso' ? boletaEstado : null
-      
       return (
-        <div className="border rounded-lg p-4">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
+        <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+          <h3 className="font-semibold mb-3 flex items-center gap-2 text-green-800">
             <FileText className="w-4 h-4" />
             Boleta Electrónica
           </h3>
           
-          <div className="flex flex-wrap gap-3">
+          <div className="space-y-2">
+            <p className="text-sm text-green-700">
+              Folio: <strong>{boletaInfo?.folio || order?.boleta_info?.folio}</strong>
+            </p>
+            <p className="text-sm text-green-700">
+              Estado: <Badge className="bg-green-100 text-green-800">{boletaEstado || 'emitida'}</Badge>
+            </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-3 mt-4">
             <Button
               variant="outline"
-              className="flex-1 min-w-[140px]"
+              className="flex-1 min-w-[140px] border-green-300 text-green-700 hover:bg-green-100"
               onClick={descargarPDF}
               disabled={descargandoPDF}
             >
@@ -571,7 +381,7 @@ export default function OrderSuccessPage() {
             
             <Button
               variant="outline"
-              className="flex-1 min-w-[140px]"
+              className="flex-1 min-w-[140px] border-green-300 text-green-700 hover:bg-green-100"
               onClick={handleResendEmail}
               disabled={resendingEmail}
             >
@@ -583,46 +393,25 @@ export default function OrderSuccessPage() {
               Reenviar Email
             </Button>
           </div>
-          
-          {boletaInfo?.folio && (
-            <p className="text-xs text-muted-foreground text-center mt-3">
-              Boleta N° {boletaInfo.folio}
-              {mostrarEstado && ` - ${mostrarEstado}`}
-            </p>
-          )}
         </div>
       )
     }
 
     // ⏳ Procesando
-    if (procesando || consultando) {
-      let texto = 'Generando boleta electrónica...'
-      let descripcion = 'Estamos emitiendo tu boleta en el SII'
-      
-      if (consultando) {
-        texto = `Consultando estado (intento ${intentos}/5)`
-        descripcion = 'Verificando el estado de tu boleta...'
-      }
-      
+    if (procesando) {
       return (
         <div className="border rounded-lg p-4">
           <div className="text-center space-y-3">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
-            <p className="font-medium">{texto}</p>
-            <p className="text-sm text-muted-foreground">{descripcion}</p>
-            {consultando && (
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Clock className="w-3 h-3" />
-                <span>Por favor espera...</span>
-              </div>
-            )}
+            <p className="font-medium">Generando boleta electrónica...</p>
+            <p className="text-sm text-muted-foreground">Estamos emitiendo tu boleta en el SII</p>
           </div>
         </div>
       )
     }
 
     // ❌ Error
-    if (boletaError && !boletaRechazada) {
+    if (boletaError) {
       return (
         <div className="border rounded-lg p-4 border-red-200 bg-red-50">
           <div className="text-center space-y-3">
@@ -632,13 +421,8 @@ export default function OrderSuccessPage() {
             <Button 
               size="sm" 
               variant="outline"
-              onClick={() => {
-                setBoletaInfo(null)
-                setBoletaError(null)
-                setProcesando(false)
-                setProcesoCompletado(false)
-                setIntentos(0)
-              }}
+              onClick={emitirBoleta}
+              disabled={procesando}
             >
               Reintentar
             </Button>
@@ -697,11 +481,16 @@ export default function OrderSuccessPage() {
                     <span className="text-muted-foreground">Total:</span>
                     <span>${order.total.toLocaleString('es-CL')}</span>
                   </div>
+                  {order.customer_rut && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">RUT:</span>
+                      <span className="font-mono">{order.customer_rut}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* ✅ Estado de la boleta */}
             {renderBoletaStatus()}
 
             {loading && (

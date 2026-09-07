@@ -100,7 +100,6 @@ const statusConfig = {
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800" },
 }
 
-// Función para calcular Neto e IVA desde un monto que ya incluye IVA
 const calculateTaxBreakdown = (amountWithIVA: number) => {
   const neto = Math.round(amountWithIVA / 1.19)
   const iva = amountWithIVA - neto
@@ -118,7 +117,6 @@ export default function AdminOrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Estado para la boleta
   const [consultandoBoleta, setConsultandoBoleta] = useState(false)
   const [boletaEstado, setBoletaEstado] = useState<string | null>(null)
   const [boletaFolio, setBoletaFolio] = useState<string | null>(null)
@@ -161,7 +159,6 @@ export default function AdminOrderDetailPage() {
         console.log('Order data received:', orderData)
         setOrder(orderData)
         
-        // Si ya tiene boleta, mostrar el estado
         if (orderData.boleta_emitida === 1 && orderData.boleta_info?.folio) {
           setBoletaFolio(orderData.boleta_info.folio)
           setBoletaEstado(orderData.boleta_info.estado_sii || 'emitida')
@@ -178,7 +175,6 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  //  FUNCIÓN PARA CONSULTAR LA BOLETA POR FOLIO
   const consultarBoleta = async () => {
     const folio = order?.boleta_info?.folio || boletaFolio
     
@@ -197,7 +193,6 @@ export default function AdminOrderDetailPage() {
     try {
       const response = await fetch(`/api/apigateway/consultar?folio=${folio}`)
       const data = await response.json()
-      
       
       if (data.success && data.data) {
         const estado = data.data.estado || data.data.estado_boleta || 'desconocido'
@@ -230,7 +225,6 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  //  FUNCIÓN PARA BUSCAR BOLETA POR ORDEN (cuando NO tiene folio)
   const consultarBoletaPorOrden = async () => {
     if (!order) {
       toast({
@@ -247,7 +241,6 @@ export default function AdminOrderDetailPage() {
     
     try {
       const rutCliente = order.customer_rut || '55555555-5'
-      
       
       const fechaFin = new Date().toISOString().split('T')[0]
       const fechaInicio = new Date()
@@ -267,18 +260,16 @@ export default function AdminOrderDetailPage() {
       })
       
       const data = await response.json()
-      console.log(' Documentos encontrados')
+      console.log(' Documentos encontrados:', data)
       
       if (data.success && data.data && data.data.length > 0) {
         const montoOrden = Math.round(order.total)
         
-        // Buscar por monto exacto
         let boletaEncontrada = data.data.find((doc: any) => {
           const montoDoc = Math.round(doc.total || 0)
           return montoDoc === montoOrden
         })
         
-        // Si no se encuentra por monto, buscar la más reciente
         if (!boletaEncontrada && data.data.length > 0) {
           const sorted = [...data.data].sort((a, b) => 
             new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
@@ -325,7 +316,6 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  //  FUNCIÓN PARA DESCARGAR LA BOLETA
   const descargarBoleta = async () => {
     const folio = order?.boleta_info?.folio || boletaFolio
     
@@ -378,34 +368,22 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  //  FUNCIÓN MEJORADA PARA OBTENER LA URL DE LA IMAGEN
   const getImageUrl = (imagePath: string | undefined) => {
-    // Si no hay imagen, usar placeholder
     if (!imagePath) {
       return "/placeholder.svg"
     }
-    
-    // Si ya es una URL completa (http o https)
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
       return imagePath
     }
-    
-    // Si es una ruta que comienza con /uploads/ (ruta absoluta desde la raíz)
     if (imagePath.startsWith('/uploads/')) {
       return imagePath
     }
-    
-    // Si es una ruta que comienza con uploads/ (sin slash inicial)
     if (imagePath.startsWith('uploads/')) {
       return `/${imagePath}`
     }
-    
-    // Si es una ruta que comienza con / (ruta absoluta)
     if (imagePath.startsWith('/')) {
       return imagePath
     }
-    
-    // Para cualquier otro caso, asumimos que está en /uploads/products/
     return `/uploads/products/${imagePath}`
   }
 
@@ -449,7 +427,6 @@ export default function AdminOrderDetailPage() {
     }
   }
 
-  //  FUNCIÓN PARA OBTENER LA DIRECCIÓN DE ENVÍO MOSTRADA
   const getShippingDisplay = () => {
     if (!order) return null
     
@@ -465,7 +442,7 @@ export default function AdminOrderDetailPage() {
         type: 'bodega',
         title: 'Retiro en Bodega',
         address: branch.address || 'Arcangel 1200, San Miguel',
-        details: '',
+        details: 'Horario: Lunes a Viernes 10:00 - 18:00 hrs',
         icon: Store
       }
     }
@@ -482,7 +459,7 @@ export default function AdminOrderDetailPage() {
       }
     }
     
-    // Caso 3: Envío a Domicilio
+    // Caso 3: Envío a Domicilio (incluye Express, Prioritario, Estándar)
     if (shippingType === 'home_delivery' || shippingType === 'standard' || shippingType === 'express') {
       return {
         type: 'home',
@@ -490,6 +467,17 @@ export default function AdminOrderDetailPage() {
         address: order.shipping_address?.street || 'Dirección no especificada',
         details: `${order.shipping_address?.commune_name || ''} ${order.shipping_address?.region_name ? `, ${order.shipping_address.region_name}` : ''}`,
         icon: Truck
+      }
+    }
+    
+    // Caso 4: Envío por Pagar
+    if (shippingType === 'cash_on_delivery' || shippingDetails?.isCashOnDelivery) {
+      return {
+        type: 'cash_on_delivery',
+        title: 'Envío por Pagar',
+        address: order.shipping_address?.street || 'Dirección no especificada',
+        details: `${order.shipping_address?.commune_name || ''} ${order.shipping_address?.region_name ? `, ${order.shipping_address.region_name}` : ''}`,
+        icon: CreditCard
       }
     }
     
@@ -681,14 +669,65 @@ export default function AdminOrderDetailPage() {
                       <shippingDisplay.icon className="w-4 h-4 text-muted-foreground" />
                       <span className="font-medium">{shippingDisplay.title}</span>
                     </div>
-                    <p className="text-sm">{shippingDisplay.address}</p>
-                    {shippingDisplay.details && (
-                      <p className="text-sm text-muted-foreground">{shippingDisplay.details}</p>
+                    
+                    {/* Mostrar dirección detallada según el tipo */}
+                    {shippingDisplay.type === 'bodega' && (
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-sm text-green-800">
+                          <strong>Dirección de la bodega:</strong><br />
+                          Arcangel 1200, San Miguel<br />
+                        </p>
+                      </div>
                     )}
-
-                    {shippingDisplay.type === 'branch' && order.shipping_details?.selectedBranch?.telephone && (
-                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-xs text-blue-700">📞 {order.shipping_details.selectedBranch.telephone}</p>
+                    
+                    {shippingDisplay.type === 'branch' && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-800">
+                          <strong>Sucursal seleccionada:</strong><br />
+                          {order.shipping_details?.selectedBranch?.name}<br />
+                          {shippingDisplay.address}
+                          {order.shipping_details?.selectedBranch?.telephone && (
+                            <> <br />Teléfono: {order.shipping_details.selectedBranch.telephone}</>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {shippingDisplay.type === 'home' && (
+                      <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                        <p className="text-sm text-gray-800">
+                          <strong>Dirección de entrega:</strong><br />
+                          {order.shipping_address?.street}<br />
+                          {order.shipping_address?.commune_name}, {order.shipping_address?.region_name}
+                          {order.shipping_address?.postal_code && (
+                            <> <br />Código Postal: {order.shipping_address.postal_code}</>
+                          )}
+                          {order.shipping_address?.department && (
+                            <> <br />Depto: {order.shipping_address.department}</>
+                          )}
+                          {order.shipping_address?.delivery_instructions && (
+                            <> <br /><span className="text-muted-foreground">Instrucciones: {order.shipping_address.delivery_instructions}</span></>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {shippingDisplay.type === 'cash_on_delivery' && (
+                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-sm text-amber-800">
+                          <strong>Envío por Pagar</strong><br />
+                          El cliente pagará el envío al recibir.
+                          {order.shipping > 0 && (
+                            <> Monto aproximado: {formatPrice(order.shipping)}</>
+                          )}
+                          <br /><br />
+                          <strong>Dirección de entrega:</strong><br />
+                          {order.shipping_address?.street}<br />
+                          {order.shipping_address?.commune_name}, {order.shipping_address?.region_name}
+                          {order.shipping_address?.department && (
+                            <> <br />Depto: {order.shipping_address.department}</>
+                          )}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -772,7 +811,6 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {/*  SECCIÓN DE BOLETA - COMPLETA */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -781,7 +819,6 @@ export default function AdminOrderDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/*  SI TIENE BOLETA EN LA BD */}
                 {tieneBoleta ? (
                   <>
                     <div className="flex items-center justify-between">
@@ -838,7 +875,6 @@ export default function AdminOrderDetailPage() {
                     )}
                   </>
                 ) : (
-                  //  NO TIENE BOLETA - BOTÓN PARA VERIFICAR
                   <>
                     <p className="text-sm text-muted-foreground text-center py-2">
                       Esta orden no tiene una boleta asociada en la base de datos

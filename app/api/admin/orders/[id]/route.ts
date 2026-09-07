@@ -1,3 +1,4 @@
+// app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -14,7 +15,6 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el usuario es admin
     const users = await query(
       `SELECT role FROM users WHERE id = ?`,
       [userId]
@@ -26,7 +26,6 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    //  INCLUIR INFORMACIÓN DE LA BOLETA Y CUSTOMER_RUT
     const orders = await query(
       `SELECT 
         o.*, 
@@ -62,13 +61,11 @@ export async function GET(
 
     const order = orders[0]
 
-    // Obtener items de la orden
     const orderItems = await query(
       `SELECT * FROM order_items WHERE order_id = ?`,
       [orderId]
     ) as any[]
 
-    // Obtener imágenes de los productos
     const itemsWithImages = await Promise.all(
       orderItems.map(async (item: any) => {
         try {
@@ -84,14 +81,12 @@ export async function GET(
             }
           }
         } catch (error) {
-          console.error(`Error obteniendo imagen para el producto: `, error)
+          console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
         }
-        
         return item
       })
     )
 
-    // Obtener dirección de envío si existe
     let shippingAddress = undefined
     if (order.shipping_address_id) {
       const addresses = await query(
@@ -105,7 +100,35 @@ export async function GET(
       }
     }
 
-    // Obtener información del cupón si existe
+    // Si es retiro en bodega o sucursal y no hay dirección, usar la dirección de la bodega/sucursal
+    if (!shippingAddress && (order.shipping_type === 'bodega_pickup' || order.shipping_type === 'branch_pickup')) {
+      const shippingDetails = order.shipping_details ? 
+        (typeof order.shipping_details === 'string' ? JSON.parse(order.shipping_details) : order.shipping_details) : 
+        null
+      
+      if (order.shipping_type === 'bodega_pickup') {
+        shippingAddress = {
+          street: 'Arcangel 1200, San Miguel',
+          commune_name: 'San Miguel',
+          region_name: 'Región Metropolitana',
+          postal_code: '8900000',
+          department: '',
+          delivery_instructions: 'Retiro en bodega - Horario 10:00 a 18:00 hrs',
+          title: 'Bodega'
+        }
+      } else if (shippingDetails?.selectedBranch) {
+        shippingAddress = {
+          street: shippingDetails.selectedBranch.address || 'Dirección de sucursal',
+          commune_name: '',
+          region_name: '',
+          postal_code: '',
+          department: '',
+          delivery_instructions: `Sucursal: ${shippingDetails.selectedBranch.name || ''}`,
+          title: shippingDetails.selectedBranch.name || 'Sucursal'
+        }
+      }
+    }
+
     let couponInfo = null
     if (order.coupon_code) {
       const coupon = await query(
@@ -117,7 +140,6 @@ export async function GET(
       }
     }
 
-    //  CONSTRUIR INFORMACIÓN DE LA BOLETA
     const boletaInfo = order.boleta_folio ? {
       folio: order.boleta_folio,
       estado_sii: order.boleta_estado || 'emitida',
@@ -125,7 +147,6 @@ export async function GET(
       fecha_emision: order.boleta_fecha || null
     } : null
 
-    // Parsear shipping_details
     let shippingDetails = null
     if (order.shipping_details) {
       try {
@@ -137,7 +158,6 @@ export async function GET(
       }
     }
 
-    // Determinar el método de envío mostrado
     let shippingMethodDisplay = 'Método no especificado'
     let shippingType = order.shipping_type || 'standard'
     
@@ -160,7 +180,6 @@ export async function GET(
       }
     }
 
-    // Si no hay shippingDetails pero hay shipping_type
     if (!shippingDetails && order.shipping_type) {
       switch (order.shipping_type) {
         case 'branch_pickup':
@@ -180,7 +199,6 @@ export async function GET(
       }
     }
 
-    // Construir objeto transbank_info
     const transbankInfo = {
       authorization_code: order.transbank_authorization_code || null,
       payment_type: order.transbank_payment_type || null,
@@ -253,7 +271,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el usuario es admin
     const users = await query(
       `SELECT role FROM users WHERE id = ?`,
       [userId]
@@ -288,7 +305,7 @@ export async function PATCH(
       [status, orderId]
     )
 
-    console.log(`Admin: Order status updated to ${status}`)
+    console.log(`Admin: Order ${orderId} status updated to ${status}`)
 
     return NextResponse.json({ success: true, message: 'Estado actualizado correctamente' })
 

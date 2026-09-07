@@ -22,7 +22,8 @@ import {
   Circle,
   Store,
   CreditCard,
-  AlertCircle
+  AlertCircle,
+  MapPin
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -86,7 +87,7 @@ interface Order {
   }
 }
 
-//  NUEVOS ESTADOS - Coinciden con el flujo de seguimiento
+// Estados
 const statusConfig = {
   pending: { label: "Pago Recibido", icon: CheckCircle, color: "bg-green-100 text-green-800 border-green-200", step: 0 },
   processing: { label: "Validando Compra", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200", step: 1 },
@@ -96,7 +97,6 @@ const statusConfig = {
   cancelled: { label: "Cancelado", icon: X, color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 }
 
-//  NUEVO FLUJO DE ESTADOS - Coincide con el orden de seguimiento
 const orderSteps = [
   { key: "pending", label: "Pago Recibido", description: "Pago confirmado correctamente." },
   { key: "processing", label: "Validando Compra", description: "Revisando detalles del pedido." },
@@ -105,7 +105,6 @@ const orderSteps = [
   { key: "delivered", label: "Entregado", description: "Pedido recibido por el cliente." },
 ]
 
-//  OPCIONES DE ESTADOS PARA EL ADMIN
 const statusOptions = [
   { value: "all", label: "Todos los estados" },
   { value: "pending", label: "Pago Recibido" },
@@ -116,7 +115,6 @@ const statusOptions = [
   { value: "cancelled", label: "Cancelado" },
 ]
 
-//  MAPEO DE PASOS PARA EL TIMELINE
 const statusToStepMap: Record<string, number> = {
   'pending': 0,
   'processing': 1,
@@ -126,93 +124,68 @@ const statusToStepMap: Record<string, number> = {
   'cancelled': -1,
 }
 
-// Función para calcular Neto e IVA desde un monto que ya incluye IVA
 const calculateTaxBreakdown = (amountWithIVA: number) => {
   const neto = Math.round(amountWithIVA / 1.19)
   const iva = amountWithIVA - neto
   return { neto, iva }
 }
 
-//  FUNCIÓN MEJORADA PARA OBTENER EL MÉTODO DE ENVÍO MOSTRADO
 const getShippingMethodDisplay = (order: Order | null) => {
   if (!order) return 'Método no especificado'
   
   const shippingDetails = order.shipping_details
   const shippingType = order.shipping_type || ''
   
-  // 1. Si tiene sucursal seleccionada en detalles (NO bodega)
   if (shippingDetails?.selectedBranch && shippingType !== 'bodega_pickup') {
     return `Retiro en Sucursal - ${shippingDetails.selectedBranch.name}`
   }
-  
-  // 2. Si es envío por pagar
   if (shippingDetails?.isCashOnDelivery) {
     return 'Envío por Pagar'
   }
-  
-  // 3. Si tiene nombre del servicio
   if (shippingDetails?.serviceName) {
     return shippingDetails.serviceName
   }
-  
-  // 4. Determinar por shipping_type
   if (shippingType) {
     switch (shippingType) {
-      case 'branch_pickup':
-        return 'Retiro en Sucursal'
-      case 'cash_on_delivery':
-        return 'Envío por Pagar'
-      case 'home_delivery':
-        return 'Envío a Domicilio'
-      case 'standard':
-        return 'Envío Estándar'
-      case 'bodega_pickup':
-        return 'Retiro en Bodega'
-      default:
-        break
+      case 'branch_pickup': return 'Retiro en Sucursal'
+      case 'cash_on_delivery': return 'Envío por Pagar'
+      case 'home_delivery': return 'Envío a Domicilio'
+      case 'standard': return 'Envío Estándar'
+      case 'bodega_pickup': return 'Retiro en Bodega'
+      default: break
     }
   }
-  
-  // 5. Si tiene shipping_method y no es "transbank"
   if (order.shipping_method && order.shipping_method.toLowerCase() !== 'transbank') {
     return order.shipping_method
   }
-  
-  // 6. Si tiene costo de envío, asumimos que es a domicilio (fallback)
   if (order.shipping > 0) {
     return 'Envío a Domicilio'
   }
-  
   return 'Método no especificado'
 }
 
-//  FUNCIÓN PARA DETERMINAR SI ES RETIRO EN BODEGA
 const isBodegaPickup = (order: Order | null) => {
   if (!order) return false
   return order.shipping_type === 'bodega_pickup'
 }
 
-//  FUNCIÓN PARA DETERMINAR SI ES RETIRO EN SUCURSAL
 const isBranchPickup = (order: Order | null) => {
   if (!order) return false
   return order.shipping_type === 'branch_pickup' || 
          order.shipping_details?.selectedBranch !== undefined
 }
 
-//  FUNCIÓN PARA DETERMINAR SI ES ENVÍO A DOMICILIO
 const isHomeDelivery = (order: Order | null) => {
   if (!order) return false
   return order.shipping_type === 'home_delivery'
 }
 
-//  FUNCIÓN PARA DETERMINAR SI ES ENVÍO POR PAGAR
 const isCashOnDelivery = (order: Order | null) => {
   if (!order) return false
   return order.shipping_type === 'cash_on_delivery' || 
          order.shipping_details?.isCashOnDelivery === true
 }
 
-//  FUNCIÓN PARA OBTENER LA SUCURSAL SELECCIONADA
 const getSelectedBranch = (order: Order | null) => {
   if (!order) return null
   return order.shipping_details?.selectedBranch || null
@@ -379,7 +352,6 @@ export default function AdminOrdersPage() {
   const confirmedOrders = orders.filter(order => order.status === 'confirmed').length
   const shippedOrders = orders.filter(order => order.status === 'shipped').length
   const deliveredOrders = orders.filter(order => order.status === 'delivered').length
-  const paidOrders = orders.filter(order => order.payment_status === 'paid').length
 
   if (authLoading) {
     return (
@@ -489,7 +461,7 @@ export default function AdminOrdersPage() {
         </div>
 
         {/* ESTADÍSTICAS */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -542,17 +514,6 @@ export default function AdminOrdersPage() {
                   <p className="text-xl font-bold text-green-600">{deliveredOrders}</p>
                 </div>
                 <CheckCircle className="w-5 h-5 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Total Ingresos</p>
-                  <p className="text-xl font-bold">{formatPrice(totalRevenue)}</p>
-                </div>
-                <Users className="w-5 h-5 text-blue-500" />
               </div>
             </CardContent>
           </Card>
@@ -626,7 +587,6 @@ export default function AdminOrdersPage() {
               const currentStep = getCurrentStep(order)
               const isCancelled = order.status === 'cancelled'
 
-              //  USAR LAS NUEVAS FUNCIONES PARA OBTENER LA INFORMACIÓN DE ENVÍO
               const shippingMethodDisplay = getShippingMethodDisplay(order)
               const bodegaPickup = isBodegaPickup(order)
               const branchPickup = isBranchPickup(order)
@@ -866,7 +826,7 @@ export default function AdminOrdersPage() {
                               Método: {shippingMethodDisplay}
                             </p>
                             
-                            {/* 🔥 DETALLE DE RETIRO EN BODEGA */}
+                            {/* Retiro en Bodega */}
                             {bodegaPickup && (
                               <div className="border rounded p-2 mt-2">
                                 <p className="text-xs flex items-start gap-1.5">
@@ -879,7 +839,7 @@ export default function AdminOrdersPage() {
                               </div>
                             )}
                             
-                            {/*  DETALLE DE RETIRO EN SUCURSAL */}
+                            {/* Retiro en Sucursal */}
                             {branchPickup && selectedBranch && !bodegaPickup && (
                               <div className="border rounded p-2 mt-2">
                                 <p className="text-xs flex items-start gap-1.5">
@@ -889,33 +849,42 @@ export default function AdminOrdersPage() {
                                     {selectedBranch.name}<br />
                                     {selectedBranch.address}
                                     {selectedBranch.telephone && (
-                                      <> <br /> {selectedBranch.telephone}</>
+                                      <> <br /> Teléfono: {selectedBranch.telephone}</>
                                     )}
                                   </span>
                                 </p>
                               </div>
                             )}
                             
-                            {/*  DETALLE DE ENVÍO A DOMICILIO */}
-                            {homeDelivery && order.shipping_address && (
+                            {/* Envío a Domicilio */}
+                            {homeDelivery && (
                               <div className="border rounded p-2 mt-2">
                                 <p className="text-xs flex items-start gap-1.5">
                                   <Truck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                   <span>
                                     <strong>Envío a Domicilio:</strong><br />
-                                    {order.shipping_address.street}<br />
-                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
-                                    {order.shipping_address.department && (
-                                      <> <br />Depto: {order.shipping_address.department}</>
+                                    {order.shipping_address ? (
+                                      <>
+                                        {order.shipping_address.street}<br />
+                                        {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                        {order.shipping_address.department && (
+                                          <> <br />Depto: {order.shipping_address.department}</>
+                                        )}
+                                        {order.shipping_address.postal_code && (
+                                          <> <br />Código Postal: {order.shipping_address.postal_code}</>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <span className="text-amber-600">Dirección no registrada</span>
                                     )}
                                   </span>
                                 </p>
                               </div>
                             )}
                             
-                            {/*  DETALLE DE ENVÍO POR PAGAR */}
+                            {/* Envío por Pagar */}
                             {cashOnDelivery && (
-                              <div className="bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                              <div className="border rounded p-2 mt-2 bg-amber-50 border-amber-200">
                                 <p className="text-xs text-amber-700 flex items-start gap-1.5">
                                   <CreditCard className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                   <span>
@@ -923,6 +892,34 @@ export default function AdminOrdersPage() {
                                     El costo del envío se pagará al momento de la entrega.
                                     {order.shipping > 0 && (
                                       <> Monto: {formatPrice(order.shipping)}</>
+                                    )}
+                                    {order.shipping_address && (
+                                      <>
+                                        <br /><br />
+                                        <strong>Dirección de entrega:</strong><br />
+                                        {order.shipping_address.street}<br />
+                                        {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                        {order.shipping_address.department && (
+                                          <> <br />Depto: {order.shipping_address.department}</>
+                                        )}
+                                      </>
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
+                            )}
+                            
+                            {/* Fallback: Si hay dirección pero no se detectó el tipo */}
+                            {!bodegaPickup && !branchPickup && !homeDelivery && !cashOnDelivery && order.shipping_address && (
+                              <div className="border rounded p-2 mt-2">
+                                <p className="text-xs flex items-start gap-1.5">
+                                  <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                  <span>
+                                    <strong>Dirección de Envío:</strong><br />
+                                    {order.shipping_address.street}<br />
+                                    {order.shipping_address.commune_name}, {order.shipping_address.region_name}
+                                    {order.shipping_address.department && (
+                                      <> <br />Depto: {order.shipping_address.department}</>
                                     )}
                                   </span>
                                 </p>

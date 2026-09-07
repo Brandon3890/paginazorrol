@@ -1,3 +1,4 @@
+// app/api/admin/orders/all/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -10,7 +11,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el usuario es admin
     const users = await query(
       `SELECT role FROM users WHERE id = ?`,
       [userId]
@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No tienes permisos para ver todos los pedidos' }, { status: 403 })
     }
 
-    // INCLUIR customer_rut EN LA CONSULTA
     const orders = await query(
       `SELECT 
         o.*, 
@@ -41,16 +40,13 @@ export async function GET(request: NextRequest) {
 
     console.log(`Found ${orders.length} total orders`)
 
-    // Para cada orden, obtener los items
     const ordersWithItems = await Promise.all(
       orders.map(async (order: any) => {
-        // Obtener items de la orden
         const orderItems = await query(
           `SELECT * FROM order_items WHERE order_id = ?`,
           [order.id]
         ) as any[]
 
-        // Obtener imágenes de los productos
         const itemsWithImages = await Promise.all(
           orderItems.map(async (item: any) => {
             try {
@@ -66,14 +62,12 @@ export async function GET(request: NextRequest) {
                 }
               }
             } catch (error) {
-              console.error(`Error obteniendo imagen para producto :`, error)
+              console.error(`Error obteniendo imagen para producto ${item.product_id}:`, error)
             }
-            
             return item
           })
         )
 
-        // Obtener dirección de envío si existe
         let shippingAddress = undefined
         if (order.shipping_address_id) {
           const addresses = await query(
@@ -87,7 +81,6 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        //  PARSEAR shipping_details
         let shippingDetails = null
         if (order.shipping_details) {
           try {
@@ -96,6 +89,29 @@ export async function GET(request: NextRequest) {
               : order.shipping_details
           } catch (e) {
             console.error('Error parsing shipping_details:', e)
+          }
+        }
+
+        // Si es retiro en bodega o sucursal y no hay dirección, usar la dirección de la bodega/sucursal
+        if (!shippingAddress && (order.shipping_type === 'bodega_pickup' || order.shipping_type === 'branch_pickup')) {
+          if (order.shipping_type === 'bodega_pickup') {
+            shippingAddress = {
+              street: 'Arcangel 1200, San Miguel',
+              commune_name: 'San Miguel',
+              region_name: 'Región Metropolitana',
+              postal_code: '8900000',
+              department: '',
+              delivery_instructions: 'Retiro en bodega'
+            }
+          } else if (shippingDetails?.selectedBranch) {
+            shippingAddress = {
+              street: shippingDetails.selectedBranch.address || 'Dirección de sucursal',
+              commune_name: '',
+              region_name: '',
+              postal_code: '',
+              department: '',
+              delivery_instructions: `Sucursal: ${shippingDetails.selectedBranch.name || ''}`
+            }
           }
         }
 
@@ -131,7 +147,7 @@ export async function GET(request: NextRequest) {
           customer_first_name: order.first_name || '',
           customer_last_name: order.last_name || '',
           customer_phone: order.phone || '',
-          customer_rut: order.customer_rut || '',  
+          customer_rut: order.customer_rut || '',
           is_guest: order.is_guest === 1
         }
       })
