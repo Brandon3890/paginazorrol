@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { ProductCard } from "@/components/product-card"
 import { ProductFilters } from "@/components/product-filters"
+import type { SortOption } from "@/components/product-filters" // 👈 IMPORTAR DESDE product-filters
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { SlidersHorizontal, X, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
@@ -12,7 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 interface CompatibleProduct {
   id: number
   name: string
-  slug: string  
+  slug: string
   price: number
   originalPrice?: number
   image: string
@@ -39,7 +40,7 @@ interface CompatibleProduct {
     isPrimary: boolean
     displayOrder: number
   }>
-  durationMin?: number
+  durationMin: number
   stock: number
   isActive?: boolean
   createdAt?: string
@@ -52,6 +53,9 @@ interface ProductGridProps {
   searchQuery?: string
   onSale?: boolean
 }
+
+// 👈 ELIMINAR ESTA DEFINICIÓN LOCAL
+// type SortOption = 'default' | 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
 
 const PRODUCTS_PER_PAGE = 15
 
@@ -87,12 +91,13 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [sortOption, setSortOption] = useState<SortOption>('default') // 👈 AHORA USA EL TIPO IMPORTADO
   const { products, fetchProducts, globalSearchQuery } = useProductStore()
   const { toast } = useToast()
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [category, subcategory, searchQuery, globalSearchQuery, onSale])
+  }, [category, subcategory, searchQuery, globalSearchQuery, onSale, sortOption])
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -152,7 +157,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     return activeProducts.map(product => ({
       id: product.id,
       name: product.name,
-      slug: product.slug || '',  
+      slug: product.slug || '',
       price: product.price,
       originalPrice: product.originalPrice,
       image: product.image,
@@ -166,14 +171,14 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       description: product.description,
       inStock: product.stock > 0,
       isOnSale: product.isOnSale,
-      ageMin: product.ageMin,
-      playersMin: product.playersMin,
-      playersMax: product.playersMax,
+      ageMin: product.ageMin || 0,
+      playersMin: product.playersMin || 1,
+      playersMax: product.playersMax || 8,
       categoryId: product.categoryId,
       subcategoryId: product.subcategoryId,
       subcategoryIds: product.subcategoryIds || [],
       subcategories: product.subcategories || [],
-      durationMin: product.durationMin,
+      durationMin: product.durationMin || 0,
       stock: product.stock || 0,
       isActive: product.isActive,
       createdAt: product.createdAt,
@@ -184,6 +189,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
   const maxPrice = compatibleProducts.length > 0 ? Math.max(...compatibleProducts.map((p) => p.price)) : 100
   const maxAge = compatibleProducts.length > 0 ? Math.max(...compatibleProducts.map((p) => p.ageMin)) : 18
   const maxPlayers = compatibleProducts.length > 0 ? Math.max(...compatibleProducts.map((p) => p.playersMax)) : 8
+  const maxDuration = compatibleProducts.length > 0 ? Math.max(...compatibleProducts.map((p) => p.durationMin)) : 120
 
   const [filters, setFilters] = useState({
     priceRange: [0, maxPrice],
@@ -191,8 +197,10 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     subcategories: [] as string[],
     ageRange: [0, maxAge],
     playersRange: [1, maxPlayers],
+    durationRange: [0, maxDuration],
     inStock: false,
     tags: [] as string[],
+    sortBy: 'default' as SortOption, // 👈 AHORA USA EL TIPO IMPORTADO
   })
 
   useEffect(() => {
@@ -200,9 +208,10 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       ...prev,
       priceRange: [0, maxPrice],
       ageRange: [0, maxAge],
-      playersRange: [1, maxPlayers]
+      playersRange: [1, maxPlayers],
+      durationRange: [0, maxDuration]
     }))
-  }, [maxPrice, maxAge, maxPlayers])
+  }, [maxPrice, maxAge, maxPlayers, maxDuration])
 
   const clearAllFilters = () => {
     const clearedFilters = {
@@ -211,10 +220,24 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       subcategories: [],
       ageRange: [0, maxAge],
       playersRange: [1, maxPlayers],
+      durationRange: [0, maxDuration],
       inStock: false,
       tags: [],
+      sortBy: 'default' as SortOption, // 👈 AHORA USA EL TIPO IMPORTADO
     }
     setFilters(clearedFilters)
+  }
+
+  // 👈 FUNCIÓN DE ORDENAMIENTO
+  const sortProducts = (products: CompatibleProduct[], sort: SortOption): CompatibleProduct[] => {
+    switch (sort) {
+      case 'price-asc':
+        return [...products].sort((a, b) => a.price - b.price)
+      case 'price-desc':
+        return [...products].sort((a, b) => b.price - a.price)
+      default:
+        return products
+    }
   }
 
   const filteredProducts = useMemo(() => {
@@ -267,12 +290,21 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       }
       if (product.ageMin < filters.ageRange[0] || product.ageMin > filters.ageRange[1]) return false
       if (product.playersMax < filters.playersRange[0] || product.playersMin > filters.playersRange[1]) return false
+      if (product.durationMin < filters.durationRange[0] || product.durationMin > filters.durationRange[1]) return false
       if (filters.inStock && product.stock <= 0) return false
       if (filters.tags.length > 0 && !filters.tags.some((tag) => product.tags.includes(tag))) return false
       return true
     })
 
-    return filtered.sort((a, b) => getProductPriority(a) - getProductPriority(b))
+    // 👈 APLICAR ORDENAMIENTO
+    let sorted = sortProducts(filtered, filters.sortBy)
+
+    // Si es el orden por defecto, aplicar el priority sorting
+    if (filters.sortBy === 'default') {
+      sorted = sorted.sort((a, b) => getProductPriority(a) - getProductPriority(b))
+    }
+
+    return sorted
   }, [category, subcategory, searchQuery, onSale, filters, compatibleProducts, globalSearchQuery])
 
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
@@ -291,6 +323,8 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     filters.ageRange[1] < maxAge ||
     filters.playersRange[0] > 1 ||
     filters.playersRange[1] < maxPlayers ||
+    filters.durationRange[0] > 0 ||
+    filters.durationRange[1] < maxDuration ||
     filters.inStock
 
   return (
@@ -367,6 +401,9 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
             {filters.subcategories.length > 0 && ` Subcategorias (${filters.subcategories.length})`}
             {filters.tags.length > 0 && ` Etiquetas (${filters.tags.length})`}
             {filters.inStock && ` Stock disponible`}
+            {(filters.durationRange[0] > 0 || filters.durationRange[1] < maxDuration) && 
+              ` Duración: ${filters.durationRange[0]}-${filters.durationRange[1]} min`}
+            {filters.sortBy !== 'default' && ` Orden: ${filters.sortBy === 'price-asc' ? 'Menor a mayor precio' : 'Mayor a menor precio'}`}
           </div>
           <Button 
             variant="outline" 
@@ -384,7 +421,11 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
         {showFilters && (
           <div className="hidden lg:block w-80 flex-shrink-0">
             <div className="sticky top-4 bg-background border rounded-lg shadow-sm p-4 h-fit">
-              <ProductFilters filters={filters} onFiltersChange={setFilters} products={compatibleProducts} />
+              <ProductFilters 
+                filters={filters} 
+                onFiltersChange={setFilters} 
+                products={compatibleProducts} 
+              />
             </div>
           </div>
         )}
@@ -473,7 +514,11 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
             <SheetTitle className="text-xl">Filtros</SheetTitle>
           </SheetHeader>
           <div className="mt-6">
-            <ProductFilters filters={filters} onFiltersChange={setFilters} products={compatibleProducts} />
+            <ProductFilters 
+              filters={filters} 
+              onFiltersChange={setFilters} 
+              products={compatibleProducts} 
+            />
           </div>
         </SheetContent>
       </Sheet>
