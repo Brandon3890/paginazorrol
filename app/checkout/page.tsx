@@ -1234,10 +1234,9 @@ export default function CheckoutPage() {
                   {(!user?.rut || user?.rut === '66666666-6') && (
                     <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <Label className="text-sm font-medium text-amber-800">
-                        RUT para envío <span className="text-red-500">*</span>
+                        RUT para envío (Opcional) <span className="text-red-500">*</span>
                       </Label>
                       <p className="text-xs text-amber-700 mb-2">
-                        Se requiere un RUT Válido. Se usará solo para el envío.
                       </p>
                       <Input
                         required

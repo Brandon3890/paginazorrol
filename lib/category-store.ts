@@ -13,7 +13,6 @@ interface Subcategory {
 }
 
 type CreateSubcategoryInput = Omit<Subcategory, 'id' | 'created_at' | 'updated_at' | 'display_order'>
-
 type UpdateSubcategoryInput = Partial<Omit<Subcategory, 'id' | 'created_at' | 'updated_at'>>
 
 interface Category {
@@ -31,8 +30,8 @@ interface CategoryStore {
   categories: Category[]
   loading: boolean
   error: string | null
+  errorDetails: any | null
   categoriesLoaded: boolean
-  lastFetchTimestamp: number
   
   fetchCategories: (force?: boolean) => Promise<void>
   addCategory: (category: Omit<Category, 'id' | 'created_at' | 'updated_at' | 'subcategories'>) => Promise<void>
@@ -47,20 +46,8 @@ interface CategoryStore {
   activateSubcategory: (id: number) => Promise<void>
   deleteSubcategoryPermanently: (id: number) => Promise<void> 
   getCategoryById: (id: number) => Category | undefined
-  updateSubcategoryOrder: (id: number, display_order: number) => Promise<void> 
   reorderSubcategories: (categoryId: number, orderedIds: number[]) => Promise<void>
   clearError: () => void
-  resetStore: () => void
-  forceRefresh: () => Promise<void>
-}
-
-export const emitCategoryUpdate = () => {
-  if (typeof window !== 'undefined') {
-    const event = new CustomEvent('categories-updated', {
-      detail: { timestamp: Date.now() }
-    })
-    window.dispatchEvent(event)
-  }
 }
 
 export const useCategoryStore = create<CategoryStore>()(
@@ -69,115 +56,91 @@ export const useCategoryStore = create<CategoryStore>()(
       categories: [],
       loading: false,
       error: null,
+      errorDetails: null,
       categoriesLoaded: false,
-      lastFetchTimestamp: 0,
-
-      resetStore: () => {
-        set({ 
-          categories: [], 
-          categoriesLoaded: false,
-          loading: false,
-          error: null,
-          lastFetchTimestamp: 0
-        })
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('category-storage')
-        }
-      },
-
-      forceRefresh: async () => {
-
-        set({ categoriesLoaded: false, lastFetchTimestamp: 0 })
-        await get().fetchCategories(true)
-      },
 
       fetchCategories: async (force = false) => {
-        if (force) {
-          get().resetStore()
-        }
-
         if (get().categoriesLoaded && !force) {
-          console.log('Categorías cargadas')
+          console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
         }
 
-        set({ loading: true, error: null })
+        set({ loading: true, error: null, errorDetails: null })
         try {
-          const timestamp = Date.now()
-          
-          const response = await fetch(`/api/categories?_=${timestamp}`, {
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          })
+          console.log('🔄 Fetching categories...')
+          const response = await fetch('/api/categories')
           
           if (!response.ok) {
             throw new Error(`Error fetching categories: ${response.status}`)
           }
           
-          const categories = await response.json()
+          const data = await response.json()
           
-          // CORRECCIÓN: Convertir is_active correctamente a boolean
-          const processedCategories = categories.map((cat: any) => ({
-            ...cat,
-            is_active: cat.is_active === 1 || cat.is_active === true,
-            subcategories: Array.isArray(cat.subcategories) 
-              ? cat.subcategories.map((sub: any) => ({
-                  ...sub,
-                  is_active: sub.is_active === 1 || sub.is_active === true
-                }))
-              : []
-          }))
+          if (!Array.isArray(data)) {
+            console.error('❌ La API no devolvió un array:', data)
+            set({ 
+              categories: [], 
+              loading: false, 
+              categoriesLoaded: true,
+              error: 'Formato de datos inválido'
+            })
+            return
+          }
           
+          const validCategories = data
+            .filter((cat: any) => {
+              const isValid = cat && typeof cat === 'object' && cat.id && typeof cat.id === 'number'
+              if (!isValid) {
+                console.warn('⚠️ Categoría inválida:', cat)
+              }
+              return isValid
+            })
+            .map((cat: any) => ({
+              id: cat.id,
+              name: cat.name || 'Sin nombre',
+              slug: cat.slug || 'sin-slug',
+              description: cat.description || '',
+              is_active: Boolean(cat.is_active),
+              created_at: cat.created_at || new Date().toISOString(),
+              updated_at: cat.updated_at || new Date().toISOString(),
+              subcategories: Array.isArray(cat.subcategories) 
+                ? cat.subcategories
+                    .filter((sub: any) => sub && typeof sub === 'object' && sub.id)
+                    .map((sub: any) => ({
+                      id: sub.id,
+                      name: sub.name || 'Sin nombre',
+                      slug: sub.slug || 'sin-slug',
+                      category_id: sub.category_id || cat.id,
+                      is_active: Boolean(sub.is_active),
+                      display_order: sub.display_order || 0,
+                      created_at: sub.created_at || new Date().toISOString(),
+                      updated_at: sub.updated_at || new Date().toISOString()
+                    }))
+                    .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+                : []
+            }))
+          
+          console.log(`✅ ${validCategories.length} categorías válidas cargadas`)
           
           set({ 
-            categories: processedCategories, 
+            categories: validCategories, 
             loading: false, 
             categoriesLoaded: true,
-            lastFetchTimestamp: timestamp
+            error: null,
+            errorDetails: null
           })
         } catch (error) {
-          console.error('Error fetching categories:', error)
+          console.error('❌ Error fetching categories:', error)
           set({ 
             error: (error as Error).message, 
-            loading: false 
+            loading: false,
+            categoriesLoaded: true
           })
         }
       },
 
       clearError: () => {
-        set({ error: null })
-      },
-
-      updateSubcategoryOrder: async (id: number, display_order: number) => {
-        try {
-          const response = await fetch(`/api/subcategories/${id}/order`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ display_order })
-          })
-          
-          if (!response.ok) throw new Error('Error updating subcategory order')
-          
-          set(state => ({
-            categories: state.categories.map(cat => ({
-              ...cat,
-              subcategories: cat.subcategories.map(sub => 
-                sub.id === id 
-                  ? { ...sub, display_order } 
-                  : sub
-              ).sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
-            }))
-          }))
-          
-          emitCategoryUpdate()
-        } catch (error) {
-          console.error('Error updating subcategory order:', error)
-          set({ error: (error as Error).message })
-        }
+        set({ error: null, errorDetails: null })
       },
 
       reorderSubcategories: async (categoryId: number, orderedIds: number[]) => {
@@ -188,10 +151,7 @@ export const useCategoryStore = create<CategoryStore>()(
             body: JSON.stringify({ ordered_ids: orderedIds })
           })
           
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Error reordering subcategories')
-          }
+          if (!response.ok) throw new Error('Error reordering subcategories')
           
           set(state => ({
             categories: state.categories.map(cat => {
@@ -210,29 +170,19 @@ export const useCategoryStore = create<CategoryStore>()(
             })
           }))
           
-          emitCategoryUpdate()
-          console.log(`Subcategorías reordenadas para categoría ${categoryId}`)
+          console.log(`✅ Subcategorías reordenadas para categoría ${categoryId}`)
         } catch (error) {
           console.error('Error reordering subcategories:', error)
           set({ error: (error as Error).message })
-          throw error
         }
       },
 
       addCategory: async (category) => {
         try {
-          const categoryData = {
-            name: category.name,
-            slug: category.slug,
-            description: category.description || '',
-            is_active: category.is_active !== undefined ? category.is_active : true
-          }
-
-
           const response = await fetch('/api/categories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(categoryData)
+            body: JSON.stringify(category)
           })
           
           if (!response.ok) {
@@ -241,8 +191,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          emitCategoryUpdate()
-          console.log('Categoría creada exitosamente')
+          console.log('✅ Categoría creada exitosamente')
         } catch (error) {
           console.error('Error creating category:', error)
           set({ error: (error as Error).message })
@@ -264,8 +213,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          emitCategoryUpdate()
-          console.log(`Categoría actualizada`)
+          console.log(`✅ Categoría ${id} actualizada`)
         } catch (error) {
           console.error('Error updating category:', error)
           set({ error: (error as Error).message })
@@ -280,8 +228,10 @@ export const useCategoryStore = create<CategoryStore>()(
           })
           
           if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Error deactivating category')
+            const errorData = await response.json()
+            // Guardar los detalles del error
+            set({ errorDetails: errorData })
+            throw new Error(errorData.error || 'Error deactivating category')
           }
           
           set(state => ({
@@ -290,8 +240,7 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          emitCategoryUpdate()
-          console.log(`Categoría desactivada`)
+          console.log(`✅ Categoría ${id} desactivada`)
         } catch (error) {
           console.error('Error deactivating category:', error)
           set({ error: (error as Error).message })
@@ -316,8 +265,7 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          emitCategoryUpdate()
-          console.log(`Categoría activada`)
+          console.log(`✅ Categoría ${id} activada`)
         } catch (error) {
           console.error('Error activating category:', error)
           set({ error: (error as Error).message })
@@ -340,8 +288,7 @@ export const useCategoryStore = create<CategoryStore>()(
             categories: state.categories.filter(cat => cat.id !== id)
           }))
           
-          emitCategoryUpdate()
-          console.log(`Categoría eliminada permanentemente`)
+          console.log(`✅ Categoría ${id} eliminada permanentemente`)
         } catch (error) {
           console.error('Error deleting category:', error)
           set({ error: (error as Error).message })
@@ -363,8 +310,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          emitCategoryUpdate()
-          console.log('Subcategoría creada exitosamente')
+          console.log('✅ Subcategoría creada exitosamente')
         } catch (error) {
           console.error('Error creating subcategory:', error)
           set({ error: (error as Error).message })
@@ -386,8 +332,7 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          emitCategoryUpdate()
-          console.log(`Subcategoría actualizada`)
+          console.log(`✅ Subcategoría ${id} actualizada`)
         } catch (error) {
           console.error('Error updating subcategory:', error)
           set({ error: (error as Error).message })
@@ -415,8 +360,7 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          emitCategoryUpdate()
-          console.log(`Subcategoría ${id} desactivada`)
+          console.log(`✅ Subcategoría ${id} desactivada`)
         } catch (error) {
           console.error('Error deactivating subcategory:', error)
           set({ error: (error as Error).message })
@@ -444,8 +388,7 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          emitCategoryUpdate()
-          console.log(`Subcategoría activada`)
+          console.log(`✅ Subcategoría ${id} activada`)
         } catch (error) {
           console.error('Error activating subcategory:', error)
           set({ error: (error as Error).message })
@@ -471,8 +414,7 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          emitCategoryUpdate()
-          console.log(`Subcategoría eliminada permanentemente`)
+          console.log(`✅ Subcategoría ${id} eliminada permanentemente`)
         } catch (error) {
           console.error('Error deleting subcategory:', error)
           set({ error: (error as Error).message })
@@ -488,8 +430,7 @@ export const useCategoryStore = create<CategoryStore>()(
       name: 'category-storage',
       partialize: (state) => ({ 
         categories: state.categories,
-        categoriesLoaded: state.categoriesLoaded,
-        lastFetchTimestamp: state.lastFetchTimestamp
+        categoriesLoaded: state.categoriesLoaded 
       }),
     }
   )

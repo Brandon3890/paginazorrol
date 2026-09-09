@@ -7,50 +7,54 @@ export async function GET() {
   try {
     await transaction.begin();
     
+    // Primero obtener todas las categorías
     const categories = await transaction.query(`
       SELECT 
-        c.*
-      FROM categories c
-      ORDER BY c.is_active DESC, c.name
+        id,
+        name,
+        slug,
+        description,
+        is_active,
+        created_at,
+        updated_at
+      FROM categories
+      ORDER BY name ASC
     `) as any[];
 
-    const categoriesWithSubcategories = await Promise.all(
+    // Para cada categoría, obtener sus subcategorías
+    const categoriesWithSubs = await Promise.all(
       categories.map(async (category) => {
         const subcategories = await transaction.query(`
           SELECT 
-            s.id,
-            s.name,
-            s.slug,
-            s.category_id,
-            s.is_active,
-            s.display_order,
-            s.created_at,
-            s.updated_at
-          FROM subcategories s
-          WHERE s.category_id = ?
-          ORDER BY s.display_order ASC, s.id ASC
+            id,
+            name,
+            slug,
+            category_id,
+            is_active,
+            display_order,
+            created_at,
+            updated_at
+          FROM subcategories
+          WHERE category_id = ?
+          ORDER BY display_order ASC, name ASC
         `, [category.id]) as any[];
 
         return {
           ...category,
-          subcategories: subcategories || []
+          is_active: Boolean(category.is_active),
+          subcategories: subcategories.map((sub: any) => ({
+            ...sub,
+            is_active: Boolean(sub.is_active),
+            display_order: sub.display_order || 0
+          }))
         };
       })
     );
 
     await transaction.commit();
 
-    // HEADERS ANTI-CACHÉ
-    return new NextResponse(JSON.stringify(categoriesWithSubcategories), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate, private',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'Surrogate-Control': 'no-store'
-      }
-    });
+    console.log(`✅ ${categoriesWithSubs.length} categorías cargadas`);
+    return NextResponse.json(categoriesWithSubs);
     
   } catch (error) {
     await transaction.rollback();
@@ -66,9 +70,7 @@ export async function POST(request: Request) {
   const transaction = new Transaction();
   
   try {
-    const body = await request.json();
-    const { name, slug, description, is_active = true } = body;
-
+    const { name, slug, description, is_active = true } = await request.json();
 
     if (!name || !slug) {
       return NextResponse.json(
@@ -79,27 +81,12 @@ export async function POST(request: Request) {
 
     await transaction.begin();
 
-    const existing = await transaction.query(
-      'SELECT id FROM categories WHERE slug = ?',
-      [slug]
-    ) as any[];
-
-    if (existing.length > 0) {
-      await transaction.rollback();
-      return NextResponse.json(
-        { error: 'Ya existe una categoría con este slug' },
-        { status: 409 }
-      );
-    }
-
     const result: any = await transaction.query(
       'INSERT INTO categories (name, slug, description, is_active) VALUES (?, ?, ?, ?)',
-      [name, slug, description || '', is_active]
+      [name, slug, description, is_active]
     );
 
     await transaction.commit();
-
-    console.log(`Categoría creada`);
 
     return NextResponse.json({ 
       id: result.insertId,

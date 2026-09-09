@@ -17,15 +17,28 @@ export async function GET(
       );
     }
 
-    const categoryId = parseInt(id);
-
     await transaction.begin();
 
-    // Obtener la categoría
-    const categories = await transaction.query(
-      'SELECT * FROM categories WHERE id = ?',
-      [categoryId]
-    ) as any[];
+    const categories: any = await transaction.query(`
+      SELECT 
+        c.*,
+        JSON_ARRAYAGG(
+          JSON_OBJECT(
+            'id', s.id,
+            'name', s.name,
+            'slug', s.slug,
+            'category_id', s.category_id,
+            'is_active', s.is_active,
+            'display_order', IFNULL(s.display_order, 0),
+            'created_at', s.created_at,
+            'updated_at', s.updated_at
+          )
+        ) as subcategories
+      FROM categories c
+      LEFT JOIN subcategories s ON c.id = s.category_id
+      WHERE c.id = ?
+      GROUP BY c.id
+    `, [parseInt(id)]);
 
     if (categories.length === 0) {
       await transaction.commit();
@@ -35,34 +48,31 @@ export async function GET(
       );
     }
 
-    // Obtener TODAS las subcategorías (activas e inactivas)
-    const subcategories = await transaction.query(
-      `SELECT 
-        s.id,
-        s.name,
-        s.slug,
-        s.category_id,
-        s.is_active,
-        s.display_order,
-        s.created_at,
-        s.updated_at
-      FROM subcategories s
-      WHERE s.category_id = ?
-      ORDER BY s.display_order ASC, s.id ASC`,
-      [categoryId]
-    ) as any[];
-
-
     await transaction.commit();
 
     const category = categories[0];
+    let subcategories = [];
     
-    const categoryWithSubcategories = {
-      ...category,
-      subcategories: subcategories || []
-    };
+    if (category.subcategories) {
+      try {
+        if (typeof category.subcategories === 'string') {
+          subcategories = JSON.parse(category.subcategories);
+        } else if (Array.isArray(category.subcategories)) {
+          subcategories = category.subcategories;
+        }
+        subcategories = subcategories
+          .filter((sub: any) => sub.id !== null)
+          .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+      } catch (error) {
+        subcategories = [];
+      }
+    }
 
-    return NextResponse.json(categoryWithSubcategories);
+    return NextResponse.json({
+      ...category,
+      is_active: Boolean(category.is_active),
+      subcategories: subcategories
+    });
     
   } catch (error) {
     await transaction.rollback();
@@ -129,12 +139,14 @@ export async function DELETE(
       );
     }
 
+    const categoryId = parseInt(id);
+
     await transaction.begin();
 
-    // Verificar si tiene productos
+    // Verificar si hay productos asociados
     const productsCheck = await transaction.query(
       'SELECT COUNT(*) as count FROM products WHERE category_id = ?',
-      [parseInt(id)]
+      [categoryId]
     ) as any[];
 
     if (productsCheck[0].count > 0) {
@@ -142,6 +154,7 @@ export async function DELETE(
       return NextResponse.json(
         { 
           error: 'No se puede desactivar la categoría porque tiene productos asociados',
+          details: `La categoría tiene ${productsCheck[0].count} productos asociados. No se puede desactivar porque hay productos que dependen de ella.`,
           hasProducts: true,
           productCount: productsCheck[0].count
         },
@@ -151,21 +164,12 @@ export async function DELETE(
 
     await transaction.query(
       'UPDATE categories SET is_active = FALSE WHERE id = ?',
-      [parseInt(id)]
-    );
-
-    // Desactivar también sus subcategorías
-    await transaction.query(
-      'UPDATE subcategories SET is_active = FALSE WHERE category_id = ?',
-      [parseInt(id)]
+      [categoryId]
     );
 
     await transaction.commit();
 
-    return NextResponse.json({ 
-      message: 'Category deactivated successfully',
-      categoryId: parseInt(id)
-    });
+    return NextResponse.json({ message: 'Category deactivated successfully' });
     
   } catch (error) {
     await transaction.rollback();
