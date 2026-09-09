@@ -1390,29 +1390,6 @@ const handleEnviarEmailAntiguo = async () => {
                 )}
               </CardContent>
             </Card>
-
-            {/* Botones de acción adicionales */}
-            <div className="flex flex-wrap gap-3">
-              <Button
-                variant="outline"
-                onClick={() => window.print()}
-              >
-                <Printer className="w-4 h-4 mr-2" />
-                Imprimir
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleEnviarEmailNuevo}
-                disabled={enviandoEmail}
-              >
-                {enviandoEmail ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 mr-2" />
-                )}
-                Reenviar email
-              </Button>
-            </div>
           </div>
         </div>
       </div>
