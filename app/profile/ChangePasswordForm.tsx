@@ -1,3 +1,4 @@
+// app/profile/ChangePasswordForm.tsx - ACTUALIZADO
 "use client"
 
 import { useState } from "react"
@@ -10,7 +11,7 @@ import { useAuthStore } from "@/lib/auth-store"
 import { Key, Eye, EyeOff, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 
 export default function ChangePasswordForm() {
-  const { user } = useAuthStore()
+  const { user, token } = useAuthStore()
   const { toast } = useToast()
   
   const [formData, setFormData] = useState({
@@ -84,10 +85,12 @@ export default function ChangePasswordForm() {
     setIsLoading(true)
 
     try {
+      // ✅ AÑADIR EL TOKEN EN EL HEADER
       const response = await fetch(`/api/user/${user?.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           currentPassword: formData.currentPassword,

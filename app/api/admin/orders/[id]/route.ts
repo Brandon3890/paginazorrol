@@ -26,6 +26,7 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
+    // ✅ Consulta que SIEMPRE trae los datos de la boleta antigua (LEFT JOIN)
     const orders = await query(
       `SELECT 
         o.*, 
@@ -41,10 +42,15 @@ export async function GET(
         o.payment_method,
         o.shipping_type,
         o.shipping_details,
+        o.boleta_pdf_path,
+        o.boleta_pdf_folio,
+        b.id as boleta_id,
         b.folio as boleta_folio,
         b.estado_sii as boleta_estado,
         b.monto_total as boleta_monto,
-        b.fecha_emision as boleta_fecha
+        b.fecha_emision as boleta_fecha,
+        b.rut_receptor as boleta_rut_receptor,
+        b.razon_social_receptor as boleta_razon_social
        FROM orders o 
        LEFT JOIN users u ON o.user_id = u.id 
        LEFT JOIN boletas b ON o.id = b.order_id
@@ -140,11 +146,22 @@ export async function GET(
       }
     }
 
-    const boletaInfo = order.boleta_folio ? {
+    // ✅ DATOS DE LA BOLETA ANTIGUA (SIEMPRE que exista en la tabla boletas)
+    const boletaAntigua = order.boleta_folio ? {
+      id: order.boleta_id,
       folio: order.boleta_folio,
       estado_sii: order.boleta_estado || 'emitida',
       monto_total: parseFloat(order.boleta_monto) || 0,
-      fecha_emision: order.boleta_fecha || null
+      fecha_emision: order.boleta_fecha || null,
+      rut_receptor: order.boleta_rut_receptor || null,
+      razon_social: order.boleta_razon_social || null
+    } : null
+
+    // ✅ DATOS DE LA BOLETA NUEVA (SOLO si existe boleta_pdf_path)
+    const boletaNueva = order.boleta_pdf_path ? {
+      folio: order.boleta_pdf_folio || 'ADMIN-00001',
+      path: order.boleta_pdf_path,
+      fecha_subida: order.updated_at || null
     } : null
 
     let shippingDetails = null
@@ -207,6 +224,7 @@ export async function GET(
       transaction_date: order.transbank_transaction_date || null
     }
 
+    // ✅ CONSTRUIR RESPUESTA CON AMBAS BOLETAS
     const responseOrder = {
       id: order.id,
       order_number: order.order_number,
@@ -232,8 +250,13 @@ export async function GET(
       customer_phone: order.phone || '',
       customer_rut: order.customer_rut || '',
       is_guest: order.is_guest === 1,
+      // ✅ Boleta antigua (ApiGateway) - SIEMPRE que exista
       boleta_emitida: order.boleta_folio ? 1 : 0,
-      boleta_info: boletaInfo,
+      boleta_info: boletaAntigua,
+      // ✅ Boleta nueva (subida por admin) - SOLO si existe
+      boleta_pdf_path: order.boleta_pdf_path || null,
+      boleta_pdf_folio: order.boleta_pdf_folio || null,
+      boleta_nueva: boletaNueva,
       items: itemsWithImages.map((item: any) => ({
         id: item.id,
         product_id: item.product_id,

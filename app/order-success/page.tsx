@@ -1,3 +1,4 @@
+// app/order-success/page.tsx
 "use client"
 
 import { useEffect, useState } from 'react'
@@ -95,7 +96,7 @@ export default function OrderSuccessPage() {
     }
   }, [orderId, status, router])
 
-  //  Emitir boleta desde el servidor (API)
+  // Emitir boleta desde el servidor (API)
   const emitirBoleta = async () => {
     if (!order || !orderId) return
 
@@ -126,7 +127,7 @@ export default function OrderSuccessPage() {
         setProcesoCompletado(true)
         
         toast({
-          title: " Boleta generada",
+          title: "✅ Boleta generada",
           description: `Boleta N° ${data.folio} generada correctamente`,
           duration: 5000,
         })
@@ -154,7 +155,7 @@ export default function OrderSuccessPage() {
     }
   }
 
-  //  Auto-emitir boleta cuando se carga la orden
+  // Auto-emitir boleta cuando se carga la orden
   useEffect(() => {
     if (order && status === 'success' && !procesando && !procesoCompletado && order.boleta_emitida !== 1 && !boletaInfo) {
       const timer = setTimeout(() => {
@@ -346,7 +347,7 @@ export default function OrderSuccessPage() {
   const renderBoletaStatus = () => {
     if (!status || status !== 'success') return null
 
-    //  Ya tiene boleta
+    // Ya tiene boleta
     if (tieneBoleta) {
       return (
         <div className="border rounded-lg p-4 bg-green-50 border-green-200">

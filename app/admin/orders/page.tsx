@@ -105,6 +105,15 @@ const orderSteps = [
   { key: "delivered", label: "Entregado", description: "Pedido recibido por el cliente." },
 ]
 
+// Estados para retiro en bodega/sucursal
+const orderStepsPickup = [
+  { key: "pending", label: "Pago Recibido", description: "Pago confirmado correctamente." },
+  { key: "processing", label: "Validando Compra", description: "Revisando detalles del pedido." },
+  { key: "confirmed", label: "Compra Confirmada", description: "Emisión de boleta y preparación." },
+  { key: "shipped", label: "Disponible para retirar", description: "Pedido listo para retiro." },
+  { key: "delivered", label: "Entregado", description: "Pedido retirado por el cliente." },
+]
+
 const statusOptions = [
   { value: "all", label: "Todos los estados" },
   { value: "pending", label: "Pago Recibido" },
@@ -164,6 +173,7 @@ const getShippingMethodDisplay = (order: Order | null) => {
   return 'Método no especificado'
 }
 
+//  FUNCIONES PARA IDENTIFICAR TIPO DE ENVÍO
 const isBodegaPickup = (order: Order | null) => {
   if (!order) return false
   return order.shipping_type === 'bodega_pickup'
@@ -586,6 +596,7 @@ export default function AdminOrdersPage() {
               const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
               const currentStep = getCurrentStep(order)
               const isCancelled = order.status === 'cancelled'
+              const isDelivered = order.status === 'delivered'
 
               const shippingMethodDisplay = getShippingMethodDisplay(order)
               const bodegaPickup = isBodegaPickup(order)
@@ -593,6 +604,32 @@ export default function AdminOrdersPage() {
               const homeDelivery = isHomeDelivery(order)
               const cashOnDelivery = isCashOnDelivery(order)
               const selectedBranch = getSelectedBranch(order)
+
+              //  Determinar si es retiro (bodega o sucursal)
+              const isPickup = bodegaPickup || branchPickup
+
+              //  Usar los pasos correctos según el tipo de envío
+              const steps = isPickup ? orderStepsPickup : orderSteps
+
+              //  Obtener la etiqueta para el paso "shipped"
+              const getShippedLabel = () => {
+                if (isPickup) return "Disponible para retirar"
+                return "En Camino"
+              }
+
+              const getShippedDescription = () => {
+                if (bodegaPickup) return " Listo para retirar en bodega"
+                if (branchPickup) return " Listo para retirar en sucursal"
+                if (homeDelivery) return " En ruta de entrega"
+                if (cashOnDelivery) return " En ruta hacia el destino"
+                return shippingMethodDisplay
+              }
+
+              //  Obtener estados disponibles para el selector
+              const getAvailableStatuses = () => {
+                // Para retiro: los mismos estados, pero el label de "shipped" cambia
+                return statusOptions
+              }
 
               return (
                 <Card key={order.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -612,6 +649,25 @@ export default function AdminOrdersPage() {
                             <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
                               <Users className="w-3 h-3 mr-1" />
                               Cliente
+                            </Badge>
+                          )}
+                          {/*  Badge para identificar tipo de envío */}
+                          {isPickup && (
+                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
+                              <Store className="w-3 h-3 mr-1" />
+                              {bodegaPickup ? 'Retiro Bodega' : 'Retiro Sucursal'}
+                            </Badge>
+                          )}
+                          {homeDelivery && (
+                            <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-200 text-xs">
+                              <Truck className="w-3 h-3 mr-1" />
+                              Envío Domicilio
+                            </Badge>
+                          )}
+                          {cashOnDelivery && (
+                            <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
+                              <CreditCard className="w-3 h-3 mr-1" />
+                              Envío por Pagar
                             </Badge>
                           )}
                         </div>
@@ -637,7 +693,7 @@ export default function AdminOrdersPage() {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                         <Badge className={`${statusInfo.color} border`}>
                           <StatusIcon className="w-3 h-3 mr-1" />
-                          {statusInfo.label}
+                          {isPickup && order.status === 'shipped' ? 'Disponible para retirar' : statusInfo.label}
                         </Badge>
                         <Badge variant="outline" className="text-xs">
                           {order.payment_status === 'paid' ? 'Pagado' : 
@@ -655,7 +711,17 @@ export default function AdminOrdersPage() {
                     {!isCancelled ? (
                       <div className="bg-gray-50 rounded-lg p-3 overflow-x-auto">
                         <div className="flex items-center justify-between relative min-w-[600px]">
-                          {orderSteps.map((step, index) => {
+                          {steps.map((step, index) => {
+                            // Para pasos de "shipped", usar etiqueta dinámica
+                            let stepLabel = step.label
+                            let stepDescription = step.description
+
+                            if (step.key === 'shipped') {
+                              stepLabel = getShippedLabel()
+                              stepDescription = getShippedDescription()
+                            }
+
+                            // Determinar estado del paso
                             const isCompleted = currentStep > index
                             const isActive = currentStep === index
 
@@ -663,18 +729,23 @@ export default function AdminOrdersPage() {
                             if (isCompleted) stepStatus = 'completed'
                             else if (isActive) stepStatus = 'active'
 
+                            // Si el paso es "delivered" y está completado, forzar color verde
+                            const isDeliveredStep = step.key === 'delivered' && (isCompleted || isActive)
+
                             const getStepColor = () => {
+                              if (isDeliveredStep) return 'bg-green-500 border-green-500 text-white'
                               if (stepStatus === 'completed') return 'bg-green-500 border-green-500 text-white'
                               if (stepStatus === 'active') return 'bg-blue-500 border-blue-500 text-white ring-2 ring-blue-200'
                               return 'bg-gray-300 border-gray-300 text-gray-400'
                             }
 
                             const getLineColor = () => {
+                              if (isDeliveredStep) return 'bg-green-400'
                               if (stepStatus === 'completed' || stepStatus === 'active') return 'bg-green-400'
                               return 'bg-gray-300'
                             }
 
-                            let stepDescription = step.description
+                            // Personalizar descripciones adicionales
                             if (step.key === 'pending' && (isActive || isCompleted)) {
                               if (order.payment_status === 'paid') {
                                 stepDescription = ' Pago aprobado'
@@ -682,22 +753,9 @@ export default function AdminOrdersPage() {
                                 stepDescription = '❌ Pago rechazado'
                               }
                             }
-                            if (step.key === 'shipped' && (isActive || isCompleted)) {
-                              if (bodegaPickup) {
-                                stepDescription = ' Listo para retirar en bodega'
-                              } else if (branchPickup) {
-                                stepDescription = ' Listo para retirar'
-                              } else if (homeDelivery) {
-                                stepDescription = ' En ruta'
-                              } else {
-                                stepDescription = shippingMethodDisplay
-                              }
-                            }
                             if (step.key === 'delivered' && (isActive || isCompleted)) {
-                              if (bodegaPickup) {
-                                stepDescription = ' Retirado por cliente'
-                              } else if (branchPickup) {
-                                stepDescription = ' Retirado por cliente'
+                              if (bodegaPickup || branchPickup) {
+                                stepDescription = ' Retirado por el cliente'
                               } else if (homeDelivery) {
                                 stepDescription = ' Entregado en domicilio'
                               } else {
@@ -712,9 +770,9 @@ export default function AdminOrdersPage() {
                                     w-7 h-7 rounded-full flex items-center justify-center border-2
                                     ${getStepColor()}
                                     transition-all duration-300
-                                    ${stepStatus === 'active' ? 'animate-pulse' : ''}
+                                    ${stepStatus === 'active' && !isDeliveredStep ? 'animate-pulse' : ''}
                                   `}>
-                                    {stepStatus === 'completed' ? (
+                                    {stepStatus === 'completed' || isDeliveredStep ? (
                                       <CheckCircle className="w-4 h-4" />
                                     ) : stepStatus === 'active' ? (
                                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -724,22 +782,22 @@ export default function AdminOrdersPage() {
                                   </div>
                                   <span className={`
                                     text-[10px] font-medium mt-1 text-center
-                                    ${stepStatus === 'completed' ? 'text-green-600' :
+                                    ${isDeliveredStep || stepStatus === 'completed' ? 'text-green-600' :
                                       stepStatus === 'active' ? 'text-blue-600' :
                                       'text-gray-400'}
                                   `}>
-                                    {step.label}
+                                    {stepLabel}
                                   </span>
                                   <span className={`
                                     text-[8px] text-center mt-0.5 max-w-[80px] leading-tight
-                                    ${stepStatus === 'completed' ? 'text-green-500' :
+                                    ${isDeliveredStep || stepStatus === 'completed' ? 'text-green-500' :
                                       stepStatus === 'active' ? 'text-blue-500' :
                                       'text-gray-400'}
                                   `}>
                                     {stepDescription}
                                   </span>
                                 </div>
-                                {index < orderSteps.length - 1 && (
+                                {index < steps.length - 1 && (
                                   <div className={`flex-1 h-0.5 ${getLineColor()} transition-colors duration-300`} />
                                 )}
                               </div>
@@ -939,9 +997,9 @@ export default function AdminOrdersPage() {
                                 disabled={updatingStatus === order.id}
                               >
                                 <option value="">Seleccionar estado</option>
-                                {statusOptions.filter(opt => opt.value !== 'all').map(option => (
+                                {getAvailableStatuses().filter(opt => opt.value !== 'all').map(option => (
                                   <option key={option.value} value={option.value}>
-                                    {option.label}
+                                    {isPickup && option.value === 'shipped' ? 'Disponible para retirar' : option.label}
                                   </option>
                                 ))}
                               </select>

@@ -1,3 +1,4 @@
+// app/api/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -13,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: 'ID de orden inválido' }, { status: 400 })
     }
 
-    // Query que trae TODOS los datos incluyendo shipping_type y shipping_details
+    // Query que trae TODOS los datos incluyendo boleta_pdf_path
     const orders = await query(
       `SELECT 
         o.*,
@@ -30,10 +31,17 @@ export async function GET(
         ua.postal_code as shipping_postal_code,
         ua.department as shipping_department,
         ua.delivery_instructions as shipping_delivery_instructions,
-        ua.title as shipping_title
+        ua.title as shipping_title,
+        b.id as boleta_id,
+        b.folio as boleta_folio,
+        b.monto_total as boleta_monto,
+        b.fecha_emision as boleta_fecha,
+        b.estado_sii as boleta_estado,
+        o.boleta_pdf_path  -- ✅ Ruta del PDF subido por admin
       FROM orders o 
       LEFT JOIN users u ON o.user_id = u.id 
       LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+      LEFT JOIN boletas b ON o.id = b.order_id
       WHERE o.id = ?`,
       [orderId]
     ) as any[]
@@ -72,12 +80,11 @@ export async function GET(
       })
     )
 
-    //  CONSTRUIR DIRECCIÓN DE ENVÍO - CORREGIDO PARA BODEGA
+    // CONSTRUIR DIRECCIÓN DE ENVÍO
     let shippingAddress = null
     const isBodegaPickup = order.shipping_type === 'bodega_pickup'
 
     if (isBodegaPickup) {
-      //  DIRECCIÓN DE BODEGA FIJA - SIN GUARDAR EN BD
       shippingAddress = {
         street: 'Arcangel 1200, San Miguel',
         commune_name: 'San Miguel',
@@ -101,17 +108,31 @@ export async function GET(
       }
     }
 
-    // Obtener información de la boleta
+    // ============================================================
+    // OBTENER INFORMACIÓN DE LA BOLETA - PRIORIDAD: PDF ADMIN
+    // ============================================================
     let boletaInfo = null
     
-    if (order.boleta_id) {
+    // ✅ PRIORIDAD 1: Si hay PDF subido por admin, usarlo
+    if (order.boleta_pdf_path) {
+      boletaInfo = {
+        id: order.boleta_id || null,
+        folio: order.boleta_folio || 'ADMIN',
+        monto_total: parseFloat(order.boleta_monto) || 0,
+        fecha_emision: order.boleta_fecha || null,
+        estado_sii: order.boleta_estado || 'emitida',
+        pdf_path: order.boleta_pdf_path,
+        is_admin_upload: true
+      }
+    } else if (order.boleta_id) {
+      // ✅ PRIORIDAD 2: Buscar en tabla boletas
       const boletas = await query(
-        `SELECT id, folio, monto_total, fecha_emision, estado_sii, 
+        `SELECT id, folio, monto_total, fecha_emision, estado_sii,
                 rut_receptor, razon_social_receptor
          FROM boletas 
          WHERE id = ?`,
         [order.boleta_id]
-      ) as any[];
+      ) as any[]
       
       if (boletas.length > 0) {
         boletaInfo = {
@@ -121,12 +142,14 @@ export async function GET(
           fecha_emision: boletas[0].fecha_emision,
           estado_sii: boletas[0].estado_sii,
           rut_receptor: boletas[0].rut_receptor,
-          razon_social: boletas[0].razon_social_receptor
+          razon_social: boletas[0].razon_social_receptor,
+          pdf_path: null,
+          is_admin_upload: false
         }
       }
     }
 
-    // Si no se encontró por boleta_id, buscar por order_id
+    // Si no se encontró, buscar por order_id
     if (!boletaInfo) {
       const boletas = await query(
         `SELECT id, folio, monto_total, fecha_emision, estado_sii,
@@ -134,7 +157,7 @@ export async function GET(
          FROM boletas 
          WHERE order_id = ?`,
         [orderId]
-      ) as any[];
+      ) as any[]
       
       if (boletas.length > 0) {
         boletaInfo = {
@@ -144,7 +167,9 @@ export async function GET(
           fecha_emision: boletas[0].fecha_emision,
           estado_sii: boletas[0].estado_sii,
           rut_receptor: boletas[0].rut_receptor,
-          razon_social: boletas[0].razon_social_receptor
+          razon_social: boletas[0].razon_social_receptor,
+          pdf_path: order.boleta_pdf_path || null,
+          is_admin_upload: !!order.boleta_pdf_path
         }
         
         if (!order.boleta_id) {
@@ -236,6 +261,10 @@ export async function GET(
       boleta_id: order.boleta_id,
       boleta_emitida: order.boleta_emitida || (boletaInfo ? 1 : 0),
       boleta_info: boletaInfo,
+      boleta_pdf_path: order.boleta_pdf_path || null,  // ✅ Ruta del PDF subido
+      boleta_intentos: order.boleta_intentos || 0,
+      boleta_error: order.boleta_error || null,
+      boleta_ultimo_intento: order.boleta_ultimo_intento || null,
       created_at: order.created_at,
       updated_at: order.updated_at,
       items: itemsWithImages.map((item: any) => ({

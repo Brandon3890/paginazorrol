@@ -1,8 +1,11 @@
+// app/api/orders/[id]/resend-email/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendBoletaEmail } from '@/lib/email-service';
 import { obtenerPDFApiGateway, obtenerFechaEmisionSII } from '@/lib/apigateway-service';
 import { obtenerBoletaConVerificacion } from '@/lib/boleta-helper';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Formatear fecha a YYYY-MM-DD
@@ -45,7 +48,6 @@ function formatearFecha(fecha: string | Date): string {
 
 /**
  * Extraer dirección de envío desde la orden
- * (Misma función que en payment/response)
  */
 function extraerShippingAddress(order: any): {
   street: string;
@@ -56,9 +58,10 @@ function extraerShippingAddress(order: any): {
   instructions: string;
 } {
   const shippingType = order.shipping_type || '';
-  const shippingDetails = order.shipping_details ? JSON.parse(order.shipping_details) : null;
+  const shippingDetails = order.shipping_details ? 
+    (typeof order.shipping_details === 'string' ? JSON.parse(order.shipping_details) : order.shipping_details) : 
+    null;
 
-  // Caso 1: Retiro en Bodega (bodega_pickup)
   if (shippingType === 'bodega_pickup' && shippingDetails?.selectedBranch) {
     const branch = shippingDetails.selectedBranch;
     return {
@@ -67,39 +70,22 @@ function extraerShippingAddress(order: any): {
       region_name: 'Región Metropolitana',
       postal_code: '8900000',
       department: '',
-      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 12:00 - 18:00 hrs'
+      instructions: 'Retiro en Bodega - Horario: Lunes a Viernes 10:00 - 18:00 hrs'
     };
   }
 
-  // Caso 2: Retiro en Sucursal (branch_pickup)
   if (shippingType === 'branch_pickup' && shippingDetails?.selectedBranch) {
     const branch = shippingDetails.selectedBranch;
-    // Intentar extraer comuna y región de la dirección
-    const addressParts = branch.address ? branch.address.split(',') : ['Sucursal Chilexpress'];
-    let commune = 'Santiago';
-    let region = 'Región Metropolitana';
-    
-    // Intentar encontrar comuna en el texto de la dirección
-    const commonCommunes = ['Santiago', 'Providencia', 'Las Condes', 'Vitacura', 'Ñuñoa', 'La Reina', 'Peñalolén', 'Macul', 'San Miguel', 'San Joaquín', 'Estación Central', 'Quinta Normal', 'Renca', 'Independencia', 'Recoleta', 'Huechuraba', 'Conchalí', 'Cerro Navia', 'Lo Prado', 'Pudahuel', 'Maipú', 'Cerrillos', 'Lo Espejo', 'San Bernardo', 'La Cisterna', 'El Bosque', 'La Granja', 'San Ramón', 'La Pintana', 'Lo Barnechea', 'Colina', 'Lampa', 'Tiltil', 'Pirque', 'Puente Alto', 'San José de Maipo', 'Buin', 'Calera de Tango', 'Paine', 'Melipilla', 'Curacaví', 'María Pinto', 'San Pedro', 'Alhué', 'Talagante', 'Peñaflor', 'El Monte', 'Isla de Maipo', 'Padre Hurtado', 'Litueche'];
-    
-    for (const c of commonCommunes) {
-      if (branch.address && branch.address.includes(c)) {
-        commune = c;
-        break;
-      }
-    }
-    
     return {
       street: branch.address || 'Sucursal Chilexpress',
-      commune_name: commune,
-      region_name: region,
+      commune_name: 'Santiago',
+      region_name: 'Región Metropolitana',
       postal_code: '000000',
       department: '',
       instructions: `Retiro en Sucursal - ${branch.name}${branch.telephone ? ` - Teléfono: ${branch.telephone}` : ''}`
     };
   }
 
-  // Caso 3: Envío a Domicilio (home_delivery, standard, express, cash_on_delivery)
   if (order.shipping_street) {
     return {
       street: order.shipping_street || 'No especificada',
@@ -111,8 +97,6 @@ function extraerShippingAddress(order: any): {
     };
   }
 
-  // Caso 4: Fallback - valores por defecto
-  console.log(' No se encontró dirección en la orden, usando valores por defecto');
   return {
     street: 'No especificada',
     commune_name: 'No especificada',
@@ -123,6 +107,95 @@ function extraerShippingAddress(order: any): {
   };
 }
 
+/**
+ * Obtener el PDF de la boleta - PRIORIDAD: PDF Admin > ApiGateway
+ * @param order - Datos de la orden
+ * @param usarBoletaAntigua - Si es true, fuerza usar ApiGateway aunque exista PDF admin
+ */
+async function obtenerPDFBoleta(
+  order: any, 
+  orderId: string,
+  usarBoletaAntigua: boolean = false
+): Promise<{ buffer: Buffer; fuente: 'admin' | 'apigateway' } | null> {
+  
+  // ✅ Si se solicita explícitamente la boleta antigua, usar ApiGateway
+  if (usarBoletaAntigua) {
+    if (!order.boleta_folio) {
+      return null;
+    }
+
+    try {
+      let fechaFormateada = order.boleta_fecha 
+        ? formatearFecha(order.boleta_fecha) 
+        : new Date().toISOString().split('T')[0];
+
+      const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
+      if (fechaSII) {
+        fechaFormateada = fechaSII;
+      }
+
+      const pdfBuffer = await obtenerPDFApiGateway(
+        order.boleta_folio,
+        fechaFormateada
+      );
+      
+      console.log(` PDF obtenido de ApiGateway (forzado) para folio`);
+      return { buffer: pdfBuffer, fuente: 'apigateway' };
+    } catch (error) {
+      console.error(' Error obteniendo PDF de ApiGateway:', error);
+      return null;
+    }
+  }
+
+  // ✅ PRIORIDAD 1: Si hay PDF subido por admin, usarlo
+  if (order.boleta_pdf_path) {
+    try {
+      let filePath = order.boleta_pdf_path;
+      if (filePath.startsWith('/uploads/')) {
+        filePath = path.join(process.cwd(), 'public', filePath);
+      }
+      
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath);
+        console.log(` Usando PDF subido por admin`);
+        return { buffer, fuente: 'admin' };
+      } else {
+        console.warn(` El PDF subido por admin no existe: ${filePath}, intentando con ApiGateway`);
+      }
+    } catch (error) {
+      console.error(' Error leyendo PDF subido por admin:', error);
+    }
+  }
+
+  // ✅ PRIORIDAD 2: Si no hay PDF subido o falló, usar ApiGateway
+  if (!order.boleta_folio) {
+    return null;
+  }
+
+  try {
+    let fechaFormateada = order.boleta_fecha 
+      ? formatearFecha(order.boleta_fecha) 
+      : new Date().toISOString().split('T')[0];
+
+    const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
+    if (fechaSII) {
+      fechaFormateada = fechaSII;
+      console.log(`Usando fecha del SII: ${fechaFormateada}`);
+    }
+
+    const pdfBuffer = await obtenerPDFApiGateway(
+      order.boleta_folio,
+      fechaFormateada
+    );
+    
+    console.log(` PDF obtenido de ApiGateway para folio: ${order.boleta_folio}`);
+    return { buffer: pdfBuffer, fuente: 'apigateway' };
+  } catch (error) {
+    console.error(' Error obteniendo PDF de ApiGateway:', error);
+    return null;
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -131,7 +204,14 @@ export async function POST(
     const { id } = await params;
     const orderId = id;
 
-    // Obtener datos de la orden (incluyendo shipping_type y shipping_details)
+    //  Obtener el parámetro para forzar boleta antigua
+    const url = new URL(request.url);
+    const usarBoletaAntigua = url.searchParams.get('antigua') === 'true';
+
+
+    // ============================================================
+    // 1. OBTENER DATOS DE LA ORDEN
+    // ============================================================
     const orderData = await query(
       `SELECT 
         o.*,
@@ -145,7 +225,9 @@ export async function POST(
         ua.postal_code as shipping_postal_code,
         b.folio as boleta_folio,
         b.fecha_emision as boleta_fecha,
-        b.id as boleta_id
+        b.id as boleta_id,
+        o.boleta_pdf_path,
+        o.boleta_pdf_folio
       FROM orders o
       LEFT JOIN users u ON o.user_id = u.id
       LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
@@ -170,13 +252,30 @@ export async function POST(
       );
     }
 
-    if (!order.boleta_folio) {
+    // ============================================================
+    // 2. VERIFICAR QUE EXISTA BOLETA O PDF
+    // ============================================================
+    const tienePDFAdmin = !!order.boleta_pdf_path;
+    const tieneFolio = !!order.boleta_folio;
+
+    if (!tienePDFAdmin && !tieneFolio) {
       return NextResponse.json(
-        { error: 'Esta orden aún no tiene una boleta electrónica emitida' },
+        { error: 'Esta orden no tiene una boleta electrónica emitida ni PDF subido por admin' },
         { status: 400 }
       );
     }
 
+    // Si se pide boleta antigua pero no tiene folio
+    if (usarBoletaAntigua && !tieneFolio) {
+      return NextResponse.json(
+        { error: 'Esta orden no tiene una boleta antigua para enviar' },
+        { status: 400 }
+      );
+    }
+
+    // ============================================================
+    // 3. OBTENER ITEMS DE LA ORDEN
+    // ============================================================
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -195,12 +294,22 @@ export async function POST(
       );
     }
 
+    // ============================================================
+    // 4. PREPARAR DATOS PARA EL EMAIL
+    // ============================================================
     const subtotalConIVA = parseFloat(order.subtotal) || 0;
     const subtotalNeto = Math.round(subtotalConIVA / 1.19);
     const ivaIncluido = subtotalConIVA - subtotalNeto;
-
-    // EXTRAER DIRECCIÓN DE ENVÍO DESDE LA ORDEN
     const shippingAddress = extraerShippingAddress(order);
+
+    //  Determinar qué folio usar para el email
+    let folioParaEmail = order.boleta_folio || 'N/A';
+    let fuentePDF = 'apigateway';
+
+    if (!usarBoletaAntigua && order.boleta_pdf_path && order.boleta_pdf_folio) {
+      folioParaEmail = order.boleta_pdf_folio;
+      fuentePDF = 'admin';
+    }
 
     const emailData = {
       orderNumber: order.order_number,
@@ -224,7 +333,8 @@ export async function POST(
       shipping: parseFloat(order.shipping || 0),
       tax: ivaIncluido,
       total: parseFloat(order.total || 0),
-      shippingAddress: shippingAddress, // Usar la dirección extraída
+      shippingAddress: shippingAddress,
+      boletaFolio: folioParaEmail,
       storeInfo: {
         name: process.env.APIGATEWAY_RAZON_SOCIAL || "Zorro Lúdico",
         rut: process.env.APIGATEWAY_RUT_EMISOR || "78364115-1",
@@ -235,78 +345,42 @@ export async function POST(
       }
     };
 
-    try {
-      // Formatear fecha correctamente
-      let fechaFormateada: string;
-      
-      if (order.boleta_fecha) {
-        fechaFormateada = formatearFecha(order.boleta_fecha);
-      } else {
-        fechaFormateada = new Date().toISOString().split('T')[0];
-      }
+    // ============================================================
+    // 5. OBTENER EL PDF
+    // ============================================================
+    console.log(` Obteniendo PDF `);
+    const resultadoPDF = await obtenerPDFBoleta(order, orderId, usarBoletaAntigua);
 
-      // Intentar obtener la fecha real del SII
-      console.log(` Buscando fecha real de la boleta`);
-      const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
-
-      if (fechaSII) {
-        fechaFormateada = fechaSII;
-        console.log(`Usando fecha del SII: ${fechaFormateada}`);
-        
-        try {
-          await query(
-            `UPDATE boletas SET fecha_emision = ? WHERE folio = ?`,
-            [fechaSII, order.boleta_folio]
-          );
-          console.log(`Fecha actualizada en BD: ${fechaSII}`);
-        } catch (updateError) {
-          console.warn(' No se pudo actualizar la fecha en BD');
-        }
-      } else {
-        console.log(` No se encontró la boleta en el SII, usando fecha: ${fechaFormateada}`);
-      }
-
-      // OBTENER BOLETA CON VERIFICACIÓN DE ESTADO
-      console.log(` Obteniendo boleta ${order.boleta_folio} con verificación...`);
-      
-      const resultadoBoleta = await obtenerBoletaConVerificacion(
-        order.boleta_folio,
-        fechaFormateada
-      );
-      
-      if (!resultadoBoleta.success || !resultadoBoleta.pdfBuffer) {
-        console.error('Error obteniendo boleta:', resultadoBoleta.error);
-        return NextResponse.json(
-          { error: resultadoBoleta.error || 'No se pudo obtener la boleta' },
-          { status: 500 }
-        );
-      }
-      
-      const pdfBuffer = resultadoBoleta.pdfBuffer;
-      
-      // Enviar email con la boleta PDF adjunta y la dirección correcta
-      console.log(' Enviando email con shippingAddress:', emailData.shippingAddress);
-      
-      const emailSent = await sendBoletaEmail(emailData, pdfBuffer, order.boleta_folio);
-
-      if (emailSent) {
-        return NextResponse.json({
-          success: true,
-          message: `Email con boleta reenviado exitosamente. ${orderItems.length} producto(s) incluido(s).`,
-          boleta: { folio: order.boleta_folio },
-          productsCount: orderItems.length
-        });
-      } else {
-        return NextResponse.json(
-          { error: 'No se pudo enviar el email de confirmación' },
-          { status: 500 }
-        );
-      }
-
-    } catch (error: any) {
-      console.error('Error obteniendo PDF o enviando email:', error);
+    if (!resultadoPDF) {
       return NextResponse.json(
-        { error: error.message || 'Error al obtener la boleta PDF o enviar el email' },
+        { error: 'No se pudo obtener el PDF de la boleta' },
+        { status: 500 }
+      );
+    }
+
+    const pdfBuffer = resultadoPDF.buffer;
+    const fuente = resultadoPDF.fuente;
+
+    console.log(` PDF obtenido`);
+
+    // ============================================================
+    // 6. ENVIAR EMAIL CON EL PDF
+    // ============================================================
+    const emailSent = await sendBoletaEmail(emailData, pdfBuffer, folioParaEmail);
+
+    if (emailSent) {
+      return NextResponse.json({
+        success: true,
+        message: `Email con boleta reenviado exitosamente. ${orderItems.length} producto(s) incluido(s).`,
+        boleta: { 
+          folio: folioParaEmail,
+          fuente: fuente === 'admin' ? 'admin_upload' : 'apigateway'
+        },
+        productsCount: orderItems.length
+      });
+    } else {
+      return NextResponse.json(
+        { error: 'No se pudo enviar el email de confirmación' },
         { status: 500 }
       );
     }

@@ -23,7 +23,8 @@ import {
   Eye,
   Check,
   Store,
-  AlertCircle
+  AlertCircle,
+  File
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -87,7 +88,13 @@ interface Order {
     monto_total: number
     fecha_emision: string
     estado_sii: string
+    is_admin_upload?: boolean
+    pdf_path?: string | null
   }
+  boleta_pdf_path?: string | null
+  boleta_intentos?: number
+  boleta_error?: string
+  boleta_ultimo_intento?: string
   shipping_address?: {
     street: string
     commune_name: string
@@ -305,6 +312,7 @@ export default function OrderDetailPage() {
   const [resendingEmail, setResendingEmail] = useState(false)
   const [descargandoPDF, setDescargandoPDF] = useState(false)
   const [reintentandoBoleta, setReintentandoBoleta] = useState(false)
+  const [cooldownInfo, setCooldownInfo] = useState<{ waiting: boolean; minutes: number; nextAttemptAt: string } | null>(null)
 
   useEffect(() => {
     if (authLoading) return
@@ -329,7 +337,7 @@ export default function OrderDetailPage() {
         setOrder(orderData)
       } else if (response.status === 404) {
         setError('Orden no encontrada')
-      } else if (response.status === 401) {
+      } else if (response.status === 401 || response.status === 403) {
         setError('No tienes permisos para ver esta orden')
       } else {
         const errorData = await response.json()
@@ -343,24 +351,37 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  FUNCIÓN REENVIAR EMAIL - Unificada (si tiene boleta o PDF)
   const handleResendEmail = async () => {
+    // Verificar si tiene boleta o PDF
+    if (!order?.boleta_emitida && !order?.boleta_pdf_path) {
+      toast({
+        title: "Sin boleta",
+        description: "Esta orden no tiene una boleta asociada para enviar",
+        variant: "destructive",
+        duration: 5000,
+      })
+      return
+    }
+
     setResendingEmail(true)
     try {
       const response = await fetch(`/api/orders/${orderId}/resend-email`, {
         method: 'POST',
       })
 
-      if (response.ok) {
+      const data = await response.json()
+
+      if (response.ok && data.success) {
         toast({
-          title: "Email reenviado",
-          description: "El email de confirmacion ha sido reenviado exitosamente",
+          title: "📧 Email reenviado",
+          description: data.message || "El email de confirmación ha sido reenviado exitosamente",
           duration: 5000,
         })
       } else {
-        const errorData = await response.json()
         toast({
           title: "Error",
-          description: errorData.error || "No se pudo reenviar el email",
+          description: data.error || "No se pudo reenviar el email",
           variant: "destructive",
           duration: 5000,
         })
@@ -378,13 +399,18 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  FUNCIÓN REINTENTAR BOLETA
   const handleReintentarBoleta = async () => {
     if (!order) return;
     
     setReintentandoBoleta(true);
+    setCooldownInfo(null);
+    
     try {
       const response = await fetch(`/api/orders/${order.id}/retry-boleta`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id })
       });
       
       const data = await response.json();
@@ -398,24 +424,53 @@ export default function OrderDetailPage() {
           });
         } else {
           toast({
-            title: "✅ Boleta emitida",
-            description: data.message,
+            title: " Boleta emitida",
+            description: data.message || `Boleta N° ${data.folio} generada exitosamente`,
             duration: 5000,
           });
         }
         fetchOrder();
-      } else {
+      } else if (response.status === 409) {
         toast({
-          title: "❌ Error",
-          description: data.error || "Error al generar la boleta",
+          title: "⏳ Procesando",
+          description: "Otro usuario está procesando esta orden. Intenta nuevamente en unos segundos.",
+          variant: "default",
+          duration: 5000,
+        });
+      } else if (response.status === 429) {
+        setCooldownInfo({
+          waiting: true,
+          minutes: data.waitingMinutes || 5,
+          nextAttemptAt: data.nextAttemptAt
+        });
+        toast({
+          title: "⏳ Espera antes de reintentar",
+          description: data.error || `Debes esperar ${data.waitingMinutes || 5} minutos`,
+          variant: "default",
+          duration: 5000,
+        });
+      } else {
+        const errorMsg = data.error || "Error al generar la boleta";
+        toast({
+          title: " Error",
+          description: errorMsg,
           variant: "destructive",
           duration: 5000,
         });
+        
+        if (data.intentos !== undefined && data.maxIntentos !== undefined) {
+          toast({
+            title: " Intentos",
+            description: `Intento ${data.intentos} de ${data.maxIntentos}`,
+            variant: "default",
+            duration: 3000,
+          });
+        }
       }
     } catch (error) {
       console.error('Error en reintentar boleta:', error);
       toast({
-        title: "❌ Error",
+        title: " Error",
         description: "Error al conectar con el servidor",
         variant: "destructive",
         duration: 5000,
@@ -425,7 +480,49 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  FUNCIÓN DESCARGAR BOLETA - Prioridad: PDF admin > API Gateway
   const descargarBoleta = async () => {
+    if (order?.boleta_pdf_path) {
+      setDescargandoPDF(true)
+      try {
+        const response = await fetch(order.boleta_pdf_path)
+        if (response.ok) {
+          const blob = await response.blob()
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          const folio = order?.boleta_info?.folio || 'boleta'
+          a.download = `boleta-${folio}.pdf`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+          
+          toast({
+            title: "PDF descargado",
+            description: "Boleta descargada exitosamente",
+            duration: 3000,
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo descargar la boleta",
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error('Error descargando PDF:', error)
+        toast({
+          title: "Error",
+          description: "No se pudo descargar el PDF",
+          variant: "destructive",
+        })
+      } finally {
+        setDescargandoPDF(false)
+      }
+      return
+    }
+
     const folio = order?.boleta_info?.folio
     if (!folio) {
       toast({
@@ -479,7 +576,13 @@ export default function OrderDetailPage() {
     }
   }
 
+  //  FUNCIÓN VER BOLETA
   const verBoleta = async () => {
+    if (order?.boleta_pdf_path) {
+      window.open(order.boleta_pdf_path, '_blank')
+      return
+    }
+
     const folio = order?.boleta_info?.folio
     if (!folio) {
       toast({
@@ -512,6 +615,7 @@ export default function OrderDetailPage() {
   const isCancelled = order?.status === 'cancelled'
   const isPaymentFailed = order?.payment_status === 'failed'
   const tieneBoleta = order?.boleta_emitida === 1 && order?.boleta_info?.folio
+  const tienePDFAdmin = !!order?.boleta_pdf_path
 
   if (authLoading) {
     return (
@@ -574,15 +678,6 @@ export default function OrderDetailPage() {
 
   const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = statusInfo.icon
-  const addressInfo = order.shipping_address || {
-    street: "Direccion no especificada",
-    commune_name: "Ciudad no especificada", 
-    region_name: "Region no especificada",
-    postal_code: "000000",
-    department: "",
-    delivery_instructions: ""
-  }
-  
   const { neto: subtotalNeto, iva: subtotalIVA } = calculateTaxBreakdown(order.subtotal)
 
   const shippingMethodDisplay = getShippingMethodDisplay(order)
@@ -605,6 +700,8 @@ export default function OrderDetailPage() {
     }
     return Truck
   }
+
+  const maxIntentos = 30
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -1270,62 +1367,85 @@ export default function OrderDetailPage() {
 
             {/* BOTONES */}
             <div className="space-y-2">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleResendEmail}
-                disabled={resendingEmail}
-              >
-                {resendingEmail ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="w-4 h-4 mr-2" />
-                    Reenviar email de confirmación
-                  </>
-                )}
-              </Button>
-
-              {/* Botón reintentar boleta - solo si NO tiene boleta y el pago está pagado */}
-              {!tieneBoleta && order.payment_status === 'paid' && (
+              {/*  Botón Reenviar email - Unificado (solo si tiene boleta o PDF) */}
+              {(tieneBoleta || tienePDFAdmin) && (
                 <Button
                   variant="outline"
-                  className="w-full border-amber-500 text-amber-600 hover:bg-amber-50"
-                  onClick={handleReintentarBoleta}
-                  disabled={reintentandoBoleta}
+                  className="w-full"
+                  onClick={handleResendEmail}
+                  disabled={resendingEmail}
                 >
-                  {reintentandoBoleta ? (
+                  {resendingEmail ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generando boleta...
+                      Enviando...
                     </>
                   ) : (
                     <>
-                      <FileText className="w-4 h-4 mr-2" />
-                      Reintentar generación de boleta
+                      <Mail className="w-4 h-4 mr-2" />
+                      Reenviar email de confirmación
                     </>
                   )}
                 </Button>
               )}
 
-              {/* Descargar boleta - solo si tiene boleta */}
-              {tieneBoleta && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={descargarBoleta}
-                  disabled={descargandoPDF}
-                >
-                  {descargandoPDF ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4 mr-2" />
+              {/* Botón reintentar boleta - solo si NO tiene boleta y el pago está pagado */}
+              {!tieneBoleta && order.payment_status === 'paid' && (
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full border-amber-500 text-amber-600 hover:bg-amber-50/50 hover:text-amber-600 transition-colors"
+                    onClick={handleReintentarBoleta}
+                    disabled={reintentandoBoleta || (cooldownInfo?.waiting === true)}
+                  >
+                    {reintentandoBoleta ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generando boleta...
+                      </>
+                    ) : cooldownInfo?.waiting ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2" />
+                        Esperar {cooldownInfo.minutes} min
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Reintentar generación de boleta
+                      </>
+                    )}
+                  </Button>
+                  
+                  {order.boleta_intentos !== undefined && order.boleta_intentos > 0 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Intentos: {order.boleta_intentos} de {maxIntentos}
+                    </p>
                   )}
-                  Descargar boleta
-                </Button>
+                  {order.boleta_error && (
+                    <p className="text-xs text-red-500 text-center">
+                      Último error: {order.boleta_error}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/*  Botones Ver y Descargar - Solo si tiene boleta o PDF */}
+              {(tieneBoleta || tienePDFAdmin) && (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={descargarBoleta}
+                    disabled={descargandoPDF}
+                  >
+                    {descargandoPDF ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Descargar Boleta
+                  </Button>
+                </div>
               )}
             </div>
 
