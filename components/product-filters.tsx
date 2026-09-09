@@ -69,51 +69,56 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
   // Combinar tags de productos + subcategorías para la sección de etiquetas
   const productTags = Array.from(new Set(products.flatMap((p) => p.tags)))
 
+  // ✅ CALCULAR VALORES MÍNIMOS Y MÁXIMOS REALES
+  const minPrice = products.length > 0 ? Math.min(...products.map((p) => p.price)) : 0
   const maxPrice = products.length > 0 ? Math.max(...products.map((p) => p.price)) : 100
+  
+  const minAge = products.length > 0 ? Math.min(...products.map((p) => p.ageMin)) : 0
   const maxAge = products.length > 0 ? Math.max(...products.map((p) => p.ageMin)) : 18
+  
+  const minPlayers = products.length > 0 ? Math.min(...products.map((p) => p.playersMin)) : 1
   const maxPlayers = products.length > 0 ? Math.max(...products.map((p) => p.playersMax)) : 8
 
   // Calcular productos con stock disponible
   const productsWithStock = products.filter(p => p.stock > 0).length
 
-  // Inicializar con filtros vacíos
+  // ✅ INICIALIZAR FILTROS CON VALORES MÍNIMOS REALES
   const [pendingFilters, setPendingFilters] = useState<Filters>(() => ({
-    priceRange: [0, maxPrice],
+    priceRange: [minPrice, maxPrice],
     categories: [],
     subcategories: [],
-    ageRange: [0, maxAge],
-    playersRange: [1, maxPlayers],
+    ageRange: [minAge, maxAge],
+    playersRange: [minPlayers, maxPlayers],
     inStock: false,
     tags: [],
   }))
 
   // Solo sincronizar cuando los filtros externos cambien explícitamente
   useEffect(() => {
-    // Solo actualizar si los filtros externos tienen valores diferentes a los iniciales
     const hasExternalFilters = 
       filters.categories.length > 0 ||
       filters.subcategories.length > 0 ||
       filters.tags.length > 0 ||
-      filters.priceRange[0] > 0 ||
+      filters.priceRange[0] > minPrice ||
       filters.priceRange[1] < maxPrice ||
-      filters.ageRange[0] > 0 ||
+      filters.ageRange[0] > minAge ||
       filters.ageRange[1] < maxAge ||
-      filters.playersRange[0] > 1 ||
+      filters.playersRange[0] > minPlayers ||
       filters.playersRange[1] < maxPlayers ||
       filters.inStock;
 
     if (hasExternalFilters) {
       setPendingFilters({
-        priceRange: filters.priceRange.length > 0 ? filters.priceRange : [0, maxPrice],
+        priceRange: filters.priceRange.length > 0 ? filters.priceRange : [minPrice, maxPrice],
         categories: filters.categories || [],
         subcategories: filters.subcategories || [],
-        ageRange: filters.ageRange.length > 0 ? filters.ageRange : [0, maxAge],
-        playersRange: filters.playersRange.length > 0 ? filters.playersRange : [1, maxPlayers],
+        ageRange: filters.ageRange.length > 0 ? filters.ageRange : [minAge, maxAge],
+        playersRange: filters.playersRange.length > 0 ? filters.playersRange : [minPlayers, maxPlayers],
         inStock: filters.inStock || false,
         tags: filters.tags || [],
       })
     }
-  }, [filters, maxPrice, maxAge, maxPlayers])
+  }, [filters, minPrice, maxPrice, minAge, maxAge, minPlayers, maxPlayers])
 
   // Función para aplicar filtros
   const applyFilters = useCallback((newFilters: Filters) => {
@@ -154,11 +159,11 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
 
   const clearAllFilters = () => {
     const clearedFilters = {
-      priceRange: [0, maxPrice],
+      priceRange: [minPrice, maxPrice],
       categories: [],
       subcategories: [],
-      ageRange: [0, maxAge],
-      playersRange: [1, maxPlayers],
+      ageRange: [minAge, maxAge],
+      playersRange: [minPlayers, maxPlayers],
       inStock: false,
       tags: [],
     }
@@ -170,11 +175,11 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     pendingFilters.categories.length > 0 ||
     pendingFilters.subcategories.length > 0 ||
     pendingFilters.tags.length > 0 ||
-    pendingFilters.priceRange[0] > 0 ||
+    pendingFilters.priceRange[0] > minPrice ||
     pendingFilters.priceRange[1] < maxPrice ||
-    pendingFilters.ageRange[0] > 0 ||
+    pendingFilters.ageRange[0] > minAge ||
     pendingFilters.ageRange[1] < maxAge ||
-    pendingFilters.playersRange[0] > 1 ||
+    pendingFilters.playersRange[0] > minPlayers ||
     pendingFilters.playersRange[1] < maxPlayers ||
     pendingFilters.inStock
 
@@ -202,26 +207,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ type: "spring", stiffness: 300 }}
                 >
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={clearAllFilters}
-                    className="text-xs text-muted-foreground hover:text-foreground relative overflow-hidden group"
-                  >
-                    <motion.div
-                      whileHover={{ rotate: 90 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <X className="w-3 h-3 mr-1" />
-                    </motion.div>
-                    Limpiar
-                    <motion.div
-                      className="absolute inset-0 bg-primary/10"
-                      initial={{ scale: 0, opacity: 0 }}
-                      whileHover={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                    />
-                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -236,16 +221,16 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             transition={{ delay: 0.2 }}
           >
             <Label className="text-sm font-medium">Rango de Precio (CLP)</Label>
-<div className="px-2">
-  <Slider
-    value={pendingFilters.priceRange}
-    onValueChange={(value) => updatePendingFilters("priceRange", value)}
-    min={0}
-    max={maxPrice}
-    step={1}
-    className="w-full"
-  />
-</div>
+            <div className="px-2">
+              <Slider
+                value={pendingFilters.priceRange}
+                onValueChange={(value) => updatePendingFilters("priceRange", value)}
+                min={minPrice}
+                max={maxPrice}
+                step={1}
+                className="w-full"
+              />
+            </div>
             <motion.div 
               className="flex justify-between text-sm text-muted-foreground"
               animate={{ scale: [1, 1.02, 1] }}
@@ -415,7 +400,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Age Range */}
+          {/* Age Range - Con mínimo real */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -423,16 +408,16 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             transition={{ delay: 0.5 }}
           >
             <Label className="text-sm font-medium">Edad Mínima</Label>
-<div className="px-2">
-  <Slider
-    value={pendingFilters.ageRange}
-    onValueChange={(value) => updatePendingFilters("ageRange", value)}
-    min={0}
-    max={maxAge}
-    step={1}
-    className="w-full"
-  />
-</div>
+            <div className="px-2">
+              <Slider
+                value={pendingFilters.ageRange}
+                onValueChange={(value) => updatePendingFilters("ageRange", value)}
+                min={minAge}
+                max={maxAge}
+                step={1}
+                className="w-full"
+              />
+            </div>
             <motion.div 
               className="flex justify-between text-sm text-muted-foreground"
               animate={{ scale: [1, 1.02, 1] }}
@@ -457,7 +442,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Players Range */}
+          {/* Players Range - Con mínimo real */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -465,16 +450,16 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             transition={{ delay: 0.6 }}
           >
             <Label className="text-sm font-medium">Número de Jugadores</Label>
-<div className="px-2">
-  <Slider
-    value={pendingFilters.playersRange}
-    onValueChange={(value) => updatePendingFilters("playersRange", value)}
-    min={1}
-    max={maxPlayers}
-    step={1}
-    className="w-full"
-  />
-</div>
+            <div className="px-2">
+              <Slider
+                value={pendingFilters.playersRange}
+                onValueChange={(value) => updatePendingFilters("playersRange", value)}
+                min={minPlayers}
+                max={maxPlayers}
+                step={1}
+                className="w-full"
+              />
+            </div>
             <motion.div 
               className="flex justify-between text-sm text-muted-foreground"
               animate={{ scale: [1, 1.02, 1] }}
@@ -515,15 +500,13 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                 id="inStock"
                 checked={pendingFilters.inStock}
                 onCheckedChange={(checked) => {
-                  // Verificar si hay productos con stock > 0
                   const productsInStock = products.filter(p => p.stock > 0).length;
                   
                   if (checked && productsInStock === 0) {
                     alert("No hay productos disponibles en stock en este momento.");
-                    return; // No aplicar el filtro si no hay productos en stock
+                    return;
                   }
                   
-                  // Si el filtro se está desactivando o hay productos en stock, actualizar
                   updatePendingFilters("inStock", checked);
                 }}
               />
@@ -542,7 +525,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
               </AnimatePresence>
             </motion.div>
             
-            {/* Mostrar cuántos productos tienen stock disponible */}
             <motion.p 
               className="text-xs text-muted-foreground ml-6"
               initial={{ opacity: 0 }}
@@ -551,7 +533,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
               {productsWithStock} productos con stock disponible
             </motion.p>
 
-            {/* Mensaje de advertencia si no hay stock */}
             {productsWithStock === 0 && (
               <motion.p 
                 className="text-xs text-amber-600 ml-6"
