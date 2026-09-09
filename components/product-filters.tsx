@@ -260,26 +260,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             >
               <CardTitle className="text-lg">Filtros</CardTitle>
             </motion.div>
-            <AnimatePresence>
-              {hasActiveFilters && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={clearAllFilters}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    Limpiar todos
-                  </Button>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
