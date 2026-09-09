@@ -70,18 +70,24 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
       }))
   )
 
-  // Calcular valores mínimos y máximos reales
-  const minPrice = products.length > 0 ? Math.min(...products.map((p) => p.price)) : 0
-  const maxPrice = products.length > 0 ? Math.max(...products.map((p) => p.price)) : 100
-  
-  const minAge = products.length > 0 ? Math.min(...products.map((p) => p.ageMin)) : 0
-  const maxAge = products.length > 0 ? Math.max(...products.map((p) => p.ageMin)) : 18
-  
-  const minPlayers = products.length > 0 ? Math.min(...products.map((p) => p.playersMin)) : 1
-  const maxPlayers = products.length > 0 ? Math.max(...products.map((p) => p.playersMax)) : 8
+  // 👈 FUNCIÓN PARA CALCULAR MIN Y MAX REALES (ignorando valores 0 o null)
+  const getMinMax = (products: Product[], key: keyof Product, defaultValue: number = 0): [number, number] => {
+    const values = products
+      .map(p => p[key] as number)
+      .filter(v => v !== undefined && v !== null && v > 0) // Ignorar valores 0, null, undefined
+    
+    if (values.length === 0) {
+      return [defaultValue, defaultValue + 10] // Si no hay valores, dar un rango por defecto
+    }
+    
+    return [Math.min(...values), Math.max(...values)]
+  }
 
-  const minDuration = products.length > 0 ? Math.min(...products.map((p) => p.durationMin || 0)) : 0
-  const maxDuration = products.length > 0 ? Math.max(...products.map((p) => p.durationMin || 0)) : 120
+  // Calcular valores mínimos y máximos reales usando la función
+  const [minPrice, maxPrice] = getMinMax(products, 'price', 0)
+  const [minAge, maxAge] = getMinMax(products, 'ageMin', 0)
+  const [minPlayers, maxPlayers] = getMinMax(products, 'playersMax', 1)
+  const [minDuration, maxDuration] = getMinMax(products, 'durationMin', 0)
 
   // Calcular productos con stock disponible
   const productsWithStock = products.filter(p => p.stock > 0).length
@@ -131,6 +137,17 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     }
   }, [filters, minPrice, maxPrice, minAge, maxAge, minPlayers, maxPlayers, minDuration, maxDuration])
 
+  // 👈 ACTUALIZAR FILTROS CUANDO CAMBIEN LOS PRODUCTOS
+  useEffect(() => {
+    setPendingFilters(prev => ({
+      ...prev,
+      priceRange: [minPrice, maxPrice],
+      ageRange: [minAge, maxAge],
+      playersRange: [minPlayers, maxPlayers],
+      durationRange: [minDuration, maxDuration],
+    }))
+  }, [minPrice, maxPrice, minAge, maxAge, minPlayers, maxPlayers, minDuration, maxDuration])
+
   // Función para aplicar filtros
   const applyFilters = useCallback((newFilters: Filters) => {
     onFiltersChange(newFilters)
@@ -142,7 +159,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     applyFilters(newFilters)
   }
 
-  // 👈 NUEVA FUNCIÓN: Seleccionar ordenamiento directamente
+  // Función para seleccionar ordenamiento directamente
   const selectSort = (sort: SortOption) => {
     updatePendingFilters("sortBy", sort)
   }
@@ -244,11 +261,29 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
               <CardTitle className="text-lg">Filtros</CardTitle>
             </motion.div>
             <AnimatePresence>
+              {hasActiveFilters && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearAllFilters}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Limpiar todos
+                  </Button>
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* 👈 ORDENAMIENTO POR PRECIO - BOTONES SEPARADOS */}
+          {/* ORDENAMIENTO POR PRECIO */}
           <motion.div 
             className="space-y-1.5"
             initial={{ opacity: 0, y: 20 }}
@@ -280,8 +315,8 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                     : ''
                 }`}
               >
-                <ArrowDown className="w-3 h-3 mr-1.5" />
-                Menor precio
+                <ArrowUp className="w-3 h-3 mr-1.5" />
+                Menor a mayor precio
               </Button>
               <Button
                 variant={pendingFilters.sortBy === 'price-desc' ? 'default' : 'outline'}
@@ -293,8 +328,8 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                     : ''
                 }`}
               >
-                <ArrowUp className="w-3 h-3 mr-1.5" />
-                Mayor precio
+                <ArrowDown className="w-3 h-3 mr-1.5" />
+                Mayor a menor precio
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground">
@@ -309,7 +344,12 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <Label className="text-sm font-medium">Rango de Precio (CLP)</Label>
+            <Label className="text-sm font-medium">
+              Rango de Precio (CLP) 
+              <span className="text-xs text-muted-foreground ml-1">
+                ({minPrice.toLocaleString('es-CL')} - {maxPrice.toLocaleString('es-CL')})
+              </span>
+            </Label>
             <div className="px-2">
               <Slider
                 value={pendingFilters.priceRange}
@@ -344,7 +384,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Categories - Con checkboxes */}
+          {/* Categories */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -406,7 +446,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Subcategorías - Como etiquetas clickeables */}
+          {/* Subcategorías */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -496,7 +536,12 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            <Label className="text-sm font-medium">Edad Mínima</Label>
+            <Label className="text-sm font-medium">
+              Edad Mínima
+              <span className="text-xs text-muted-foreground ml-1">
+                ({minAge} - {maxAge} años)
+              </span>
+            </Label>
             <div className="px-2">
               <Slider
                 value={pendingFilters.ageRange}
@@ -538,7 +583,12 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
           >
-            <Label className="text-sm font-medium">Número de Jugadores</Label>
+            <Label className="text-sm font-medium">
+              Número de Jugadores
+              <span className="text-xs text-muted-foreground ml-1">
+                ({minPlayers} - {maxPlayers})
+              </span>
+            </Label>
             <div className="px-2">
               <Slider
                 value={pendingFilters.playersRange}
@@ -580,7 +630,12 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.65 }}
           >
-            <Label className="text-sm font-medium">Duración</Label>
+            <Label className="text-sm font-medium">
+              Duración
+              <span className="text-xs text-muted-foreground ml-1">
+                ({formatDuration(minDuration)} - {formatDuration(maxDuration)})
+              </span>
+            </Label>
             <div className="px-2">
               <Slider
                 value={pendingFilters.durationRange}
