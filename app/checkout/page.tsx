@@ -182,8 +182,10 @@ export default function CheckoutPage() {
 
   const [deliveryOption, setDeliveryOption] = useState<'bodega' | 'envio' | null>(null)
 
+  // 👈 RUT para envío - AHORA OPCIONAL para usuarios registrados
   const [shippingRut, setShippingRut] = useState('')
   const [shippingRutError, setShippingRutError] = useState('')
+  const [rutHelperText, setRutHelperText] = useState('')
 
   // Estado para cupón
   const [couponCode, setCouponCode] = useState('')
@@ -245,6 +247,7 @@ export default function CheckoutPage() {
 
   const selectedRegion = regions.find(r => r.region_iso_3166_2 === manualAddress.regionIso)
 
+  // 👈 ACTUALIZAR CUANDO EL USUARIO CAMBIA
   useEffect(() => {
     if (isAuthenticated) {
       setIsGuestMode(false)
@@ -257,10 +260,14 @@ export default function CheckoutPage() {
           lastName: user.lastName || "",
           phone: user.phone || "",
         })
-        if (!user.rut || user.rut === '66666666-6') {
-          setShippingRut('')
-        } else {
+        
+        // 👈 Si el usuario tiene RUT, ponerlo por defecto
+        if (user.rut && user.rut !== '66666666-6') {
           setShippingRut(user.rut)
+          setRutHelperText('RUT de tu cuenta')
+        } else {
+          setShippingRut('')
+          setRutHelperText('Opcional - Ingresa tu RUT para la boleta')
         }
       }
     }
@@ -469,7 +476,7 @@ export default function CheckoutPage() {
     if (guestData.email !== guestData.confirmEmail) errors.confirmEmail = "Los correos no coinciden"
     if (!guestData.phone) errors.phone = "Telefono requerido"
     if (!guestData.rut) {
-      errors.rut = "RUT requerido"
+      errors.rut = "RUT requerido para invitados"
     } else if (!guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
       errors.rut = "Formato de RUT invalido (ej: 12345678-5)"
     }
@@ -478,15 +485,28 @@ export default function CheckoutPage() {
     return Object.keys(errors).length === 0
   }
 
+  // 👈 VALIDAR RUT (OPCIONAL PARA USUARIOS REGISTRADOS)
   const validateShippingRut = () => {
-    if (isAuthenticated && (!shippingRut || shippingRut === '66666666-6')) {
-      setShippingRutError('El RUT es obligatorio para el envío')
-      return false
+    // Si el usuario no está autenticado y está en modo invitado, el RUT es obligatorio
+    if (!isAuthenticated && isGuestMode) {
+      if (!shippingRut || !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
+        setShippingRutError('El RUT es obligatorio para invitados')
+        return false
+      }
     }
-    if (shippingRut && !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
-      setShippingRutError('Formato de RUT invalido (ej: 12345678-5)')
-      return false
+    
+    // Para usuarios autenticados, el RUT es opcional
+    if (isAuthenticated) {
+      // Si se ingresó un RUT, validar formato
+      if (shippingRut && !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
+        setShippingRutError('Formato de RUT inválido (ej: 12345678-5)')
+        return false
+      }
+      // Si no se ingresó RUT, está bien (se usará el RUT del usuario)
+      setShippingRutError('')
+      return true
     }
+    
     setShippingRutError('')
     return true
   }
@@ -532,6 +552,9 @@ export default function CheckoutPage() {
       lastName: guestData.lastName,
       phone: guestData.phone
     })
+    
+    // 👈 Para invitados, el RUT es obligatorio
+    setShippingRut(rutToUse)
     
     setIsGuestMode(true)
     setShowGuestForm(false)
@@ -679,9 +702,7 @@ export default function CheckoutPage() {
     return chilexpressOptions.find(opt => opt.type === "branch_pickup")
   }
 
-  // =====================================================
-  // APLICAR CUPÓN - CORREGIDO (NO USA EL CUPÓN)
-  // =====================================================
+  // APLICAR CUPÓN
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
       setCouponError('Ingresa un código de cupón')
@@ -725,9 +746,6 @@ export default function CheckoutPage() {
 
       const coupon = data.coupon
       const discount = (subtotalBeforeDiscount * coupon.discountPercentage) / 100
-      
-      // ❌ NO usar el cupón aquí - SOLO validar y aplicar descuento visual
-      // await useCoupon(coupon.id)  // ← ELIMINADO
 
       applyCoupon(
         coupon.code,
@@ -765,6 +783,27 @@ export default function CheckoutPage() {
     })
   }
 
+  // 👈 OBTENER EL RUT FINAL PARA LA BOLETA
+  const getFinalRut = (): string => {
+    // Si es invitado, usar el RUT del invitado
+    if (isGuestMode && !isAuthenticated) {
+      return guestData.rut.trim()
+    }
+    
+    // Si es usuario autenticado y se ingresó un RUT, usar ese
+    if (isAuthenticated && shippingRut && shippingRut.trim() !== '') {
+      return shippingRut.trim()
+    }
+    
+    // Si es usuario autenticado y NO se ingresó RUT, usar el RUT de la cuenta
+    if (isAuthenticated && user?.rut && user.rut !== '66666666-6') {
+      return user.rut
+    }
+    
+    // Fallback: consumidor final
+    return '66666666-6'
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -774,25 +813,15 @@ export default function CheckoutPage() {
       return
     }
     
-    if (isAuthenticated) {
-      if (!shippingRut || shippingRut === '66666666-6') {
-        toast({
-          title: "RUT requerido",
-          description: "Por favor ingresa tu RUT para el envío.",
-          variant: "destructive",
-          duration: 5000,
-        })
-        return
-      }
-      if (!shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
-        toast({
-          title: "RUT inválido",
-          description: "Formato de RUT invalido (ej: 12345678-5)",
-          variant: "destructive",
-          duration: 5000,
-        })
-        return
-      }
+    // 👈 VALIDAR RUT (opcional para usuarios registrados)
+    if (!validateShippingRut()) {
+      toast({
+        title: "RUT inválido",
+        description: shippingRutError,
+        variant: "destructive",
+        duration: 5000,
+      })
+      return
     }
     
     const isBodegaPickupSelected = deliveryOption === 'bodega'
@@ -892,17 +921,10 @@ export default function CheckoutPage() {
         }
       }
       
-      // =====================================================
-      // OBTENER EL RUT CORRECTO PARA EL ENVÍO
-      // =====================================================
-      let rutToUse
-      if (isGuestUser) {
-        rutToUse = guestData.rut.trim()
-      } else {
-        rutToUse = shippingRut || user?.rut || ''
-      }
+      // 👈 OBTENER EL RUT FINAL
+      const finalRut = getFinalRut()
       
-      console.log('RUT enviado a la API')
+      console.log('📋 RUT final para la orden:', finalRut)
       
       const orderPayload: any = {
         items: items.map((item) => ({
@@ -918,7 +940,7 @@ export default function CheckoutPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
-          rut: rutToUse
+          rut: finalRut
         },
         shippingAddress: shippingAddressData,
         totals: {
@@ -969,9 +991,7 @@ export default function CheckoutPage() {
         shippingMethod: isBodegaPickupSelected ? "bodega_pickup" : shippingMethod,
       })
 
-      // =====================================================
-      // CREAR PAGO - ENVIANDO EL RUT
-      // =====================================================
+      // 👈 CREAR PAGO CON EL RUT FINAL
       const paymentResponse = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -980,7 +1000,7 @@ export default function CheckoutPage() {
           amount: isBodegaPickupSelected ? totalAfterDiscount : finalTotal,
           isGuest: isGuestUser,
           guestEmail: isGuestUser ? formData.email : undefined,
-          customerRut: rutToUse
+          customerRut: finalRut
         }),
       })
 
@@ -1193,7 +1213,7 @@ export default function CheckoutPage() {
                         <Label>RUT *</Label>
                         <Input
                           required
-                          placeholder="Ej: 12345678-5"
+                          placeholder="Ej: 12345678-9"
                           value={guestData.rut}
                           onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
                           className={guestFormErrors.rut ? "border-red-500" : ""}
@@ -1213,7 +1233,7 @@ export default function CheckoutPage() {
                   </div>
                 </>
               ) : isAuthenticated ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center gap-2 text-black-600">
                     <Check className="w-4 h-4" />
                     <span className="font-medium">Sesion iniciada</span>
@@ -1231,35 +1251,55 @@ export default function CheckoutPage() {
                     <span>{user?.phone}</span>
                   </div>
                   
-                  {(!user?.rut || user?.rut === '66666666-6') && (
-                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <Label className="text-sm font-medium text-amber-800">
-                        RUT para envío (Opcional) <span className="text-red-500">*</span>
+                  {/* 👈 RUT OPCIONAL PARA USUARIOS REGISTRADOS */}
+                  <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-sm font-medium text-black">
+                        RUT (opcional)
                       </Label>
-                      <p className="text-xs text-amber-700 mb-2">
-                      </p>
-                      <Input
-                        required
-                        placeholder="Ej: 12345678-5"
-                        value={shippingRut}
-                        onChange={(e) => {
-                          setShippingRut(e.target.value)
-                          setShippingRutError('')
-                        }}
-                        className={shippingRutError ? "border-red-500" : ""}
-                      />
-                      {shippingRutError && (
-                        <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {shippingRutError}
-                        </p>
-                      )}
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                        Opcional
+                      </Badge>
                     </div>
-                  )}
+
+                    <p className="text-xs text-muted-foreground mb-2">
+                      {user?.rut && user.rut !== '66666666-6' 
+                        ? `` 
+                        : ''}
+                    </p>
+
+                    <Input
+                      placeholder="Ej: 12345678-9 (opcional)"
+                      value={shippingRut}
+                      onChange={(e) => {
+                        setShippingRut(e.target.value)
+                        setShippingRutError('')
+                      }}
+                      className={shippingRutError ? "border-red-500" : ""}
+                    />
+
+                    {shippingRutError && (
+                      <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {shippingRutError}
+                      </p>
+                    )}
+                    
+                    {!shippingRut && user?.rut && user.rut !== '66666666-6' && (
+                      <p className="text-xs text-green-600 mt-1">
+                        ✓ Se usará tu RUT registrado: {user.rut}
+                      </p>
+                    )}
+                    
+                    {!shippingRut && (!user?.rut || user.rut === '66666666-6') && (
+                      <p className="text-xs text-amber-600 mt-1">
+                      </p>
+                    )}
+                  </div>
                   
-                  {user?.rut && user.rut !== '66666666-6' && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">RUT: {user.rut}</span>
+                  {user?.rut && user.rut !== '66666666-6' && !shippingRut && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>RUT registrado: {user.rut}</span>
                     </div>
                   )}
                   
@@ -2602,8 +2642,7 @@ export default function CheckoutPage() {
                   (deliveryOption !== 'bodega' && !selectedAddress) ||
                   (deliveryOption !== 'bodega' && !selectedChilexpressOption) ||
                   !acceptedTerms ||
-                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch) ||
-                  (isAuthenticated && (!shippingRut || shippingRut === '66666666-6'))
+                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch)
                 }
                 onClick={handleSubmit}
               >
@@ -2615,8 +2654,6 @@ export default function CheckoutPage() {
                   "Selecciona una opcion de entrega"
                 ) : deliveryOption === 'bodega' ? (
                   `Pagar $${formatCLP(finalTotal)}`
-                ) : isAuthenticated && (!shippingRut || shippingRut === '66666666-6') ? (
-                  "Ingresa tu RUT para el envío"
                 ) : !hasAddress ? (
                   "Ingresa una direccion de envio"
                 ) : !selectedChilexpressOption ? (

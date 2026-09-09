@@ -1,4 +1,3 @@
-// app/api/orders/create-guest/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -69,6 +68,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // =====================================================
+    // 1. VALIDAR RUT PARA INVITADOS (OBLIGATORIO)
+    // =====================================================
+    if (!customerInfo?.rut) {
+      return NextResponse.json(
+        { error: 'El RUT es obligatorio para compras como invitado' },
+        { status: 400 }
+      )
+    }
+
+    // Validar formato del RUT
+    const rutRegex = /^[0-9]+-[0-9Kk]$/
+    if (!rutRegex.test(customerInfo.rut)) {
+      return NextResponse.json(
+        { error: 'Formato de RUT inválido. Ejemplo: 12345678-5' },
+        { status: 400 }
+      )
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(customerInfo.email)) {
       return NextResponse.json(
@@ -91,7 +109,7 @@ export async function POST(request: NextRequest) {
       userId = existingUser[0].id
       isGuestUser = existingUser[0].is_guest === 1
       userRut = existingUser[0].rut
-      console.log(`Usuario existente encontrado`)
+      console.log(` Usuario existente encontrado`)
     } else {
       // Crear nuevo usuario invitado
       const fakePasswordHash = 'GUEST_ACCOUNT_NO_LOGIN_' + Date.now()
@@ -117,27 +135,27 @@ export async function POST(request: NextRequest) {
         [guestRut, userId]
       )
       userRut = guestRut
-      console.log(`Nuevo usuario invitado `)
+      console.log(` Nuevo usuario invitado creado `)
     }
 
     // =====================================================
-    // ASOCIAR RESERVA AL USUARIO INVITADO
+    // 2. ASOCIAR RESERVA AL USUARIO INVITADO
     // =====================================================
     if (userId && guestSessionId) {
-      const identifier = `guest_${guestSessionId}`;
+      const identifier = `guest_${guestSessionId}`
       
       // Buscar reserva por identifier
       const reservations = await query(
         `SELECT id FROM stock_reservations WHERE identifier = ? AND expires_at > NOW()`,
         [identifier]
-      ) as any[];
+      ) as any[]
       
       if (reservations.length > 0) {
         await query(
           `UPDATE stock_reservations SET user_id = ? WHERE identifier = ? AND expires_at > NOW()`,
           [userId, identifier]
-        );
-        console.log(`Reserva asociada al usuario`);
+        )
+        console.log(` Reserva asociada al usuario `)
       } else {
         // Si no se encontró por identifier, buscar reservas con user_id NULL
         const reservationsByRut = await query(
@@ -152,16 +170,16 @@ export async function POST(request: NextRequest) {
              AND sr2.expires_at > NOW()
            )`,
           [userId]
-        ) as any[];
+        ) as any[]
         
         if (reservationsByRut.length > 0) {
           for (const res of reservationsByRut) {
             await query(
               `UPDATE stock_reservations SET user_id = ? WHERE id = ?`,
               [userId, res.id]
-            );
+            )
           }
-          console.log(`${reservationsByRut.length} reservas asociadas al usuario `);
+          console.log(`reservas asociadas al usuario`)
         }
       }
     }
@@ -191,7 +209,7 @@ export async function POST(request: NextRequest) {
 
         if (existingAddresses.length > 0) {
           shippingAddressId = existingAddresses[0].id
-          console.log(`Usando dirección existente`)
+          console.log(` Usando dirección existente`)
         }
       }
       
@@ -218,14 +236,18 @@ export async function POST(request: NextRequest) {
         ) as any
         
         shippingAddressId = addressResult.insertId
-        console.log(` Nueva dirección creada`)
+        console.log(`Nueva dirección creada`)
       }
     } else {
-      console.log(` Retiro en bodega - sin dirección guardada`)
+      console.log(`Retiro en bodega - sin dirección guardada`)
     }
 
     const tax = Math.round(totals.total * 0.19)
 
+    // =====================================================
+    // 3. RUT DEL CLIENTE INVITADO (OBLIGATORIO)
+    // =====================================================
+    // Para invitados, el RUT es obligatorio y viene de customerInfo
     const rutCliente = customerInfo?.rut || userRut || '66666666-6'
     const customerEmail = customerInfo?.email || null
     const customerFirstName = customerInfo?.firstName || null
@@ -233,7 +255,9 @@ export async function POST(request: NextRequest) {
     const customerPhone = customerInfo?.phone || null
 
 
-    // INSERTAR LA ORDEN
+    // =====================================================
+    // 4. INSERTAR LA ORDEN
+    // =====================================================
     const orderResult = await query(
       `INSERT INTO orders (
         user_id,
@@ -288,9 +312,11 @@ export async function POST(request: NextRequest) {
     ) as any
     
     const orderId = orderResult.insertId
-    console.log(` Orden invitado creada`)
+    console.log(` Orden invitado creada `)
 
-    // Insertar items
+    // =====================================================
+    // 5. INSERTAR ITEMS DE LA ORDEN
+    // =====================================================
     for (const item of items) {
       await query(
         `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal)
@@ -306,6 +332,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // =====================================================
+    // 6. GUARDAR RELACIÓN CON SESIÓN DE INVITADO
+    // =====================================================
     if (guestSessionId) {
       await query(
         `INSERT INTO guest_orders (user_id, guest_session_id, order_number, order_id, created_at)

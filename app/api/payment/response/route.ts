@@ -1,4 +1,3 @@
-// app/api/payment/response/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
@@ -8,7 +7,6 @@ import { query } from '@/lib/db'
 // =====================================================
 async function confirmarReserva(orderId: number) {
   try {
-    // Obtener información de la orden
     const [orderInfo] = await query(
       `SELECT user_id, customer_email, customer_rut FROM orders WHERE id = ?`,
       [orderId]
@@ -23,15 +21,10 @@ async function confirmarReserva(orderId: number) {
     const customerEmail = orderInfo?.customer_email;
     const customerRut = orderInfo?.customer_rut;
 
-    console.log(`Confirmando reserva para orden`, { 
-      userId, 
-      customerEmail,
-      customerRut 
-    });
+    console.log(` Confirmando reserva para la orden`);
 
     let reservations: any[] = [];
 
-    // 1. Buscar por user_id (si existe)
     if (userId) {
       reservations = await query(
         `SELECT id, product_id, quantity, identifier FROM stock_reservations 
@@ -40,177 +33,10 @@ async function confirmarReserva(orderId: number) {
       ) as any[];
       
       if (reservations.length > 0) {
-        console.log(`Encontradas ${reservations.length} reservas por usuario`);
+        console.log(` Encontradas ${reservations.length} reservas por usuario`);
       }
     }
 
-    // 2. Si no se encontraron por user_id, buscar por customer_rut (RUT del cliente)
-    if (reservations.length === 0 && customerRut) {
-      // Buscar el usuario invitado por RUT
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE rut = ? AND is_guest = 1`,
-        [customerRut]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        console.log(`Usuario invitado encontrado por RUT`);
-        
-        reservations = await query(
-          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(`Encontradas ${reservations.length} reservas por RUT invitado`);
-        }
-      }
-    }
-
-    // 3. Si aún no hay reservas, buscar por customer_email
-    if (reservations.length === 0 && customerEmail) {
-      // Buscar el usuario invitado por email
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
-        [customerEmail]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        console.log(` Usuario invitado encontrado por email del invitado`);
-        
-        reservations = await query(
-          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por email invitado`);
-        }
-      }
-    }
-
-    // 4. Si aún no hay reservas, buscar por guest_orders
-    if (reservations.length === 0) {
-      const guestOrders = await query(
-        `SELECT guest_session_id FROM guest_orders WHERE order_id = ?`,
-        [orderId]
-      ) as any[];
-      
-      if (guestOrders.length > 0) {
-        const guestSessionId = guestOrders[0].guest_session_id;
-        const identifier = `guest_${guestSessionId}`;
-        
-        console.log(`Buscando reservas `);
-        
-        reservations = await query(
-          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
-           WHERE identifier = ? AND expires_at > NOW()`,
-          [identifier]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(`Encontradas ${reservations.length} reservas`);
-        }
-      }
-    }
-
-    // 5. ÚLTIMO RECURSO: Buscar TODAS las reservas activas y verificar si alguna
-    //    coincide con el email o RUT de la orden
-    if (reservations.length === 0) {
-      const allReservations = await query(
-        `SELECT id, product_id, quantity, identifier, user_id FROM stock_reservations 
-         WHERE expires_at > NOW()`
-      ) as any[];
-      
-      console.log(`Buscando en ${allReservations.length} reservas activas...`);
-      
-      for (const res of allReservations) {
-        // Verificar si el user_id de la reserva coincide con el user_id de la orden
-        if (res.user_id && res.user_id === userId) {
-          reservations.push(res);
-          console.log(`Reserva encontrada `);
-          break;
-        }
-        
-        // Si la reserva tiene user_id, verificar si ese usuario tiene el mismo email
-        if (res.user_id) {
-          const userCheck = await query(
-            `SELECT email FROM users WHERE id = ?`,
-            [res.user_id]
-          ) as any[];
-          
-          if (userCheck.length > 0 && userCheck[0].email === customerEmail) {
-            reservations.push(res);
-            console.log(` Reserva encontrada por email del usuario`);
-            break;
-          }
-        }
-      }
-    }
-
-    if (reservations.length === 0) {
-      console.log('No hay reservas activas para confirmar');
-      return true;
-    }
-
-    // Eliminar las reservas (NO devolver stock porque ya está descontado)
-    for (const res of reservations) {
-      console.log(` Eliminando reserva para producto ${res.product_id}`);
-      await query(
-        'DELETE FROM stock_reservations WHERE id = ?',
-        [res.id]
-      );
-    }
-    
-    console.log(` ${reservations.length} reservas eliminadas, stock ya descontado`);
-    return true;
-
-  } catch (error) {
-    console.error(' Error confirmando reserva:', error);
-    return false;
-  }
-}
-
-// =====================================================
-// FUNCIÓN: LIBERAR STOCK (para pagos cancelados/rechazados)
-// =====================================================
-async function liberarStock(orderId: number) {
-  try {
-    // Obtener información de la orden
-    const [orderInfo] = await query(
-      `SELECT user_id, customer_email, customer_rut FROM orders WHERE id = ?`,
-      [orderId]
-    ) as any[];
-
-    if (!orderInfo) {
-      console.log(' Orden no encontrada');
-      return false;
-    }
-
-    const userId = orderInfo?.user_id;
-    const customerEmail = orderInfo?.customer_email;
-    const customerRut = orderInfo?.customer_rut;
-
-    console.log(` Liberando stock `);
-
-    let reservations: any[] = [];
-
-    // 1. Buscar por user_id
-    if (userId) {
-      reservations = await query(
-        `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
-        [userId]
-      ) as any[];
-      
-      if (reservations.length > 0) {
-        console.log(`Encontradas ${reservations.length} reservas por usuario`);
-      }
-    }
-
-    // 2. Buscar por customer_rut (RUT)
     if (reservations.length === 0 && customerRut) {
       const guestUsers = await query(
         `SELECT id FROM users WHERE rut = ? AND is_guest = 1`,
@@ -220,18 +46,17 @@ async function liberarStock(orderId: number) {
       if (guestUsers.length > 0) {
         const guestUserId = guestUsers[0].id;
         reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
+          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
            WHERE user_id = ? AND expires_at > NOW()`,
           [guestUserId]
         ) as any[];
         
         if (reservations.length > 0) {
-          console.log(`Encontradas ${reservations.length} reservas por RUT del usuario`);
+          console.log(` Encontradas ${reservations.length} reservas por RUT`);
         }
       }
     }
 
-    // 3. Buscar por customer_email
     if (reservations.length === 0 && customerEmail) {
       const guestUsers = await query(
         `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
@@ -241,18 +66,17 @@ async function liberarStock(orderId: number) {
       if (guestUsers.length > 0) {
         const guestUserId = guestUsers[0].id;
         reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
+          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
            WHERE user_id = ? AND expires_at > NOW()`,
           [guestUserId]
         ) as any[];
         
         if (reservations.length > 0) {
-          console.log(`Encontradas ${reservations.length} reservas por invitado`);
+          console.log(` Encontradas ${reservations.length} reservas por email`);
         }
       }
     }
 
-    // 4. Buscar por guest_orders
     if (reservations.length === 0) {
       const guestOrders = await query(
         `SELECT guest_session_id FROM guest_orders WHERE order_id = ?`,
@@ -264,7 +88,7 @@ async function liberarStock(orderId: number) {
         const identifier = `guest_${guestSessionId}`;
         
         reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
+          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
            WHERE identifier = ? AND expires_at > NOW()`,
           [identifier]
         ) as any[];
@@ -276,22 +100,161 @@ async function liberarStock(orderId: number) {
     }
 
     if (reservations.length === 0) {
+      const allReservations = await query(
+        `SELECT id, product_id, quantity, identifier, user_id FROM stock_reservations 
+         WHERE expires_at > NOW()`
+      ) as any[];
+      
+      for (const res of allReservations) {
+        if (res.user_id && res.user_id === userId) {
+          reservations.push(res);
+          console.log(` Reserva encontrada por usuario`);
+          break;
+        }
+        
+        if (res.user_id) {
+          const userCheck = await query(
+            `SELECT email FROM users WHERE id = ?`,
+            [res.user_id]
+          ) as any[];
+          
+          if (userCheck.length > 0 && userCheck[0].email === customerEmail) {
+            reservations.push(res);
+            console.log(`Reserva encontrada por email del usuario`);
+            break;
+          }
+        }
+      }
+    }
+
+    if (reservations.length === 0) {
+      console.log(' No hay reservas activas para confirmar');
+      return true;
+    }
+
+    for (const res of reservations) {
+      console.log(`Eliminando reserva para el producto`);
+      await query('DELETE FROM stock_reservations WHERE id = ?', [res.id]);
+    }
+    
+    console.log(` ${reservations.length} reservas eliminadas`);
+    return true;
+
+  } catch (error) {
+    console.error('Error confirmando reserva:', error);
+    return false;
+  }
+}
+
+// =====================================================
+// FUNCIÓN: LIBERAR STOCK
+// =====================================================
+async function liberarStock(orderId: number) {
+  try {
+    const [orderInfo] = await query(
+      `SELECT user_id, customer_email, customer_rut FROM orders WHERE id = ?`,
+      [orderId]
+    ) as any[];
+
+    if (!orderInfo) {
+      console.log(' Orden no encontrada');
+      return false;
+    }
+
+    const userId = orderInfo?.user_id;
+    const customerEmail = orderInfo?.customer_email;
+    const customerRut = orderInfo?.customer_rut;
+
+    let reservations: any[] = [];
+
+    if (userId) {
+      reservations = await query(
+        `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
+        [userId]
+      ) as any[];
+      
+      if (reservations.length > 0) {
+        console.log(` Encontradas ${reservations.length} reservas por usuario: `);
+      }
+    }
+
+    if (reservations.length === 0 && customerRut) {
+      const guestUsers = await query(
+        `SELECT id FROM users WHERE rut = ? AND is_guest = 1`,
+        [customerRut]
+      ) as any[];
+      
+      if (guestUsers.length > 0) {
+        const guestUserId = guestUsers[0].id;
+        reservations = await query(
+          `SELECT product_id, quantity FROM stock_reservations 
+           WHERE user_id = ? AND expires_at > NOW()`,
+          [guestUserId]
+        ) as any[];
+        
+        if (reservations.length > 0) {
+          console.log(` Encontradas ${reservations.length} reservas por RUT usuario`);
+        }
+      }
+    }
+
+    if (reservations.length === 0 && customerEmail) {
+      const guestUsers = await query(
+        `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
+        [customerEmail]
+      ) as any[];
+      
+      if (guestUsers.length > 0) {
+        const guestUserId = guestUsers[0].id;
+        reservations = await query(
+          `SELECT product_id, quantity FROM stock_reservations 
+           WHERE user_id = ? AND expires_at > NOW()`,
+          [guestUserId]
+        ) as any[];
+        
+        if (reservations.length > 0) {
+          console.log(` Encontradas ${reservations.length} reservas por email usuario`);
+        }
+      }
+    }
+
+    if (reservations.length === 0) {
+      const guestOrders = await query(
+        `SELECT guest_session_id FROM guest_orders WHERE order_id = ?`,
+        [orderId]
+      ) as any[];
+      
+      if (guestOrders.length > 0) {
+        const guestSessionId = guestOrders[0].guest_session_id;
+        const identifier = `guest_${guestSessionId}`;
+        
+        reservations = await query(
+          `SELECT product_id, quantity FROM stock_reservations 
+           WHERE identifier = ? AND expires_at > NOW()`,
+          [identifier]
+        ) as any[];
+        
+        if (reservations.length > 0) {
+          console.log(` Encontradas ${reservations.length} reservas por identifier: ${identifier}`);
+        }
+      }
+    }
+
+    if (reservations.length === 0) {
       console.log('No hay reservas activas para liberar');
       return true;
     }
     
     console.log(`Liberando ${reservations.length} reservas`);
     
-    // DEVOLVER STOCK
     for (const res of reservations) {
       await query(
         `UPDATE products SET stock = stock + ? WHERE id = ?`,
         [res.quantity, res.product_id]
       );
-      console.log(`Stock devuelto para producto `);
+      console.log(`Stock devuelto para el producto`);
     }
     
-    // Eliminar reservas
     if (userId) {
       await query('DELETE FROM stock_reservations WHERE user_id = ?', [userId]);
     } else if (customerEmail) {
@@ -305,11 +268,11 @@ async function liberarStock(orderId: number) {
       }
     }
     
-    console.log('Reservas eliminadas y stock devuelto');
+    console.log(' Reservas eliminadas y stock devuelto');
     return true;
     
   } catch (error) {
-    console.error('Error liberando stock:', error);
+    console.error(' Error liberando stock:', error);
     return false;
   }
 }
@@ -329,7 +292,7 @@ async function usarCupon(orderId: number) {
       return true
     }
 
-    console.log(` Usando cupón `)
+    console.log(`Usando cupón`)
 
     const [coupon] = await query(
       `SELECT id, current_uses, max_uses, is_active FROM coupons WHERE id = ?`,
@@ -359,7 +322,7 @@ async function usarCupon(orderId: number) {
       [order.coupon_id]
     )
 
-    console.log(` Cupón usado exitosamente `)
+    console.log(`Cupón usado exitosamente `)
     return true
 
   } catch (error) {
@@ -378,7 +341,7 @@ async function limpiarReservasExpiradas() {
     ) as any[]
 
     if (expiredReservations && expiredReservations.length > 0) {
-      console.log(`Devolviendo stock de ${expiredReservations.length} reservas expiradas...`)
+      console.log(`Devolviendo stock de las reservas expiradas...`)
       
       for (const res of expiredReservations) {
         await query(
@@ -388,7 +351,7 @@ async function limpiarReservasExpiradas() {
            WHERE id = ?`,
           [res.quantity, res.product_id]
         )
-        console.log(`Stock devuelto para producto`)
+        console.log(`Stock devuelto para el producto`)
       }
       
       await query('DELETE FROM stock_reservations WHERE expires_at < NOW()')
@@ -397,13 +360,13 @@ async function limpiarReservasExpiradas() {
     
     return true
   } catch (error) {
-    console.error(' Error limpiando reservas expiradas:', error)
+    console.error('Error limpiando reservas expiradas:', error)
     return false
   }
 }
 
 // =====================================================
-// POST - PROCESAR RESPUESTA DE PAGO
+// POST - PROCESAR RESPUESTA DE PAGO (RÁPIDO - SIN EMAIL)
 // =====================================================
 export async function POST(request: NextRequest) {
   try {
@@ -411,14 +374,11 @@ export async function POST(request: NextRequest) {
     const token_ws = formData.get('token_ws') as string
     const TBK_TOKEN = formData.get('TBK_TOKEN') as string
 
-    // Limpiar reservas expiradas siempre
     await limpiarReservasExpiradas()
 
-    // ============================================================
-    // CASO 1: Pago ABORTADO por el usuario
-    // ============================================================
+    // CASO 1: Pago ABORTADO
     if (TBK_TOKEN && !token_ws) {
-      console.log('Pago ABORTADO por el usuario')
+      console.log(' Pago ABORTADO por el usuario')
       
       const orders = await query(
         `SELECT * FROM orders WHERE transbank_session_id = ?`,
@@ -427,12 +387,8 @@ export async function POST(request: NextRequest) {
 
       if (orders.length > 0) {
         const order = orders[0]
-        
-        console.log(` Orden y Pago abortado`)
-        
-        // Liberar stock
+        console.log(` Orden - Pago abortado`)
         await liberarStock(order.id);
-        
         await query(
           `UPDATE orders SET 
             payment_status = 'failed',
@@ -442,19 +398,14 @@ export async function POST(request: NextRequest) {
           [order.id]
         )
         
-        console.log(`Orden cancelada por pago abortado`)
-        
         const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
         redirectUrl.searchParams.set('orderId', order.id.toString())
         redirectUrl.searchParams.set('status', 'cancelled')
-        
         return NextResponse.redirect(redirectUrl)
       }
     }
 
-    // ============================================================
     // CASO 2: Pago EXITOSO
-    // ============================================================
     if (token_ws && !TBK_TOKEN) {
       console.log('Procesando pago EXITOSO')
       
@@ -467,21 +418,19 @@ export async function POST(request: NextRequest) {
         ) as any[]
 
         if (orders.length === 0) {
-          console.log(' Orden no encontrada para order')
+          console.log(' Orden no encontrada')
           const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
           redirectUrl.searchParams.set('status', 'error')
           redirectUrl.searchParams.set('message', 'order_not_found')
-          
           return NextResponse.redirect(redirectUrl)
         }
 
         const order = orders[0]
-        console.log(`Orden  - Procesando respuesta de pago`)
+        console.log(`Orden - Procesando respuesta de pago`)
 
         const isApproved = transbankService.isTransactionApproved(commitResponse)
         
         if (isApproved) {
-          
           const [orderCheck] = await query(
             `SELECT payment_status, status FROM orders WHERE id = ?`,
             [order.id]
@@ -492,19 +441,18 @@ export async function POST(request: NextRequest) {
             const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
             redirectUrl.searchParams.set('orderId', order.id.toString())
             redirectUrl.searchParams.set('status', 'success')
-            
             return NextResponse.redirect(redirectUrl)
           }
           
-          console.log(`Pago APROBADO - Procesando pedido`);
+          console.log(` Pago APROBADO - Procesando pedido `);
 
-          // 1. CONFIRMAR RESERVA (eliminar la reserva)
+          // 1. CONFIRMAR RESERVA
           await confirmarReserva(order.id);
 
           // 2. USAR CUPÓN
           await usarCupon(order.id);
 
-          // 3. ACTUALIZAR ESTADO DE LA ORDEN
+          // 3. ACTUALIZAR ESTADO DE LA ORDEN (SOLO PAGO - SIN BOLETA NI EMAIL)
           await query(
             `UPDATE orders SET 
               payment_status = 'paid',
@@ -515,7 +463,8 @@ export async function POST(request: NextRequest) {
               transbank_installments_number = ?,
               transbank_card_number = ?,
               transbank_accounting_date = ?,
-              transbank_transaction_date = ?
+              transbank_transaction_date = ?,
+              boleta_emitida = 0
             WHERE id = ?`,
             [
               token_ws,
@@ -532,17 +481,19 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log(`Orden  procesada exitosamente`)
+          console.log(` Orden actualizada (pago confirmado)`);
 
+          //  REDIRIGIR RÁPIDO - LA BOLETA Y EMAIL SE GENERAN EN ORDER-SUCCESS
           const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
           redirectUrl.searchParams.set('orderId', order.id.toString())
           redirectUrl.searchParams.set('status', 'success')
+          redirectUrl.searchParams.set('processing', 'true')
           
           return NextResponse.redirect(redirectUrl)
 
         } else {
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
-          console.log(` Pago RECHAZADO para orden `)
+          console.log(` Pago RECHAZADO para la orden `)
           
           await liberarStock(order.id);
           
@@ -565,11 +516,10 @@ export async function POST(request: NextRequest) {
         }
 
       } catch (commitError: any) {
-        console.error('Error confirmando pago:', commitError)
+        console.error(' Error confirmando pago:', commitError)
         const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
         redirectUrl.searchParams.set('status', 'error')
         redirectUrl.searchParams.set('message', 'payment_failed')
-        
         return NextResponse.redirect(redirectUrl)
       }
     }
@@ -578,7 +528,6 @@ export async function POST(request: NextRequest) {
     const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
     redirectUrl.searchParams.set('status', 'error')
     redirectUrl.searchParams.set('message', 'invalid_tokens')
-    
     return NextResponse.redirect(redirectUrl)
 
   } catch (error: any) {
@@ -586,7 +535,6 @@ export async function POST(request: NextRequest) {
     const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
     redirectUrl.searchParams.set('status', 'error')
     redirectUrl.searchParams.set('message', 'processing_error')
-    
     return NextResponse.redirect(redirectUrl)
   }
 }

@@ -1,4 +1,3 @@
-// app/api/orders/emitir-boleta/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { emitirBoletaApiGateway } from '@/lib/apigateway-service';
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(` Emitiendo boleta para la orden `);
+    console.log(` Emitiendo boleta `);
 
     // ============================================================
     // 1. OBTENER LA ORDEN CON TODOS SUS DATOS
@@ -73,7 +72,7 @@ export async function POST(request: NextRequest) {
         u.first_name as customer_first_name,
         u.last_name as customer_last_name,
         u.phone as customer_phone,
-        u.rut as customer_rut,
+        u.rut as user_rut,
         u.is_guest as is_guest
       FROM orders o
       LEFT JOIN users u ON o.user_id = u.id
@@ -89,6 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     const order = orders[0];
+
 
     // ============================================================
     // 2. VERIFICAR QUE EL PAGO ESTÉ APROBADO
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     ) as any[];
 
     if (boletaExistente.length > 0) {
-      console.log(` Boleta ya existe para orden ${orderId}`);
+      console.log(` Boleta ya existe para la orden`);
       return NextResponse.json({
         success: true,
         folio: boletaExistente[0].folio,
@@ -138,23 +138,36 @@ export async function POST(request: NextRequest) {
     // ============================================================
     // 5. PREPARAR DATOS DEL CLIENTE
     // ============================================================
-    // Usar el RUT de la orden (que ya viene del checkout)
-    let rutCliente = order.customer_rut || RUT_CONSUMIDOR_FINAL;
+    // 🔥 CORRECCIÓN: PRIORIDAD para el RUT
+    // 1. Usar el RUT de la orden (customer_rut) - este es el que se ingresó en checkout
+    // 2. Si no existe, usar el RUT del usuario (user_rut)
+    // 3. Si ninguno existe, usar consumidor final
+    let rutCliente = order.customer_rut || order.user_rut || RUT_CONSUMIDOR_FINAL;
+    
+    console.log('RUT antes de validar');
     
     // Validar y limpiar el RUT
     if (rutCliente !== RUT_CONSUMIDOR_FINAL && validarRUT(rutCliente)) {
       rutCliente = limpiarRUT(rutCliente);
+      console.log(' RUT válido y limpio');
     } else if (rutCliente !== RUT_CONSUMIDOR_FINAL) {
-      console.warn(` RUT inválido: ${rutCliente}, usando consumidor final`);
+      console.warn(` RUT inválido, usando consumidor final`);
       rutCliente = RUT_CONSUMIDOR_FINAL;
     }
 
-    const nombreCliente = order.customer_first_name && order.customer_last_name
-      ? `${order.customer_first_name} ${order.customer_last_name}`.trim()
-      : 'Consumidor Final';
+    // Nombre del cliente: prioridad a los datos de la orden
+    let nombreCliente = 'Consumidor Final';
+    if (order.customer_first_name && order.customer_last_name) {
+      nombreCliente = `${order.customer_first_name} ${order.customer_last_name}`.trim();
+    } else if (order.customer_first_name) {
+      nombreCliente = order.customer_first_name;
+    } else if (order.customer_last_name) {
+      nombreCliente = order.customer_last_name;
+    }
 
     const emailCliente = order.customer_email || undefined;
     const telefonoCliente = order.customer_phone || undefined;
+
 
     // ============================================================
     // 6. PREPARAR DIRECCIÓN
@@ -207,7 +220,6 @@ export async function POST(request: NextRequest) {
       email: emailCliente
     };
 
-
     // ============================================================
     // 9. EMITIR CON APIGATEWAY
     // ============================================================
@@ -224,7 +236,7 @@ export async function POST(request: NextRequest) {
       throw new Error('No se obtuvo folio de la boleta');
     }
 
-    console.log(` Boleta emitida. Folio: ${folio}`);
+    console.log(`Boleta emitida. Folio: ${folio}`);
 
     // ============================================================
     // 10. GUARDAR EN BASE DE DATOS
@@ -244,7 +256,7 @@ export async function POST(request: NextRequest) {
         folio,
         39,
         process.env.APIGATEWAY_RUT_EMISOR || '78364115-1',
-        receptor.rut,
+        receptor.rut,  // 🔥 Este es el RUT que debe ir en la boleta
         receptor.nombre,
         montoTotal,
         iva,
@@ -254,7 +266,6 @@ export async function POST(request: NextRequest) {
       ]
     ) as any;
 
-    console.log(` Boleta guardada `);
 
     // Actualizar la orden
     await query(
@@ -271,7 +282,9 @@ export async function POST(request: NextRequest) {
       success: true,
       folio: folio,
       data: resultado.data || resultado,
-      boletaId: insertResult.insertId
+      boletaId: insertResult.insertId,
+      rutReceptor: receptor.rut,
+      nombreReceptor: receptor.nombre
     });
 
   } catch (error: any) {

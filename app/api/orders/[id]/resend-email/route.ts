@@ -1,4 +1,3 @@
-// app/api/orders/[id]/resend-email/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { sendBoletaEmail } from '@/lib/email-service';
@@ -108,14 +107,19 @@ function extraerShippingAddress(order: any): {
 }
 
 /**
- * Obtener el PDF de la boleta - PRIORIDAD: PDF Admin > ApiGateway
+ * Obtener el PDF de la boleta CON REINTENTOS
  * @param order - Datos de la orden
+ * @param orderId - ID de la orden
  * @param usarBoletaAntigua - Si es true, fuerza usar ApiGateway aunque exista PDF admin
+ * @param maxIntentos - Número máximo de intentos (por defecto 5)
+ * @param delayMs - Delay entre intentos en milisegundos (por defecto 2000)
  */
-async function obtenerPDFBoleta(
+async function obtenerPDFBoletaConReintentos(
   order: any, 
   orderId: string,
-  usarBoletaAntigua: boolean = false
+  usarBoletaAntigua: boolean = false,
+  maxIntentos: number = 5,
+  delayMs: number = 2000
 ): Promise<{ buffer: Buffer; fuente: 'admin' | 'apigateway' } | null> {
   
   // ✅ Si se solicita explícitamente la boleta antigua, usar ApiGateway
@@ -124,27 +128,37 @@ async function obtenerPDFBoleta(
       return null;
     }
 
-    try {
-      let fechaFormateada = order.boleta_fecha 
-        ? formatearFecha(order.boleta_fecha) 
-        : new Date().toISOString().split('T')[0];
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        let fechaFormateada = order.boleta_fecha 
+          ? formatearFecha(order.boleta_fecha) 
+          : new Date().toISOString().split('T')[0];
 
-      const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
-      if (fechaSII) {
-        fechaFormateada = fechaSII;
+        const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
+        if (fechaSII) {
+          fechaFormateada = fechaSII;
+          console.log(`Usando fecha del SII: ${fechaFormateada}`);
+        }
+
+        const pdfBuffer = await obtenerPDFApiGateway(
+          order.boleta_folio,
+          fechaFormateada
+        );
+        
+        console.log(`PDF obtenido de Api (intento ${intento}) para folio: ${order.boleta_folio}`);
+        return { buffer: pdfBuffer, fuente: 'apigateway' };
+      } catch (error: any) {
+        console.warn(` Intento ${intento}/${maxIntentos} falló para folio ${order.boleta_folio}:`, error.message);
+        
+        if (intento < maxIntentos) {
+          console.log(`Esperando ${delayMs}ms antes de reintentar...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        } else {
+          console.error(` Todos los intentos fallaron para folio ${order.boleta_folio}`);
+        }
       }
-
-      const pdfBuffer = await obtenerPDFApiGateway(
-        order.boleta_folio,
-        fechaFormateada
-      );
-      
-      console.log(` PDF obtenido de ApiGateway (forzado) para folio`);
-      return { buffer: pdfBuffer, fuente: 'apigateway' };
-    } catch (error) {
-      console.error(' Error obteniendo PDF de ApiGateway:', error);
-      return null;
     }
+    return null;
   }
 
   // ✅ PRIORIDAD 1: Si hay PDF subido por admin, usarlo
@@ -160,40 +174,49 @@ async function obtenerPDFBoleta(
         console.log(` Usando PDF subido por admin`);
         return { buffer, fuente: 'admin' };
       } else {
-        console.warn(` El PDF subido por admin no existe: ${filePath}, intentando con ApiGateway`);
+        console.warn(` El PDF subido por admin no existe: intentando con Api`);
       }
     } catch (error) {
-      console.error(' Error leyendo PDF subido por admin:', error);
+      console.error('Error leyendo PDF subido por admin:', error);
     }
   }
 
-  // ✅ PRIORIDAD 2: Si no hay PDF subido o falló, usar ApiGateway
+  //  PRIORIDAD 2: Si no hay PDF subido o falló, usar ApiGateway con reintentos
   if (!order.boleta_folio) {
     return null;
   }
 
-  try {
-    let fechaFormateada = order.boleta_fecha 
-      ? formatearFecha(order.boleta_fecha) 
-      : new Date().toISOString().split('T')[0];
+  for (let intento = 1; intento <= maxIntentos; intento++) {
+    try {
+      let fechaFormateada = order.boleta_fecha 
+        ? formatearFecha(order.boleta_fecha) 
+        : new Date().toISOString().split('T')[0];
 
-    const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
-    if (fechaSII) {
-      fechaFormateada = fechaSII;
-      console.log(`Usando fecha del SII: ${fechaFormateada}`);
+      const fechaSII = await obtenerFechaEmisionSII(order.boleta_folio);
+      if (fechaSII) {
+        fechaFormateada = fechaSII;
+        console.log(`Usando fecha del SII: ${fechaFormateada}`);
+      }
+
+      const pdfBuffer = await obtenerPDFApiGateway(
+        order.boleta_folio,
+        fechaFormateada
+      );
+      
+      console.log(` PDF obtenido de Api (intento ${intento}) para folio: ${order.boleta_folio}`);
+      return { buffer: pdfBuffer, fuente: 'apigateway' };
+    } catch (error: any) {
+      console.warn(` Intento ${intento}/${maxIntentos} falló para folio ${order.boleta_folio}:`, error.message);
+      
+      if (intento < maxIntentos) {
+        console.log(`Esperando ${delayMs}ms antes de reintentar...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.error(`Todos los intentos fallaron para folio ${order.boleta_folio}`);
+      }
     }
-
-    const pdfBuffer = await obtenerPDFApiGateway(
-      order.boleta_folio,
-      fechaFormateada
-    );
-    
-    console.log(` PDF obtenido de ApiGateway para folio: ${order.boleta_folio}`);
-    return { buffer: pdfBuffer, fuente: 'apigateway' };
-  } catch (error) {
-    console.error(' Error obteniendo PDF de ApiGateway:', error);
-    return null;
   }
+  return null;
 }
 
 export async function POST(
@@ -207,7 +230,7 @@ export async function POST(
     //  Obtener el parámetro para forzar boleta antigua
     const url = new URL(request.url);
     const usarBoletaAntigua = url.searchParams.get('antigua') === 'true';
-
+    const esAutomatico = url.searchParams.get('automatico') === 'true';
 
     // ============================================================
     // 1. OBTENER DATOS DE LA ORDEN
@@ -302,7 +325,7 @@ export async function POST(
     const ivaIncluido = subtotalConIVA - subtotalNeto;
     const shippingAddress = extraerShippingAddress(order);
 
-    //  Determinar qué folio usar para el email
+    // Determinar qué folio usar para el email
     let folioParaEmail = order.boleta_folio || 'N/A';
     let fuentePDF = 'apigateway';
 
@@ -346,14 +369,34 @@ export async function POST(
     };
 
     // ============================================================
-    // 5. OBTENER EL PDF
+    // 5. OBTENER EL PDF CON REINTENTOS
     // ============================================================
-    console.log(` Obteniendo PDF `);
-    const resultadoPDF = await obtenerPDFBoleta(order, orderId, usarBoletaAntigua);
+    // Si es automático, usar más intentos y esperar más tiempo
+    const maxIntentos = esAutomatico ? 6 : 3;
+    const delayMs = esAutomatico ? 3000 : 2000;
+    
+    console.log(` Obteniendo PDF para la orden... (maxIntentos: ${maxIntentos}, delay: ${delayMs}ms)`);
+    const resultadoPDF = await obtenerPDFBoletaConReintentos(
+      order, 
+      orderId, 
+      usarBoletaAntigua,
+      maxIntentos,
+      delayMs
+    );
 
     if (!resultadoPDF) {
+      // Si es automático y falló, no devolver error, solo log
+      if (esAutomatico) {
+        console.warn(` No se pudo obtener el PDF automáticamente para la orden, se intentará más tarde`);
+        return NextResponse.json({
+          success: false,
+          error: 'PDF no disponible aún, se reintentará automáticamente',
+          willRetry: true
+        }, { status: 202 });
+      }
+      
       return NextResponse.json(
-        { error: 'No se pudo obtener el PDF de la boleta' },
+        { error: 'No se pudo obtener el PDF de la boleta después de varios intentos' },
         { status: 500 }
       );
     }
@@ -361,7 +404,7 @@ export async function POST(
     const pdfBuffer = resultadoPDF.buffer;
     const fuente = resultadoPDF.fuente;
 
-    console.log(` PDF obtenido`);
+    console.log(` PDF obtenido desde: ${fuente === 'admin' ? ' Subido por admin' : ' Api'}`);
 
     // ============================================================
     // 6. ENVIAR EMAIL CON EL PDF

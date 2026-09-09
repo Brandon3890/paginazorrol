@@ -1,4 +1,3 @@
-// app/api/payment/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
@@ -15,11 +14,12 @@ function generateSimpleOrderNumber(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log(' Payment create request body:', body)
     
     const { orderId, amount, isGuest, guestEmail, customerRut } = body
 
     if (!orderId || !amount) {
-      console.log(' Missing required fields:', { orderId, amount })
+      console.log('Missing required fields:', { orderId, amount })
       return NextResponse.json(
         { error: 'Faltan datos requeridos: orderId y amount' },
         { status: 400 }
@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
           userRut = payload.rut as string || null
           console.log(' Usuario autenticado encontrado')
         } catch (error) {
-          console.log(' Error verificando token:', error)
+          console.log('Error verificando token:', error)
         }
       }
       
       if (!userId) {
-        console.log('No se encontró usuario autenticado')
+        console.log('❌ No se encontró usuario autenticado')
         return NextResponse.json(
           { error: 'No autorizado' },
           { status: 401 }
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     ) as any[]
 
     if (orders.length === 0) {
-      console.log(' Orden no encontrada')
+      console.log('Orden no encontrada')
       return NextResponse.json(
         { error: 'Orden no encontrada' },
         { status: 404 }
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       [newOrderNumber, transbankBuyOrder, sessionId, amount, returnUrl, rutToUse, orderId]
     )
 
-    console.log('Orden actualizada con RUT')
+    console.log(' Orden actualizada con RUT:', rutToUse)
 
     // Crear transacción en Transbank
     const transaction = await transbankService.createTransaction({

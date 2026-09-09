@@ -1,4 +1,3 @@
-// app/api/orders/create/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 
@@ -141,9 +140,18 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================
-    // 3. DATOS DEL CLIENTE
+    // 3. DATOS DEL CLIENTE - RUT OPCIONAL PARA USUARIOS REGISTRADOS
     // =====================================================
-    const customerRut = customerInfo?.rut || userRut || null
+    // Si se proporcionó un RUT en customerInfo, usarlo
+    // Si no, usar el RUT de la cuenta del usuario
+    // Si el usuario no tiene RUT, usar consumidor final
+    let customerRut = customerInfo?.rut || userRut || null
+    
+    // Si es '66666666-6' o null/undefined, usar consumidor final
+    if (!customerRut || customerRut === '66666666-6') {
+      customerRut = '66666666-6'
+    }
+    
     const customerEmail = customerInfo?.email || userEmail || null
     const customerFirstName = customerInfo?.firstName || userFirstName || null
     const customerLastName = customerInfo?.lastName || userLastName || null
@@ -182,7 +190,7 @@ export async function POST(request: NextRequest) {
 
       if (existingAddresses.length > 0) {
         shippingAddressId = existingAddresses[0].id
-        console.log(` Usando dirección existente`)
+        console.log(`Usando dirección existente`)
       } else {
         const addressResult = await query(
           `INSERT INTO user_addresses (
@@ -190,7 +198,7 @@ export async function POST(request: NextRequest) {
             commune_name, postal_code, department, delivery_instructions, is_default
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            userId,  // ← Ahora userId no es null
+            userId,
             'Dirección de envío',
             shippingAddress.street || 'No especificada',
             shippingAddress.hasNoNumber || 0,
@@ -204,10 +212,10 @@ export async function POST(request: NextRequest) {
           ]
         ) as any
         shippingAddressId = addressResult.insertId
-        console.log(` Nueva dirección creada `)
+        console.log(`Nueva dirección creada`)
       }
     } else if (shippingAddress && !userId) {
-      console.log(' No se puede guardar dirección sin Id')
+      console.log(' No se puede guardar dirección sin el usuario')
     }
 
     // =====================================================
@@ -267,7 +275,7 @@ export async function POST(request: NextRequest) {
 
     const orderId = orderResult.insertId
 
-    console.log('Orden creada')
+    console.log('Orden creada ')
 
     // =====================================================
     // 8. INSERTAR ITEMS DE LA ORDEN
@@ -288,7 +296,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(` ${items.length} productos agregados a la orden`)
+    console.log(`productos agregados a la orden`)
 
     // =====================================================
     // 9. CONFIRMAR RESERVA DE STOCK
@@ -308,7 +316,7 @@ export async function POST(request: NextRequest) {
         })
         console.log(' Stock confirmado para la orden')
       } catch (stockError) {
-        console.warn('Error al confirmar stock:', stockError)
+        console.warn(' Error al confirmar stock:', stockError)
       }
     }
 
