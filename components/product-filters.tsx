@@ -346,9 +346,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
           >
             <Label className="text-sm font-medium">
               Rango de Precio (CLP) 
-              <span className="text-xs text-muted-foreground ml-1">
-                ({minPrice.toLocaleString('es-CL')} - {maxPrice.toLocaleString('es-CL')})
-              </span>
             </Label>
             <div className="px-2">
               <Slider
@@ -538,9 +535,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
           >
             <Label className="text-sm font-medium">
               Edad Mínima
-              <span className="text-xs text-muted-foreground ml-1">
-                ({minAge} - {maxAge} años)
-              </span>
             </Label>
             <div className="px-2">
               <Slider
@@ -585,9 +579,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
           >
             <Label className="text-sm font-medium">
               Número de Jugadores
-              <span className="text-xs text-muted-foreground ml-1">
-                ({minPlayers} - {maxPlayers})
-              </span>
             </Label>
             <div className="px-2">
               <Slider
@@ -632,9 +623,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
           >
             <Label className="text-sm font-medium">
               Duración
-              <span className="text-xs text-muted-foreground ml-1">
-                ({formatDuration(minDuration)} - {formatDuration(maxDuration)})
-              </span>
             </Label>
             <div className="px-2">
               <Slider
