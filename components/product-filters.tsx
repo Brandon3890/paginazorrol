@@ -1,4 +1,4 @@
-"use client"
+ "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react"
+import { X, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react"
 import { useState, useEffect, useCallback } from "react"
 import { useCategoryStore } from "@/lib/category-store"
 import { motion, AnimatePresence } from "framer-motion"
@@ -105,6 +105,9 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     sortBy: filters.sortBy || 'default',
   }))
 
+  // Estado para el dropdown de ordenamiento
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false)
+
   // Sincronizar con los filtros externos
   useEffect(() => {
     const hasExternalFilters = 
@@ -159,9 +162,10 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     applyFilters(newFilters)
   }
 
-  // Función para seleccionar ordenamiento directamente
+  // Función para seleccionar ordenamiento
   const selectSort = (sort: SortOption) => {
     updatePendingFilters("sortBy", sort)
+    setIsSortDropdownOpen(false) // Cerrar el dropdown después de seleccionar
   }
 
   const toggleArrayFilter = (key: "categories" | "subcategories" | "tags", value: string) => {
@@ -197,6 +201,16 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
       case 'price-asc': return 'Menor a mayor precio'
       case 'price-desc': return 'Mayor a menor precio'
       default: return 'Por defecto'
+    }
+  }
+
+  // Obtener el ícono del ordenamiento
+  const getSortIcon = (sort: SortOption) => {
+    switch (sort) {
+      case 'default': return <ArrowUpDown className="w-4 h-4" />
+      case 'price-asc': return <ArrowUp className="w-4 h-4" />
+      case 'price-desc': return <ArrowDown className="w-4 h-4" />
+      default: return <ArrowUpDown className="w-4 h-4" />
     }
   }
 
@@ -244,6 +258,18 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     return `${hours}h ${mins}min`
   }
 
+  // Cerrar el dropdown al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.sort-dropdown-container')) {
+        setIsSortDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -260,10 +286,30 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             >
               <CardTitle className="text-lg">Filtros</CardTitle>
             </motion.div>
+            <AnimatePresence>
+              {hasActiveFilters && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearAllFilters}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Limpiar todos
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* ORDENAMIENTO POR PRECIO */}
+          {/* ORDENAMIENTO POR PRECIO - AHORA CON UN SOLO SELECTOR */}
           <motion.div 
             className="space-y-1.5"
             initial={{ opacity: 0, y: 20 }}
@@ -271,50 +317,72 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             transition={{ delay: 0.15 }}
           >
             <Label className="text-xs font-medium">Ordenar por precio</Label>
-            <div className="space-y-1">
-              <Button
-                variant={pendingFilters.sortBy === 'default' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => selectSort('default')}
-                className={`w-full h-7 text-xs transition-all duration-200 ${
-                  pendingFilters.sortBy === 'default' 
-                    ? 'bg-[#C2410C] hover:bg-[#9A3412]' 
-                    : ''
-                }`}
+            
+            {/* Dropdown selector único */}
+            <div className="relative sort-dropdown-container">
+              <button
+                onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+                className={`w-full h-10 px-4 py-2 text-sm font-medium rounded-md border transition-all duration-200 flex items-center justify-between
+                  ${pendingFilters.sortBy !== 'default' 
+                    ? 'bg-[#C2410C] text-white border-[#C2410C] hover:bg-[#9A3412]' 
+                    : 'bg-background text-foreground border-input hover:bg-accent hover:text-accent-foreground'
+                  }`}
               >
-                <ArrowUpDown className="w-3 h-3 mr-1.5" />
-                Por defecto
-              </Button>
-              <Button
-                variant={pendingFilters.sortBy === 'price-asc' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => selectSort('price-asc')}
-                className={`w-full h-7 text-xs transition-all duration-200 ${
-                  pendingFilters.sortBy === 'price-asc' 
-                    ? 'bg-[#C2410C] hover:bg-[#9A3412]' 
-                    : ''
-                }`}
-              >
-                <ArrowUp className="w-3 h-3 mr-1.5" />
-                Menor a mayor precio
-              </Button>
-              <Button
-                variant={pendingFilters.sortBy === 'price-desc' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => selectSort('price-desc')}
-                className={`w-full h-7 text-xs transition-all duration-200 ${
-                  pendingFilters.sortBy === 'price-desc' 
-                    ? 'bg-[#C2410C] hover:bg-[#9A3412]' 
-                    : ''
-                }`}
-              >
-                <ArrowDown className="w-3 h-3 mr-1.5" />
-                Mayor a menor precio
-              </Button>
+                <div className="flex items-center gap-2">
+                  {getSortIcon(pendingFilters.sortBy)}
+                  <span>{getSortLabel(pendingFilters.sortBy)}</span>
+                </div>
+                <motion.div
+                  animate={{ rotate: isSortDropdownOpen ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </motion.div>
+              </button>
+
+              {/* Opciones del dropdown */}
+              <AnimatePresence>
+                {isSortDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ duration: 0.15, type: "spring", stiffness: 400 }}
+                    className="absolute left-0 right-0 mt-1 py-1 bg-popover rounded-md border shadow-lg z-50"
+                  >
+                    {[
+                      { value: 'default', label: 'Por defecto', icon: <ArrowUpDown className="w-4 h-4" /> },
+                      { value: 'price-asc', label: 'Menor a mayor precio', icon: <ArrowUp className="w-4 h-4" /> },
+                      { value: 'price-desc', label: 'Mayor a menor precio', icon: <ArrowDown className="w-4 h-4" /> }
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => selectSort(option.value as SortOption)}
+                        className={`w-full px-4 py-2 text-sm text-left transition-colors duration-150 flex items-center gap-2
+                          ${pendingFilters.sortBy === option.value 
+                            ? 'bg-[#C2410C] text-white' 
+                            : 'hover:bg-accent hover:text-accent-foreground'
+                          }`}
+                      >
+                        <span className={pendingFilters.sortBy === option.value ? 'text-white' : 'text-muted-foreground'}>
+                          {option.icon}
+                        </span>
+                        {option.label}
+                        {pendingFilters.sortBy === option.value && (
+                          <motion.span
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="ml-auto"
+                          >
+                            ✓
+                          </motion.span>
+                        )}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              Seleccionado: {getSortLabel(pendingFilters.sortBy)}
-            </p>
           </motion.div>
 
           {/* Price Range */}
