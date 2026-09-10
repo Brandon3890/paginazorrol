@@ -12,7 +12,7 @@ export function getSecurityHeaders() {
 
   if (isProduction) {
     headers['Strict-Transport-Security'] =
-      'max-age=31536000; includeSubDomains'
+      'max-age=31536000; includeSubDomains' 
   }
 
   return headers
