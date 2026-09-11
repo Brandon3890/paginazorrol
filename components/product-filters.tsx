@@ -1,4 +1,4 @@
- "use client"
+"use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -7,7 +7,7 @@ import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { X, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown } from "lucide-react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useCategoryStore } from "@/lib/category-store"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -50,6 +50,7 @@ interface ProductFiltersProps {
 
 export function ProductFilters({ filters, onFiltersChange, products }: ProductFiltersProps) {
   const { categories: dbCategories, fetchCategories } = useCategoryStore()
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Cargar categorías de la base de datos
   useEffect(() => {
@@ -70,14 +71,14 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
       }))
   )
 
-  // 👈 FUNCIÓN PARA CALCULAR MIN Y MAX REALES (ignorando valores 0 o null)
+  // Función para calcular min y max reales (ignorando valores 0 o null)
   const getMinMax = (products: Product[], key: keyof Product, defaultValue: number = 0): [number, number] => {
     const values = products
       .map(p => p[key] as number)
-      .filter(v => v !== undefined && v !== null && v > 0) // Ignorar valores 0, null, undefined
+      .filter(v => v !== undefined && v !== null && v > 0)
     
     if (values.length === 0) {
-      return [defaultValue, defaultValue + 10] // Si no hay valores, dar un rango por defecto
+      return [defaultValue, defaultValue + 10]
     }
     
     return [Math.min(...values), Math.max(...values)]
@@ -110,44 +111,43 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
 
   // Sincronizar con los filtros externos
   useEffect(() => {
-    const hasExternalFilters = 
-      (filters.categories || []).length > 0 ||
-      (filters.subcategories || []).length > 0 ||
-      (filters.tags || []).length > 0 ||
-      (filters.priceRange && filters.priceRange[0] > minPrice) ||
-      (filters.priceRange && filters.priceRange[1] < maxPrice) ||
-      (filters.ageRange && filters.ageRange[0] > minAge) ||
-      (filters.ageRange && filters.ageRange[1] < maxAge) ||
-      (filters.playersRange && filters.playersRange[0] > minPlayers) ||
-      (filters.playersRange && filters.playersRange[1] < maxPlayers) ||
-      (filters.durationRange && filters.durationRange[0] > minDuration) ||
-      (filters.durationRange && filters.durationRange[1] < maxDuration) ||
-      filters.inStock ||
-      filters.sortBy !== 'default'
+    setPendingFilters(prev => {
+      const hasExternalChanges = 
+        JSON.stringify(prev.priceRange) !== JSON.stringify(filters.priceRange) ||
+        JSON.stringify(prev.categories) !== JSON.stringify(filters.categories) ||
+        JSON.stringify(prev.subcategories) !== JSON.stringify(filters.subcategories) ||
+        JSON.stringify(prev.ageRange) !== JSON.stringify(filters.ageRange) ||
+        JSON.stringify(prev.playersRange) !== JSON.stringify(filters.playersRange) ||
+        JSON.stringify(prev.durationRange) !== JSON.stringify(filters.durationRange) ||
+        prev.inStock !== filters.inStock ||
+        JSON.stringify(prev.tags) !== JSON.stringify(filters.tags) ||
+        prev.sortBy !== filters.sortBy;
 
-    if (hasExternalFilters) {
-      setPendingFilters({
-        priceRange: filters.priceRange || [minPrice, maxPrice],
-        categories: filters.categories || [],
-        subcategories: filters.subcategories || [],
-        ageRange: filters.ageRange || [minAge, maxAge],
-        playersRange: filters.playersRange || [minPlayers, maxPlayers],
-        durationRange: filters.durationRange || [minDuration, maxDuration],
-        inStock: filters.inStock || false,
-        tags: filters.tags || [],
-        sortBy: filters.sortBy || 'default',
-      })
-    }
+      if (hasExternalChanges) {
+        return {
+          priceRange: filters.priceRange || [minPrice, maxPrice],
+          categories: filters.categories || [],
+          subcategories: filters.subcategories || [],
+          ageRange: filters.ageRange || [minAge, maxAge],
+          playersRange: filters.playersRange || [minPlayers, maxPlayers],
+          durationRange: filters.durationRange || [minDuration, maxDuration],
+          inStock: filters.inStock || false,
+          tags: filters.tags || [],
+          sortBy: filters.sortBy || 'default',
+        };
+      }
+      return prev;
+    });
   }, [filters, minPrice, maxPrice, minAge, maxAge, minPlayers, maxPlayers, minDuration, maxDuration])
 
-  // 👈 ACTUALIZAR FILTROS CUANDO CAMBIEN LOS PRODUCTOS
+  // Actualizar rangos cuando cambien los productos
   useEffect(() => {
     setPendingFilters(prev => ({
       ...prev,
-      priceRange: [minPrice, maxPrice],
-      ageRange: [minAge, maxAge],
-      playersRange: [minPlayers, maxPlayers],
-      durationRange: [minDuration, maxDuration],
+      priceRange: prev.priceRange[0] === 0 ? [minPrice, maxPrice] : prev.priceRange,
+      ageRange: prev.ageRange[0] === 0 ? [minAge, maxAge] : prev.ageRange,
+      playersRange: prev.playersRange[0] === 0 ? [minPlayers, maxPlayers] : prev.playersRange,
+      durationRange: prev.durationRange[0] === 0 ? [minDuration, maxDuration] : prev.durationRange,
     }))
   }, [minPrice, maxPrice, minAge, maxAge, minPlayers, maxPlayers, minDuration, maxDuration])
 
@@ -165,7 +165,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
   // Función para seleccionar ordenamiento
   const selectSort = (sort: SortOption) => {
     updatePendingFilters("sortBy", sort)
-    setIsSortDropdownOpen(false) // Cerrar el dropdown después de seleccionar
+    setIsSortDropdownOpen(false)
   }
 
   const toggleArrayFilter = (key: "categories" | "subcategories" | "tags", value: string) => {
@@ -176,7 +176,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     updatePendingFilters(key, newArray)
   }
 
-  // Función para manejar subcategorías
   const toggleSubcategoryFilter = (subcategoryName: string) => {
     const currentSubcategories = pendingFilters.subcategories || []
     const newSubcategories = currentSubcategories.includes(subcategoryName)
@@ -185,16 +184,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     updatePendingFilters("subcategories", newSubcategories)
   }
 
-  // Función para manejar tags
-  const toggleTagFilter = (tag: string) => {
-    const currentTags = pendingFilters.tags || []
-    const newTags = currentTags.includes(tag)
-      ? currentTags.filter((item) => item !== tag)
-      : [...currentTags, tag]
-    updatePendingFilters("tags", newTags)
-  }
-
-  // Obtener el texto del ordenamiento
   const getSortLabel = (sort: SortOption): string => {
     switch (sort) {
       case 'default': return 'Por defecto'
@@ -204,7 +193,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     }
   }
 
-  // Obtener el ícono del ordenamiento
+  // 👈 DISEÑO ORIGINAL: Flechas con el color original (muted)
   const getSortIcon = (sort: SortOption) => {
     switch (sort) {
       case 'default': return <ArrowUpDown className="w-4 h-4" />
@@ -245,7 +234,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     pendingFilters.inStock ||
     pendingFilters.sortBy !== 'default'
 
-  // Función para formatear duración
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
       return `${minutes} min`
@@ -258,17 +246,22 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     return `${hours}h ${mins}min`
   }
 
-  // Cerrar el dropdown al hacer clic fuera
+  // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      if (!target.closest('.sort-dropdown-container')) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsSortDropdownOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+
+    if (isSortDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isSortDropdownOpen])
 
   return (
     <motion.div
@@ -309,7 +302,8 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* ORDENAMIENTO POR PRECIO - AHORA CON UN SOLO SELECTOR */}
+          
+          {/* ORDENAMIENTO POR PRECIO */}
           <motion.div 
             className="space-y-1.5"
             initial={{ opacity: 0, y: 20 }}
@@ -319,36 +313,47 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             <Label className="text-xs font-medium">Ordenar por precio</Label>
             
             {/* Dropdown selector único */}
-            <div className="relative sort-dropdown-container">
+            <div 
+              className="relative" 
+              ref={dropdownRef}
+              onMouseEnter={(e) => e.stopPropagation()}
+            >
               <button
-                onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+                type="button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsSortDropdownOpen(!isSortDropdownOpen);
+                }}
                 className={`w-full h-10 px-4 py-2 text-sm font-medium rounded-md border transition-all duration-200 flex items-center justify-between
                   ${pendingFilters.sortBy !== 'default' 
                     ? 'bg-[#C2410C] text-white border-[#C2410C] hover:bg-[#9A3412]' 
                     : 'bg-background text-foreground border-input hover:bg-accent hover:text-accent-foreground'
                   }`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pointer-events-none">
                   {getSortIcon(pendingFilters.sortBy)}
                   <span>{getSortLabel(pendingFilters.sortBy)}</span>
                 </div>
-                <motion.div
-                  animate={{ rotate: isSortDropdownOpen ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ChevronDown className="w-4 h-4" />
-                </motion.div>
+                <div className="pointer-events-none">
+                  <motion.div
+                    animate={{ rotate: isSortDropdownOpen ? 180 : 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </motion.div>
+                </div>
               </button>
 
-              {/* Opciones del dropdown */}
+              {/* Opciones del dropdown - DISEÑO ORIGINAL RESTAURADO */}
               <AnimatePresence>
                 {isSortDropdownOpen && (
                   <motion.div
-                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                    transition={{ duration: 0.15, type: "spring", stiffness: 400 }}
-                    className="absolute left-0 right-0 mt-1 py-1 bg-popover rounded-md border shadow-lg z-50"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.1 }}
+                    className="absolute left-0 right-0 mt-1 py-1 bg-popover rounded-md border shadow-lg z-[100]"
                   >
                     {[
                       { value: 'default', label: 'Por defecto', icon: <ArrowUpDown className="w-4 h-4" /> },
@@ -357,25 +362,25 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                     ].map((option) => (
                       <button
                         key={option.value}
-                        onClick={() => selectSort(option.value as SortOption)}
+                        type="button"
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          selectSort(option.value as SortOption);
+                        }}
                         className={`w-full px-4 py-2 text-sm text-left transition-colors duration-150 flex items-center gap-2
                           ${pendingFilters.sortBy === option.value 
                             ? 'bg-[#C2410C] text-white' 
                             : 'hover:bg-accent hover:text-accent-foreground'
                           }`}
                       >
+                        {/* DISEÑO ORIGINAL: El ícono mantiene su color muted original */}
                         <span className={pendingFilters.sortBy === option.value ? 'text-white' : 'text-muted-foreground'}>
                           {option.icon}
                         </span>
                         {option.label}
                         {pendingFilters.sortBy === option.value && (
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="ml-auto"
-                          >
-                            ✓
-                          </motion.span>
+                          <span className="ml-auto font-bold">✓</span>
                         )}
                       </button>
                     ))}
