@@ -396,14 +396,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       {hasActiveFilters && (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-blue-50 p-4 rounded-lg border border-blue-200 gap-3">
           <div className="text-sm text-blue-700">
-            <strong>Filtros activos:</strong>
-            {filters.categories.length > 0 && ` Categorias (${filters.categories.length})`}
-            {filters.subcategories.length > 0 && ` Subcategorias (${filters.subcategories.length})`}
-            {filters.tags.length > 0 && ` Etiquetas (${filters.tags.length})`}
-            {filters.inStock && ` Stock disponible`}
-            {(filters.durationRange[0] > 0 || filters.durationRange[1] < maxDuration) && 
-              ` Duración: ${filters.durationRange[0]}-${filters.durationRange[1]} min`}
-            {filters.sortBy !== 'default' && ` Orden: ${filters.sortBy === 'price-asc' ? 'Menor a mayor precio' : 'Mayor a menor precio'}`}
+            <strong>Filtros activos</strong>
           </div>
           <Button 
             variant="outline" 
