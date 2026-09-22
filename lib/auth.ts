@@ -1,4 +1,3 @@
-// lib/auth.ts - COMPLETO Y CORREGIDO
 import { jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
@@ -40,7 +39,7 @@ export async function getServerSession(): Promise<UserSession | null> {
   }
 }
 
-// Nueva función verifyToken para API routes
+// Función para verificar el token para API routes
 export async function verifyToken(request: NextRequest): Promise<{
   id: number
   email: string
@@ -88,7 +87,7 @@ export async function verifyToken(request: NextRequest): Promise<{
   }
 }
 
-// Función auxiliar para verificar si el usuario es admin
+// Función para verificar si el usuario es admin
 export async function verifyAdmin(request: NextRequest): Promise<{
   id: number
   email: string

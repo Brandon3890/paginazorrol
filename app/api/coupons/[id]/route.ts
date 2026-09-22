@@ -316,7 +316,7 @@ export async function PUT(
     if (type === 'subcategory' || type === 'multiple') {
       console.log(`Insertando ${subcategories.length} subcategorías`);
       for (const subcategoryId of subcategories) {
-        if (subcategoryId) { // Validar que no sea null/undefined
+        if (subcategoryId) { 
           await query(
             'INSERT INTO coupon_subcategories (coupon_id, subcategory_id) VALUES (?, ?)',
             [couponId, subcategoryId]
@@ -328,7 +328,7 @@ export async function PUT(
     if (type === 'product' || type === 'multiple') {
       console.log(`Insertando ${products.length} productos`);
       for (const productId of products) {
-        if (productId) { // Validar que no sea null/undefined
+        if (productId) { 
           await query(
             'INSERT INTO coupon_products (coupon_id, product_id) VALUES (?, ?)',
             [couponId, productId]

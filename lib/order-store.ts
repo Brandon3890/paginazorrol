@@ -124,7 +124,7 @@ export const useOrderStore = create<OrderStore>()(
         return orders.find((order) => order.id === id)
       },
 
-      //  Obtener una orden específica (alias)
+      //  Obtener una orden específica (por alias)
       getOrderById: (id) => {
         const { orders } = get()
         return orders.find((order) => order.id === id)
@@ -136,7 +136,7 @@ export const useOrderStore = create<OrderStore>()(
         return orders.filter((order) => order.userId === userId)
       },
 
-      //  Obtener órdenes de un usuario (alias)
+      //  Obtener órdenes de un usuario (por el alias)
       getOrdersByUserId: (userId) => {
         const { orders } = get()
         return orders.filter((order) => order.userId === userId)

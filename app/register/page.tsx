@@ -1,4 +1,3 @@
-// app/register/page.tsx - VERSIÓN COMPLETA SIN RUT
 "use client"
 
 import type React from "react"
@@ -9,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Eye, EyeOff, UserPlus, Sparkles, CheckCircle, XCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -33,8 +33,8 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [focusedField, setFocusedField] = useState<string | null>(null)
+  const [acceptTerms, setAcceptTerms] = useState(false) 
 
-  // Validación en tiempo real para la contraseña
   const passwordChecks = {
     length: formData.password.length >= 6,
     hasNumber: /\d/.test(formData.password),
@@ -53,12 +53,49 @@ export default function RegisterPage() {
     setError("")
   }
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value
+
+    let cleaned = input.replace(/[^\d+\s-]/g, '')
+
+    const plusCount = (cleaned.match(/\+/g) || []).length
+    if (plusCount > 1) {
+      cleaned = cleaned.replace(/\+/g, '')
+      cleaned = '+' + cleaned
+    } else if (plusCount === 1 && !cleaned.startsWith('+')) {
+      cleaned = '+' + cleaned.replace(/\+/g, '')
+    }
+
+    let formatted = cleaned
+    if (cleaned.startsWith('+56') && cleaned.length > 3) {
+      const numbers = cleaned.replace(/\D/g, '')
+      if (numbers.length >= 9) {
+        formatted = `+56 9 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`
+      } else if (numbers.length > 3) {
+        formatted = `+56 9 ${numbers.slice(3)}`
+      }
+    } else if (cleaned.startsWith('+56') && cleaned.length > 3) {
+      const numbers = cleaned.replace(/\D/g, '')
+      if (numbers.length >= 9) {
+        formatted = `+56 2 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`
+      } else if (numbers.length > 3) {
+        formatted = `+56 2 ${numbers.slice(3)}`
+      }
+    }
+
+    setFormData({
+      ...formData,
+      phone: formatted,
+    })
+    setError("")
+  }
+
+  // Validaciones existentes
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
-    // Validaciones existentes
     if (formData.password !== formData.confirmPassword) {
       setError("Las contraseñas no coinciden")
       setIsLoading(false)
@@ -77,15 +114,27 @@ export default function RegisterPage() {
       return
     }
 
+    if (!acceptTerms) {
+      setError("Debes aceptar los Términos y Condiciones para crear tu cuenta")
+      setIsLoading(false)
+      return
+    }
+
+    if (formData.phone && formData.phone.trim() !== "") {
+      const phoneRegex = /^[+\d\s-]{6,20}$/
+      if (!phoneRegex.test(formData.phone.trim())) {
+        setError("El teléfono contiene caracteres no válidos (máximo 20 caracteres)")
+        setIsLoading(false)
+        return
+      }
+    }
+
     try {
       const { confirmPassword, ...userData } = formData
-      // ✅ El RUT es opcional, el backend lo generará automáticamente
+      // El RUT se asigna automáticamente como 66666666-6 
       const success = await register({
-        email: userData.email,
-        password: userData.password,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        phone: userData.phone || '',
+        ...userData,
+        rut: "66666666-6" 
       })
 
       if (success) {
@@ -139,14 +188,7 @@ export default function RegisterPage() {
             />
 
             <CardHeader className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
-                className="w-12 h-12 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center"
-              >
-                <UserPlus className="w-6 h-6 text-orange-600" />
-              </motion.div>
+              <div className="w-12 h-12 mx-auto mb-4" />
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -154,9 +196,7 @@ export default function RegisterPage() {
                 transition={{ delay: 0.4 }}
               >
                 <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-                  <Sparkles className="w-5 h-5 text-orange-500" />
                   Crear Cuenta
-                  <Sparkles className="w-5 h-5 text-orange-500" />
                 </CardTitle>
                 <p className="text-muted-foreground">Regístrate para acceder a todas las funciones</p>
               </motion.div>
@@ -271,9 +311,11 @@ export default function RegisterPage() {
                     id="phone"
                     name="phone"
                     type="tel"
+                    inputMode="tel"
                     value={formData.phone}
-                    onChange={handleInputChange}
+                    onChange={handlePhoneChange}
                     placeholder="+56 9 1234 5678"
+                    maxLength={18}
                     disabled={isLoading}
                     className="transition-all focus:scale-[1.01]"
                   />
@@ -308,6 +350,7 @@ export default function RegisterPage() {
                     </button>
                   </div>
 
+                  {/* Indicadores de validación de contraseña */}
                   <AnimatePresence>
                     {formData.password && (
                       <motion.div 
@@ -395,6 +438,7 @@ export default function RegisterPage() {
                     </button>
                   </div>
                   
+                  {/* Indicador de coincidencia */}
                   <AnimatePresence>
                     {formData.confirmPassword && (
                       <motion.div 
@@ -421,6 +465,43 @@ export default function RegisterPage() {
                   </AnimatePresence>
                 </motion.div>
 
+                {/*  CHECKBOX DE TÉRMINOS Y CONDICIONES */}
+                <motion.div
+                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-muted"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.55 }}
+                >
+                  <Checkbox
+                    id="acceptTerms"
+                    checked={acceptTerms}
+                    onCheckedChange={(checked) => {
+                      setAcceptTerms(checked === true)
+                      if (error === "Debes aceptar los Términos y Condiciones para crear tu cuenta") {
+                        setError("")
+                      }
+                    }}
+                    disabled={isLoading}
+                    className="mt-0.5 flex-shrink-0"
+                  />
+                  <Label
+                    htmlFor="acceptTerms"
+                    className="text-xs sm:text-sm text-muted-foreground leading-relaxed cursor-pointer select-none"
+                  >
+                    He leído y acepto los{" "}
+                    <Link
+                      href="/terminos-y-condiciones"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline font-medium"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Términos y Condiciones
+                    </Link>{" "}
+                    y la Política de Privacidad de la tienda. 
+                  </Label>
+                </motion.div>
+
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -428,8 +509,8 @@ export default function RegisterPage() {
                 >
                   <Button 
                     type="submit" 
-                    className="w-full relative overflow-hidden transition-transform hover:scale-[1.02] active:scale-[0.98]" 
-                    disabled={isLoading}
+                    className="w-full relative overflow-hidden transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" 
+                    disabled={isLoading || !acceptTerms}
                   >
                     <AnimatePresence mode="wait">
                       {isLoading ? (

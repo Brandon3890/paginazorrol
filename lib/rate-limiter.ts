@@ -20,7 +20,6 @@ class SimpleRateLimiter {
       }
     }
 
-    // Reset if time window has passed
     if (now - attemptData.firstAttempt > this.timeWindow * 1000) {
       this.attempts.set(key, { count: 1, firstAttempt: now })
       return {
@@ -30,7 +29,6 @@ class SimpleRateLimiter {
       }
     }
 
-    // Check if exceeded max attempts
     if (attemptData.count >= this.maxAttempts) {
       return {
         allowed: false,
@@ -39,7 +37,6 @@ class SimpleRateLimiter {
       }
     }
 
-    // Increment attempt count
     attemptData.count++
     this.attempts.set(key, attemptData)
 
@@ -50,7 +47,6 @@ class SimpleRateLimiter {
     }
   }
 
-  // Cleanup old entries (optional, for memory management)
   cleanup() {
     const now = Date.now()
     for (const [key, data] of this.attempts.entries()) {
@@ -61,10 +57,9 @@ class SimpleRateLimiter {
   }
 }
 
-// Export rate limiters
 export const loginRateLimiter = new SimpleRateLimiter(80, 900) // 80 intentos en 15 minutos
 export const apiRateLimiter = new SimpleRateLimiter(500, 60) // 500 peticiones por minuto
-export const adminRateLimiter = new SimpleRateLimiter(200, 60) // 100 acciones admin por minuto
+export const adminRateLimiter = new SimpleRateLimiter(200, 60) // 200 acciones admin por minuto
 
 // Cleanup cada hora
 setInterval(() => {

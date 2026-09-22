@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useCheckoutTimer } from '@/hooks/use-checkout-timer'
 import { CheckoutTimer } from '@/components/checkout-timer'
+import { validarRUT, normalizeRutForDB, formatRut, formatRutOnType, getRutStatus } from "@/lib/rut-utils"
 
 interface ChilexpressOption {
   id?: string;
@@ -80,7 +81,7 @@ const BODEGA_OPTION: ChilexpressOption = {
     id: 1,
     name: "Bodega - Retiro en Tienda",
     address: "Arcangel 1200, San Miguel",
-    telephone: "+56 2 1234 5678"
+    telephone: "+56 9 5877 3629"
   }]
 }
 
@@ -182,16 +183,19 @@ export default function CheckoutPage() {
 
   const [deliveryOption, setDeliveryOption] = useState<'bodega' | 'envio' | null>(null)
 
-  // 👈 RUT para envío - AHORA OPCIONAL para usuarios registrados
+  //  RUT para envío - AHORA OPCIONAL para usuarios registrados
   const [shippingRut, setShippingRut] = useState('')
   const [shippingRutError, setShippingRutError] = useState('')
-  const [rutHelperText, setRutHelperText] = useState('')
 
   // Estado para cupón
   const [couponCode, setCouponCode] = useState('')
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false)
   const [couponError, setCouponError] = useState('')
   const [couponSuccess, setCouponSuccess] = useState('')
+
+  //  Estado calculado del RUT (en tiempo real)
+  const rutStatus = getRutStatus(shippingRut)
+  const rutStatusGuest = getRutStatus(guestData.rut)
 
   useEffect(() => {
     const fetchStoreStatus = async () => {
@@ -247,7 +251,7 @@ export default function CheckoutPage() {
 
   const selectedRegion = regions.find(r => r.region_iso_3166_2 === manualAddress.regionIso)
 
-  // 👈 ACTUALIZAR CUANDO EL USUARIO CAMBIA
+  //  ACTUALIZAR CUANDO EL USUARIO CAMBIA
   useEffect(() => {
     if (isAuthenticated) {
       setIsGuestMode(false)
@@ -261,13 +265,11 @@ export default function CheckoutPage() {
           phone: user.phone || "",
         })
         
-        // 👈 Si el usuario tiene RUT, ponerlo por defecto
+        //  Si el usuario tiene RUT, ponerlo por defecto (formateado)
         if (user.rut && user.rut !== '66666666-6') {
-          setShippingRut(user.rut)
-          setRutHelperText('RUT de tu cuenta')
+          setShippingRut(formatRut(user.rut))
         } else {
           setShippingRut('')
-          setRutHelperText('Opcional - Ingresa tu RUT para la boleta')
         }
       }
     }
@@ -466,6 +468,44 @@ export default function CheckoutPage() {
     loadUserData()
   }, [isAuthenticated, user, loadUserAddresses, addressLoadAttempts, isGuestMode])
 
+  //  VALIDAR RUT (usando el estado calculado)
+  const validateShippingRut = () => {
+    // Invitados: RUT obligatorio
+    if (!isAuthenticated && isGuestMode) {
+      if (rutStatus.status === 'empty') {
+        setShippingRutError('El RUT es obligatorio para invitados')
+        return false
+      }
+      
+      if (!rutStatus.canProceed) {
+        setShippingRutError(rutStatus.message)
+        return false
+      }
+      
+      setShippingRutError('')
+      return true
+    }
+    
+    // Usuarios autenticados: RUT opcional
+    if (isAuthenticated) {
+      // Vacío: OK (se usará el RUT del usuario o el genérico)
+      if (rutStatus.status === 'empty') {
+        setShippingRutError('')
+        return true
+      }
+      
+      // Si tiene contenido, validar
+      if (!rutStatus.canProceed) {
+        setShippingRutError(rutStatus.message)
+        return false
+      }
+    }
+    
+    setShippingRutError('')
+    return true
+  }
+
+  //  VALIDAR FORMULARIO DE INVITADO
   const validateGuestForm = () => {
     const errors: Record<string, string> = {}
     
@@ -475,40 +515,14 @@ export default function CheckoutPage() {
     if (!guestData.confirmEmail) errors.confirmEmail = "Confirmar email requerido"
     if (guestData.email !== guestData.confirmEmail) errors.confirmEmail = "Los correos no coinciden"
     if (!guestData.phone) errors.phone = "Telefono requerido"
-    if (!guestData.rut) {
-      errors.rut = "RUT requerido para invitados"
-    } else if (!guestData.rut.match(/^[0-9]+-[0-9Kk]$/)) {
-      errors.rut = "Formato de RUT invalido (ej: 12345678-5)"
+    
+    // Solo se valida si el usuario invitado escribió algo 
+    if (guestData.rut.trim() !== '' && !rutStatusGuest.canProceed) {
+      errors.rut = rutStatusGuest.message
     }
     
     setGuestFormErrors(errors)
     return Object.keys(errors).length === 0
-  }
-
-  // 👈 VALIDAR RUT (OPCIONAL PARA USUARIOS REGISTRADOS)
-  const validateShippingRut = () => {
-    // Si el usuario no está autenticado y está en modo invitado, el RUT es obligatorio
-    if (!isAuthenticated && isGuestMode) {
-      if (!shippingRut || !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
-        setShippingRutError('El RUT es obligatorio para invitados')
-        return false
-      }
-    }
-    
-    // Para usuarios autenticados, el RUT es opcional
-    if (isAuthenticated) {
-      // Si se ingresó un RUT, validar formato
-      if (shippingRut && !shippingRut.match(/^[0-9]+-[0-9Kk]$/)) {
-        setShippingRutError('Formato de RUT inválido (ej: 12345678-5)')
-        return false
-      }
-      // Si no se ingresó RUT, está bien (se usará el RUT del usuario)
-      setShippingRutError('')
-      return true
-    }
-    
-    setShippingRutError('')
-    return true
   }
 
   const validateManualAddress = () => {
@@ -535,14 +549,17 @@ export default function CheckoutPage() {
       return
     }
     
-    const rutToUse = guestData.rut.trim()
+    //  Normalizar RUT para BD (sin puntos, con guion)
+    const rutForDB = guestData.rut.trim() !== '' 
+      ? normalizeRutForDB(guestData.rut) 
+      : '66666666-6'
     
     createGuestSession({
       email: guestData.email,
       firstName: guestData.firstName,
       lastName: guestData.lastName,
       phone: guestData.phone,
-      rut: rutToUse
+      rut: rutForDB
     })
     
     setFormData({
@@ -553,8 +570,8 @@ export default function CheckoutPage() {
       phone: guestData.phone
     })
     
-    // 👈 Para invitados, el RUT es obligatorio
-    setShippingRut(rutToUse)
+    //  Para invitados, el RUT es obligatorio (normalizado)
+    setShippingRut(rutForDB)
     
     setIsGuestMode(true)
     setShowGuestForm(false)
@@ -656,7 +673,7 @@ export default function CheckoutPage() {
         firstName: guestData.firstName || formData.firstName,
         lastName: guestData.lastName || formData.lastName,
         phone: guestData.phone || formData.phone,
-        rut: guestData.rut || "66666666-6"
+        rut: guestData.rut ? normalizeRutForDB(guestData.rut) : "66666666-6"
       })
     }
     router.push('/login?redirect=/checkout')
@@ -783,24 +800,26 @@ export default function CheckoutPage() {
     })
   }
 
-  // 👈 OBTENER EL RUT FINAL PARA LA BOLETA
+  //  OBTENER EL RUT FINAL PARA LA BOLETA (NORMALIZADO PARA BD)
   const getFinalRut = (): string => {
-    // Si es invitado, usar el RUT del invitado
+    // Invitado: usar el RUT del invitado (ya normalizado)
     if (isGuestMode && !isAuthenticated) {
-      return guestData.rut.trim()
+      return guestData.rut.trim() !== '' 
+        ? normalizeRutForDB(guestData.rut) 
+        : '66666666-6'
     }
     
-    // Si es usuario autenticado y se ingresó un RUT, usar ese
+    // Usuario autenticado con RUT ingresado
     if (isAuthenticated && shippingRut && shippingRut.trim() !== '') {
-      return shippingRut.trim()
+      return normalizeRutForDB(shippingRut)
     }
     
-    // Si es usuario autenticado y NO se ingresó RUT, usar el RUT de la cuenta
+    // Usuario autenticado sin RUT → usar el de su cuenta
     if (isAuthenticated && user?.rut && user.rut !== '66666666-6') {
-      return user.rut
+      return user.rut // Ya está normalizado en la BD
     }
     
-    // Fallback: consumidor final
+    // Fallback: consumidor final genérico
     return '66666666-6'
   }
 
@@ -813,7 +832,7 @@ export default function CheckoutPage() {
       return
     }
     
-    // 👈 VALIDAR RUT (opcional para usuarios registrados)
+    //  VALIDAR RUT (opcional para usuarios registrados, obligatorio para invitados)
     if (!validateShippingRut()) {
       toast({
         title: "RUT inválido",
@@ -898,7 +917,7 @@ export default function CheckoutPage() {
             id: 1,
             name: "Bodega - Retiro en Tienda",
             address: "Arcangel 1200, San Miguel",
-            telephone: "+56 2 1234 5678"
+            telephone: "+56 9 5877 3629"
           },
           isCashOnDelivery: false,
           actualShippingCost: 0,
@@ -921,11 +940,9 @@ export default function CheckoutPage() {
         }
       }
       
-      // 👈 OBTENER EL RUT FINAL
+      //  OBTENER EL RUT FINAL 
       const finalRut = getFinalRut()
-      
-      console.log('📋 RUT final para la orden:', finalRut)
-      
+            
       const orderPayload: any = {
         items: items.map((item) => ({
           id: item.id,
@@ -991,7 +1008,7 @@ export default function CheckoutPage() {
         shippingMethod: isBodegaPickupSelected ? "bodega_pickup" : shippingMethod,
       })
 
-      // 👈 CREAR PAGO CON EL RUT FINAL
+      //  CREAR PAGO CON EL RUT FINAL (ya normalizado)
       const paymentResponse = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1198,8 +1215,49 @@ export default function CheckoutPage() {
                           type="tel"
                           required
                           value={guestData.phone}
-                          onChange={(e) => setGuestData({...guestData, phone: e.target.value})}
-                          placeholder="+569 XXXX XXXX"
+                          onChange={(e) => {
+                            const input = e.target.value
+
+                            let cleaned = input.replace(/[^\d+\s-]/g, '')
+
+                            const plusCount = (cleaned.match(/\+/g) || []).length
+                            if (plusCount > 1) {
+                              cleaned = cleaned.replace(/\+/g, '')
+                              cleaned = '+' + cleaned
+                            } else if (plusCount === 1 && !cleaned.startsWith('+')) {
+                              cleaned = '+' + cleaned.replace(/\+/g, '')
+                            }
+
+                            let formatted = cleaned
+                            if (cleaned.startsWith('+56') && cleaned.length > 3) {
+                              const numbers = cleaned.replace(/\D/g, '')
+                              if (numbers.length >= 9) {
+                                formatted = `+56 9 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`
+                              } else if (numbers.length > 3) {
+                                formatted = `+56 9 ${numbers.slice(3)}`
+                              }
+                            } else if (cleaned.startsWith('+56') && cleaned.length > 3) {
+                              const numbers = cleaned.replace(/\D/g, '')
+                              if (numbers.length >= 9) {
+                                formatted = `+56 2 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`
+                              } else if (numbers.length > 3) {
+                                formatted = `+56 2 ${numbers.slice(3)}`
+                              }
+                            }
+
+                            setGuestData({ ...guestData, phone: formatted })
+
+                            if (guestFormErrors.phone) {
+                              setGuestFormErrors(prev => {
+                                const newErrors = { ...prev }
+                                delete newErrors.phone
+                                return newErrors
+                              })
+                            }
+                          }}
+                          placeholder="+56 9 1234 5678"
+                          maxLength={18}
+                          inputMode="tel"
                           className={guestFormErrors.phone ? "border-red-500" : ""}
                         />
                         {guestFormErrors.phone && (
@@ -1210,22 +1268,59 @@ export default function CheckoutPage() {
                         )}
                       </div>
                       <div>
-                        <Label>RUT *</Label>
+                        <Label>
+                          RUT{' '}
+                          <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                        </Label>
                         <Input
-                          required
-                          placeholder="Ej: 12345678-9"
+                          placeholder="Ej: 12.345.678-9 (opcional)"
                           value={guestData.rut}
-                          onChange={(e) => setGuestData({...guestData, rut: e.target.value})}
-                          className={guestFormErrors.rut ? "border-red-500" : ""}
+                          onChange={(e) => {
+                            const formatted = formatRutOnType(e.target.value)
+                            setGuestData({ ...guestData, rut: formatted })
+                            if (guestFormErrors.rut) {
+                              setGuestFormErrors(prev => {
+                                const newErrors = { ...prev }
+                                delete newErrors.rut
+                                return newErrors
+                              })
+                            }
+                          }}
+                          className={
+                            guestFormErrors.rut ? "border-red-500"
+                            : rutStatusGuest.status === 'valid' ? "border-green-500"
+                            : (rutStatusGuest.status !== 'empty' && !rutStatusGuest.canProceed) ? "border-red-500"
+                            : ""
+                          }
+                          maxLength={12}
+                          inputMode="numeric"
                         />
-                        {guestFormErrors.rut && (
-                          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {guestFormErrors.rut}
+
+                        {/*  ESTADO DEL RUT EN TIEMPO REAL */}
+                        {guestData.rut && rutStatusGuest.status === 'valid' && (
+                          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            {rutStatusGuest.message}
                           </p>
                         )}
+                        {guestData.rut && !rutStatusGuest.canProceed && (
+                          <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {rutStatusGuest.message}
+                          </p>
+                        )}
+
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Formato: 12.345.678-9 (con puntos y guion)
+                        </p>
                       </div>
-                      <Button type="submit" className="w-full">
+                      <Button 
+                        type="submit" 
+                        className="w-full"
+                        disabled={
+                          (guestData.rut.trim() !== '' && !rutStatusGuest.canProceed)
+                        }
+                      >
                         <User className="w-4 h-4 mr-2" />
                         Continuar como Invitado
                       </Button>
@@ -1251,7 +1346,7 @@ export default function CheckoutPage() {
                     <span>{user?.phone}</span>
                   </div>
                   
-                  {/* 👈 RUT OPCIONAL PARA USUARIOS REGISTRADOS */}
+                  {/*  RUT OPCIONAL PARA USUARIOS REGISTRADOS */}
                   <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
                     <div className="flex items-center justify-between mb-1">
                       <Label className="text-sm font-medium text-black">
@@ -1262,21 +1357,37 @@ export default function CheckoutPage() {
                       </Badge>
                     </div>
 
-                    <p className="text-xs text-muted-foreground mb-2">
-                      {user?.rut && user.rut !== '66666666-6' 
-                        ? `` 
-                        : ''}
-                    </p>
-
                     <Input
-                      placeholder="Ej: 12345678-9 (opcional)"
+                      placeholder="Ej: 12.345.678-9 (opcional)"
                       value={shippingRut}
                       onChange={(e) => {
-                        setShippingRut(e.target.value)
+                        const formatted = formatRutOnType(e.target.value)
+                        setShippingRut(formatted)
                         setShippingRutError('')
                       }}
-                      className={shippingRutError ? "border-red-500" : ""}
+                      className={
+                        shippingRutError ? "border-red-500"
+                        : rutStatus.status === 'valid' ? "border-green-500"
+                        : (rutStatus.status !== 'empty' && !rutStatus.canProceed) ? "border-red-500"
+                        : ""
+                      }
+                      maxLength={12}
+                      inputMode="numeric"
                     />
+
+                    {/*  ESTADO DEL RUT EN TIEMPO REAL */}
+                    {shippingRut && rutStatus.status === 'valid' && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        {rutStatus.message}
+                      </p>
+                    )}
+                    {shippingRut && !rutStatus.canProceed && (
+                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {rutStatus.message}
+                      </p>
+                    )}
 
                     {shippingRutError && (
                       <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
@@ -1287,7 +1398,6 @@ export default function CheckoutPage() {
                     
                     {!shippingRut && user?.rut && user.rut !== '66666666-6' && (
                       <p className="text-xs text-green-600 mt-1">
-                        ✓ Se usará tu RUT registrado: {user.rut}
                       </p>
                     )}
                     
@@ -1296,12 +1406,6 @@ export default function CheckoutPage() {
                       </p>
                     )}
                   </div>
-                  
-                  {user?.rut && user.rut !== '66666666-6' && !shippingRut && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>RUT registrado: {user.rut}</span>
-                    </div>
-                  )}
                   
                   <p className="text-xs text-muted-foreground">
                     Podras ver el estado de tu pedido y acumular beneficios como cliente frecuente.
@@ -1326,7 +1430,7 @@ export default function CheckoutPage() {
                     <span>{formData.phone}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">RUT: {guestData.rut}</span>
+                    <span className="text-xs text-muted-foreground">RUT: {formatRut(guestData.rut)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Te notificaremos cuando tu pedido este listo para retiro via email o telefono.
@@ -2642,7 +2746,11 @@ export default function CheckoutPage() {
                   (deliveryOption !== 'bodega' && !selectedAddress) ||
                   (deliveryOption !== 'bodega' && !selectedChilexpressOption) ||
                   !acceptedTerms ||
-                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch)
+                  (selectedChilexpressOption?.requiresBranchSelection && !selectedBranch) ||
+                  //  NUEVA CONDICIÓN: RUT inválido bloquea el pago
+                  !rutStatus.canProceed ||
+                  //  NUEVA CONDICIÓN: Invitados deben tener RUT obligatorio
+                  (isGuestMode && !isAuthenticated && rutStatus.status === 'empty')
                 }
                 onClick={handleSubmit}
               >
@@ -2660,6 +2768,8 @@ export default function CheckoutPage() {
                   "Selecciona un metodo de envio"
                 ) : !acceptedTerms ? (
                   "Acepta los Terminos y Condiciones"
+                ) : !rutStatus.canProceed ? (
+                  "Corrige el RUT para continuar"
                 ) : (
                   `Pagar $${formatCLP(finalTotal)}`
                 )}

@@ -95,7 +95,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0)
   const [showVideo, setShowVideo] = useState(false)
 
-  // 🔥 ESTADO PARA LA TIENDA (PÁNICO)
+  //  ESTADO PARA LA TIENDA (PÁNICO)
   const [storeOpen, setStoreOpen] = useState(true)
   const [maintenanceMessage, setMaintenanceMessage] = useState("La tienda está en mantenimiento. Por favor, vuelve más tarde.")
 
@@ -108,7 +108,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
-  // 🔥 EFECTO PARA OBTENER EL ESTADO DE LA TIENDA
+  //  EFECTO PARA OBTENER EL ESTADO DE LA TIENDA
   useEffect(() => {
     const fetchStoreStatus = async () => {
       try {
@@ -138,7 +138,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
   // Escuchar evento de actualización de productos
   useEffect(() => {
     const handleProductUpdate = () => {
-      console.log('🔄 Producto actualizado, forzando recarga de imágenes...')
+      console.log(' Producto actualizado, forzando recarga de imágenes...')
       setImageTimestamp(Date.now())
     }
     
@@ -159,9 +159,6 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
           return; 
         }
         
-        console.log('📋 Product data loaded:', productData);
-        console.log('📋 Specs raw:', productData.specs);
-        console.log('📋 Specs parsed:', productData.specs ? parseProductSpecs(productData.specs) : 'null');
         
         setProduct(productData);
         setImageTimestamp(Date.now())
@@ -658,7 +655,7 @@ export function ProductDetailView({ productId, onBack }: ProductDetailViewProps)
                 )}
               </motion.div>
 
-              {/* 🔥 BOTÓN DE AGREGAR AL CARRITO - CON VERIFICACIÓN DE TIENDA */}
+              {/*  BOTÓN DE AGREGAR AL CARRITO - CON VERIFICACIÓN DE TIENDA */}
               {!storeOpen ? (
                 <div className="w-full p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-start gap-3">

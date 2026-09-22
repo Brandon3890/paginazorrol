@@ -1,4 +1,3 @@
-// components/back-to-top.tsx - Versión simple
 "use client"
 
 import { useState, useEffect } from "react"

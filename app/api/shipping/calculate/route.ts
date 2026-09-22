@@ -1,4 +1,3 @@
-// app/api/shipping/calculate/route.ts (nuevo endpoint)
 import { NextRequest, NextResponse } from "next/server";
 import { getShippingRates, getDeliveryDescription } from "@/lib/chilexpress-api";
 import { getCountyCode } from "@/lib/chilexpress-geo";
@@ -8,10 +7,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       addressId,
-      communeName,      // Desde la BD: user_addresses.commune_name
-      regionName,       // Desde la BD: user_addresses.region_name
+      communeName,      
+      regionName,       
       items,
-      originCountyCode = "STGO" // Origen fijo (puedes cambiarlo según tu bodega)
+      originCountyCode = "STGO" 
     } = body;
 
     if (!communeName) {

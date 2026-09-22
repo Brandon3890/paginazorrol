@@ -27,9 +27,7 @@ const buildUrl = (endpoint: string, params?: Record<string, any>): string => {
   return url;
 };
 
-// =====================================================
-// 1. CONSULTAR REGIONES
-// =====================================================
+// CONSULTAR REGIONES
 export interface Region {
   regionId: string;
   regionName: string;
@@ -58,9 +56,7 @@ export async function getRegions(): Promise<Region[]> {
   throw new Error(data.statusDescription || "Error al obtener regiones");
 }
 
-// =====================================================
-// 2. CONSULTAR COBERTURAS (COMUNAS) POR REGIÓN
-// =====================================================
+// CONSULTAR COBERTURAS (COMUNAS) POR REGIÓN
 export interface CoverageArea {
   countyCode: string;
   countyName: string;
@@ -103,9 +99,7 @@ export async function getCoverageAreas(regionCode: string, type: number = 1): Pr
   throw new Error(data.statusDescription || "Error al obtener coberturas");
 }
 
-// =====================================================
-// 3. BUSCAR CALLES
-// =====================================================
+// BUSCAR CALLES
 export interface Street {
   streetId: number;
   streetName: string;
@@ -145,9 +139,7 @@ export async function searchStreets(
   throw new Error(data.statusDescription || "Error al buscar calles");
 }
 
-// =====================================================
-// 4. CONSULTAR NUMERACIONES
-// =====================================================
+// CONSULTAR NUMERACIONES
 export interface StreetNumber {
   number: number;
   latitude: number;
@@ -177,9 +169,7 @@ export async function getStreetNumbers(
   throw new Error(data.statusDescription || "Error al obtener numeraciones");
 }
 
-// =====================================================
-// 5. GEOREFERENCIAR DIRECCIÓN
-// =====================================================
+// GEOREFERENCIAR DIRECCIÓN
 export interface GeoreferenceResult {
   addressId: number;
   latitude: string;
@@ -216,9 +206,7 @@ export async function georeferenceAddress(
   throw new Error(data.statusDescription || "Error al georeferenciar dirección");
 }
 
-// =====================================================
-// 6. OFICINAS DE ENTREGA POR COMUNA
-// =====================================================
+// OFICINAS DE ENTREGA POR COMUNA
 export interface Office {
   regionName: string;
   countyName: string;
@@ -271,9 +259,7 @@ export async function getOfficesByCounty(
   throw new Error(data.statusDescription || "Error al obtener oficinas");
 }
 
-// =====================================================
-// 7. OFICINAS CERCANAS
-// =====================================================
+// OFICINAS CERCANAS
 export interface NearbyOffice {
   distance: string;
   office: Office;
@@ -306,13 +292,11 @@ export async function getNearbyOffices(
   return [];
 }
 
-// =====================================================
-// UTILIDAD: Obtener código de comuna desde nombre y región
-// =====================================================
+// Obtener código de comuna desde nombre y región
 let regionsCache: Region[] | null = null;
-let coveragesCache: Map<string, Map<string, string>> = new Map(); // regionCode -> Map<comuna, countyCode>
+let coveragesCache: Map<string, Map<string, string>> = new Map(); 
 let cacheTimestamp = 0;
-const CACHE_TTL = 1000 * 60 * 60; // 1 hora
+const CACHE_TTL = 1000 * 60 * 60; 
 
 export async function getCountyCode(communeName: string, regionName?: string): Promise<string> {
   // Primero obtener todas las regiones
@@ -395,9 +379,7 @@ export async function getCountyCode(communeName: string, regionName?: string): P
   return code;
 }
 
-// =====================================================
-// UTILIDAD: Obtener todas las comunas de Chile (todas las regiones)
-// =====================================================
+// Obtener todas las comunas de Chile 
 export async function getAllCoverageAreas(): Promise<CoverageArea[]> {
   const regions = await getRegions();
   const allCoverages: CoverageArea[] = [];

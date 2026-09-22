@@ -1,4 +1,3 @@
-// lib/auth-utils.ts
 import { jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
@@ -29,7 +28,7 @@ export async function getUserIdFromRequest(request: NextRequest): Promise<number
 }
 
 export function getIdentifierFromRequest(request: NextRequest): string {
-  // 1. Intentar obtener user id si está autenticado
+  // Intentar obtener user id 
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.replace('Bearer ', '') || request.cookies.get('auth_token')?.value
   
@@ -43,24 +42,23 @@ export function getIdentifierFromRequest(request: NextRequest): string {
         }
       }
     } catch (e) {
-      // Si no se puede decodificar, continuar
     }
   }
 
-  // 2. Si no hay token, usar el identifier de la cookie
+  // Si no hay token, usar el identifier de la cookie
   const cookieIdentifier = request.cookies.get(GUEST_IDENTIFIER_COOKIE)?.value
   if (cookieIdentifier) {
     return cookieIdentifier
   }
 
-  // 3. Si no hay cookie, usar guest session
+  // Si no hay cookie, usar guest session
   const guestSessionId = request.cookies.get('guest_session_id')?.value
   if (guestSessionId) {
     const identifier = `guest_${guestSessionId}`
     // Guardar en cookie para futuras visitas
     const response = NextResponse.next()
     response.cookies.set(GUEST_IDENTIFIER_COOKIE, identifier, {
-      maxAge: 60 * 60 * 24 * 30, // 30 días
+      maxAge: 60 * 60 * 24 * 30, 
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -76,7 +74,7 @@ export function getIdentifierFromRequest(request: NextRequest): string {
              'unknown'
   const userAgent = request.headers.get('user-agent') || 'unknown'
   
-  // Crear un identifier basado en IP y userAgent (estable entre visitas)
+  // Crear un identifier basado en IP y userAgent 
   const str = `${ip}:${userAgent}`
   const hash = Buffer.from(str).toString('base64').substring(0, 30)
   const identifier = `guest_${hash}`
@@ -84,7 +82,7 @@ export function getIdentifierFromRequest(request: NextRequest): string {
   // Guardar en cookie
   const response = NextResponse.next()
   response.cookies.set(GUEST_IDENTIFIER_COOKIE, identifier, {
-    maxAge: 60 * 60 * 24 * 30, // 30 días
+    maxAge: 60 * 60 * 24 * 30, 
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

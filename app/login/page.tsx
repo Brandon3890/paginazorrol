@@ -124,18 +124,7 @@ export default function LoginPage() {
           <Card className="overflow-hidden">
 
             <CardHeader className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
-                className="w-12 h-12 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center"
-              >
-                {showForgotPassword ? (
-                  <Mail className="w-6 h-6 text-orange-600" />
-                ) : (
-                  <LogIn className="w-6 h-6 text-orange-600" />
-                )}
-              </motion.div>
+              <div className="w-12 h-12 mx-auto mb-4" />
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -145,9 +134,10 @@ export default function LoginPage() {
                 <CardTitle className="flex items-center justify-center gap-2 text-2xl">
                   {showForgotPassword ? "Recuperar Contraseña" : "Iniciar Sesión"}
                 </CardTitle>
+
                 <p className="text-muted-foreground">
-                  {showForgotPassword 
-                    ? "Ingresa tu email para recibir instrucciones" 
+                  {showForgotPassword
+                    ? "Ingresa tu email para recibir instrucciones"
                     : "Accede a tu cuenta para continuar"}
                 </p>
               </motion.div>

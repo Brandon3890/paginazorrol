@@ -11,7 +11,6 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useCategoryStore } from "@/lib/category-store"
 import { motion, AnimatePresence } from "framer-motion"
 
-// Define el tipo compatible para Product
 interface Product {
   id: number
   name: string
@@ -193,7 +192,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
     }
   }
 
-  // 👈 DISEÑO ORIGINAL: Flechas con el color original (muted)
+  //  DISEÑO ORIGINAL: Flechas con el color original (muted)
   const getSortIcon = (sort: SortOption) => {
     switch (sort) {
       case 'default': return <ArrowUpDown className="w-4 h-4" />
@@ -327,7 +326,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                 </div>
               </button>
 
-              {/* Opciones del dropdown - DISEÑO ORIGINAL RESTAURADO */}
+              {/* Opciones del dropdown */}
               <AnimatePresence>
                 {isSortDropdownOpen && (
                   <motion.div
@@ -356,7 +355,6 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                             : 'hover:bg-accent hover:text-accent-foreground'
                           }`}
                       >
-                        {/* DISEÑO ORIGINAL: El ícono mantiene su color muted original */}
                         <span className={pendingFilters.sortBy === option.value ? 'text-white' : 'text-muted-foreground'}>
                           {option.icon}
                         </span>
@@ -416,7 +414,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Categories */}
+          {/* Categorias */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -561,7 +559,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Age Range */}
+          {/* Edades */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -605,7 +603,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Players Range */}
+          {/* Numero de jugadores */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -649,7 +647,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Duration Range */}
+          {/* Duración */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -693,7 +691,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
             </motion.div>
           </motion.div>
 
-          {/* Stock Filter */}
+          {/* Stock */}
           <motion.div 
             className="space-y-3"
             initial={{ opacity: 0, y: 20 }}
@@ -749,7 +747,7 @@ export function ProductFilters({ filters, onFiltersChange, products }: ProductFi
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
               >
-                ⚠️ No hay productos con stock disponible
+                No hay productos con stock disponible
               </motion.p>
             )}
           </motion.div>

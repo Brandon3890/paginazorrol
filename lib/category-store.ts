@@ -61,13 +61,11 @@ export const useCategoryStore = create<CategoryStore>()(
 
       fetchCategories: async (force = false) => {
         if (get().categoriesLoaded && !force) {
-          console.log('📦 Categorías ya cargadas, omitiendo fetch')
           return
         }
 
         set({ loading: true, error: null, errorDetails: null })
         try {
-          console.log('🔄 Fetching categories...')
           const response = await fetch('/api/categories')
           
           if (!response.ok) {
@@ -77,7 +75,6 @@ export const useCategoryStore = create<CategoryStore>()(
           const data = await response.json()
           
           if (!Array.isArray(data)) {
-            console.error('❌ La API no devolvió un array:', data)
             set({ 
               categories: [], 
               loading: false, 
@@ -91,7 +88,7 @@ export const useCategoryStore = create<CategoryStore>()(
             .filter((cat: any) => {
               const isValid = cat && typeof cat === 'object' && cat.id && typeof cat.id === 'number'
               if (!isValid) {
-                console.warn('⚠️ Categoría inválida:', cat)
+                console.warn('Categoría inválida')
               }
               return isValid
             })
@@ -120,7 +117,7 @@ export const useCategoryStore = create<CategoryStore>()(
                 : []
             }))
           
-          console.log(`✅ ${validCategories.length} categorías válidas cargadas`)
+          console.log(` ${validCategories.length} categorías válidas cargadas`)
           
           set({ 
             categories: validCategories, 
@@ -130,7 +127,7 @@ export const useCategoryStore = create<CategoryStore>()(
             errorDetails: null
           })
         } catch (error) {
-          console.error('❌ Error fetching categories:', error)
+          console.error('Error al obtener las categorías:', error)
           set({ 
             error: (error as Error).message, 
             loading: false,
@@ -170,9 +167,9 @@ export const useCategoryStore = create<CategoryStore>()(
             })
           }))
           
-          console.log(`✅ Subcategorías reordenadas para categoría ${categoryId}`)
+          console.log(` Subcategorías reordenadas para categoría ${categoryId}`)
         } catch (error) {
-          console.error('Error reordering subcategories:', error)
+          console.error('Error al reordenar las subcategorías:', error)
           set({ error: (error as Error).message })
         }
       },
@@ -187,13 +184,13 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error creating category')
+            throw new Error(error.error || 'Error al crear la categoría')
           }
           
           await get().fetchCategories(true)
-          console.log('✅ Categoría creada exitosamente')
+          console.log(' Categoría creada exitosamente')
         } catch (error) {
-          console.error('Error creating category:', error)
+          console.error('Error al crear la categoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -213,9 +210,9 @@ export const useCategoryStore = create<CategoryStore>()(
           }
           
           await get().fetchCategories(true)
-          console.log(`✅ Categoría ${id} actualizada`)
+          console.log(` Categoría ${id} actualizada`)
         } catch (error) {
-          console.error('Error updating category:', error)
+          console.error('Error al actualizar la categoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -240,9 +237,9 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          console.log(`✅ Categoría ${id} desactivada`)
+          console.log(` Categoría ${id} desactivada`)
         } catch (error) {
-          console.error('Error deactivating category:', error)
+          console.error('Error al desactivar la categoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -256,7 +253,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error activating category')
+            throw new Error(error.error || 'Error al activar la categoría')
           }
           
           set(state => ({
@@ -265,9 +262,9 @@ export const useCategoryStore = create<CategoryStore>()(
             )
           }))
           
-          console.log(`✅ Categoría ${id} activada`)
+          console.log(` Categoría ${id} activada`)
         } catch (error) {
-          console.error('Error activating category:', error)
+          console.error('Error al activar la categoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -281,16 +278,16 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error deleting category')
+            throw new Error(error.error || 'Error al eliminar la categoría')
           }
           
           set(state => ({
             categories: state.categories.filter(cat => cat.id !== id)
           }))
           
-          console.log(`✅ Categoría ${id} eliminada permanentemente`)
+          console.log(` Categoría ${id} eliminada permanentemente`)
         } catch (error) {
-          console.error('Error deleting category:', error)
+          console.error('Error al eliminar la categoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -306,13 +303,13 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error creating subcategory')
+            throw new Error(error.error || 'Error al crear la subcategoría')
           }
           
           await get().fetchCategories(true)
-          console.log('✅ Subcategoría creada exitosamente')
+          console.log(' Subcategoría creada exitosamente')
         } catch (error) {
-          console.error('Error creating subcategory:', error)
+          console.error('Error al crear la subcategoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -328,13 +325,13 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error updating subcategory')
+            throw new Error(error.error || 'Error al actualizar la subcategoría')
           }
           
           await get().fetchCategories(true)
-          console.log(`✅ Subcategoría ${id} actualizada`)
+          console.log(` Subcategoría ${id} actualizada`)
         } catch (error) {
-          console.error('Error updating subcategory:', error)
+          console.error('Error al actualizar la subcategoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -348,7 +345,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error deactivating subcategory')
+            throw new Error(error.error || 'Error al desactivar la subcategoría')
           }
           
           set(state => ({
@@ -360,9 +357,9 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          console.log(`✅ Subcategoría ${id} desactivada`)
+          console.log(` Subcategoría ${id} desactivada`)
         } catch (error) {
-          console.error('Error deactivating subcategory:', error)
+          console.error('Error al desactivar la subcategoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -376,7 +373,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error activating subcategory')
+            throw new Error(error.error || 'Error al activar la subcategoría')
           }
           
           set(state => ({
@@ -388,9 +385,9 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          console.log(`✅ Subcategoría ${id} activada`)
+          console.log(` Subcategoría ${id} activada`)
         } catch (error) {
-          console.error('Error activating subcategory:', error)
+          console.error('Error al activar la subcategoría:', error)
           set({ error: (error as Error).message })
           throw error
         }
@@ -404,7 +401,7 @@ export const useCategoryStore = create<CategoryStore>()(
           
           if (!response.ok) {
             const error = await response.json()
-            throw new Error(error.error || 'Error deleting subcategory')
+            throw new Error(error.error || 'Error al eliminar la subcategoría')
           }
           
           set(state => ({
@@ -414,9 +411,9 @@ export const useCategoryStore = create<CategoryStore>()(
             }))
           }))
           
-          console.log(`✅ Subcategoría ${id} eliminada permanentemente`)
+          console.log(` Subcategoría ${id} eliminada permanentemente`)
         } catch (error) {
-          console.error('Error deleting subcategory:', error)
+          console.error('Error al eliminar la subcategoría:', error)
           set({ error: (error as Error).message })
           throw error
         }

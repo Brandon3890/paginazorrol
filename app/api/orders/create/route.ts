@@ -79,9 +79,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // =====================================================
-    // 1. OBTENER USUARIO DESDE LA BASE DE DATOS
-    // =====================================================
+    // OBTENER USUARIO 
     let userId = null
     let userRut: string | null = null
     let userEmail: string | null = null
@@ -124,13 +122,11 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (error) {
-        console.log(' Error verificando token:', error)
+        console.log('Error verificando token:', error)
       }
     }
 
-    // =====================================================
-    // 2. VERIFICAR QUE EL USUARIO ESTÁ AUTENTICADO
-    // =====================================================
+    // VERIFICAR QUE EL USUARIO ESTÁ AUTENTICADO
     if (!userId) {
       console.log(' Usuario no autenticado')
       return NextResponse.json(
@@ -139,15 +135,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // =====================================================
-    // 3. DATOS DEL CLIENTE - RUT OPCIONAL PARA USUARIOS REGISTRADOS
-    // =====================================================
-    // Si se proporcionó un RUT en customerInfo, usarlo
-    // Si no, usar el RUT de la cuenta del usuario
-    // Si el usuario no tiene RUT, usar consumidor final
+    // DATOS DEL CLIENTE - RUT OPCIONAL PARA USUARIOS REGISTRADOS
     let customerRut = customerInfo?.rut || userRut || null
     
-    // Si es '66666666-6' o null/undefined, usar consumidor final
     if (!customerRut || customerRut === '66666666-6') {
       customerRut = '66666666-6'
     }
@@ -157,29 +147,20 @@ export async function POST(request: NextRequest) {
     const customerLastName = customerInfo?.lastName || userLastName || null
     const customerPhone = customerInfo?.phone || userPhone || null
 
-
-    // =====================================================
-    // 4. CALCULAR TOTALES
-    // =====================================================
+    // CALCULAR TOTALES
     const subtotal = totals?.subtotal || 0
     const discount = totals?.discount || 0
     const shipping = totals?.shipping || 0
     const tax = totals?.tax || 0
     const total = totals?.total || 0
 
-    // =====================================================
-    // 5. GENERAR NÚMERO DE ORDEN
-    // =====================================================
+    // GENERAR NÚMERO DE ORDEN
     const orderNumber = generateOrderNumber()
 
-    // =====================================================
-    // 6. INSERTAR DIRECCIÓN (si se proporcionó)
-    // =====================================================
+    // INSERTAR DIRECCIÓN (si se proporcionó)
     let shippingAddressId = null
     
-    // Solo insertar dirección si hay un userId válido
     if (shippingAddress && userId) {
-      // Verificar si la dirección ya existe
       const existingAddresses = await query(
         `SELECT id FROM user_addresses 
          WHERE user_id = ? 
@@ -215,12 +196,10 @@ export async function POST(request: NextRequest) {
         console.log(`Nueva dirección creada`)
       }
     } else if (shippingAddress && !userId) {
-      console.log(' No se puede guardar dirección sin el usuario')
+      console.log('No se puede guardar dirección sin usuario')
     }
 
-    // =====================================================
-    // 7. INSERTAR LA ORDEN
-    // =====================================================
+    // INSERTAR LA ORDEN
 
     const orderResult = await query(
       `INSERT INTO orders (
@@ -275,11 +254,8 @@ export async function POST(request: NextRequest) {
 
     const orderId = orderResult.insertId
 
-    console.log('Orden creada ')
 
-    // =====================================================
-    // 8. INSERTAR ITEMS DE LA ORDEN
-    // =====================================================
+    // INSERTAR ITEMS DE LA ORDEN
     for (const item of items) {
       await query(
         `INSERT INTO order_items (
@@ -296,33 +272,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`productos agregados a la orden`)
+    console.log(`${items.length} productos agregados a la orden`)
 
-    // =====================================================
-    // 9. CONFIRMAR RESERVA DE STOCK
-    // =====================================================
-    if (userId) {
-      try {
-        await fetch(new URL('/api/cart/reserve-stock', request.url), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items: items.map((item: OrderItem) => ({
-              id: item.id,
-              quantity: item.quantity
-            })),
-            action: 'confirm'
-          })
-        })
-        console.log(' Stock confirmado para la orden')
-      } catch (stockError) {
-        console.warn(' Error al confirmar stock:', stockError)
-      }
-    }
-
-    // =====================================================
-    // 10. DEVOLVER RESPUESTA
-    // =====================================================
+    //  DEVOLVER RESPUESTA
     return NextResponse.json({
       success: true,
       orderId: orderId,

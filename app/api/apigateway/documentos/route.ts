@@ -1,4 +1,3 @@
-// app/api/apigateway/documentos/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { listarDocumentosApiGateway } from '@/lib/apigateway-service';
 

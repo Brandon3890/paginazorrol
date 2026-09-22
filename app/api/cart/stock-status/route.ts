@@ -1,4 +1,3 @@
-// app/api/cart/stock-status/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest, getIdentifierFromRequest, createGuestIdentifier } from '@/lib/auth-utils'

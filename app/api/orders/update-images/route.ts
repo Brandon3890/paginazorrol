@@ -4,7 +4,6 @@ import { query } from '@/lib/db'
 
 export async function POST() {
   try {
-    // Obtener todos los order_items que no tienen image_url
     const orderItems = await query(
       `SELECT oi.id, oi.product_id, p.image 
        FROM order_items oi 

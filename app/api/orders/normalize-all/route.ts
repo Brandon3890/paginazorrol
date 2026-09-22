@@ -1,4 +1,3 @@
-// app/api/orders/normalize-all/route.ts - NUEVO ARCHIVO
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { orderNumberService } from '@/lib/order-number-service'
@@ -18,12 +17,11 @@ export async function POST() {
     let skippedCount = 0
 
     for (const order of orders) {
-      // Solo normalizar si el order_number no es válido o es igual al transbank_buy_order
       const isValid = orderNumberService.isValidOrderNumber(order.order_number)
       const isDifferent = order.order_number !== order.transbank_buy_order
       
       if (!isValid || !isDifferent) {
-        // Generar nuevo número de orden válido
+        // Generar número de orden válido
         const newOrderNumber = orderNumberService.generateOrderNumber()
         
         await query(

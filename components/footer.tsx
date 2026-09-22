@@ -44,7 +44,7 @@ export function Footer() {
     }
   }, [fetchCategories, categoriesLoaded])
 
-  // ✅ SOLO categorías ACTIVAS (is_active === true)
+  //  SOLO categorías ACTIVAS 
   const activeCategories = categories
     .filter(category => category.is_active === true)
     .slice(0, 4)

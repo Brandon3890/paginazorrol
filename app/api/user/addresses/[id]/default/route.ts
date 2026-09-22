@@ -4,7 +4,7 @@ import { getUserIdFromRequest } from '@/lib/auth-utils'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // ← Cambio: params es una Promesa
+  { params }: { params: Promise<{ id: string }> } 
 ) {
   try {
     const userId = await getUserIdFromRequest(request)
@@ -13,7 +13,7 @@ export async function PUT(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const { id } = await params // ← Resolver la promesa
+    const { id } = await params 
     const addressId = parseInt(id)
 
     // Verificar que la dirección pertenece al usuario

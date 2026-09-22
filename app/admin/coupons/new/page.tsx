@@ -45,7 +45,7 @@ interface Category {
   name: string
   slug: string
   is_active: boolean
-  subcategories?: Subcategory[] // Agregar esta línea
+  subcategories?: Subcategory[] 
 }
 
 interface Subcategory {

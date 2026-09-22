@@ -2,142 +2,87 @@ import { NextRequest, NextResponse } from 'next/server'
 import { transbankService } from '@/lib/transbank-service'
 import { query } from '@/lib/db'
 
-// =====================================================
-// FUNCIÓN: CONFIRMAR RESERVA
-// =====================================================
+// CONFIRMAR RESERVA 
 async function confirmarReserva(orderId: number) {
   try {
+    // Obtener info de la orden
     const [orderInfo] = await query(
       `SELECT user_id, customer_email, customer_rut FROM orders WHERE id = ?`,
       [orderId]
     ) as any[];
 
     if (!orderInfo) {
-      console.log(' Orden no encontrada');
+      console.log('Orden no encontrada');
       return false;
     }
 
     const userId = orderInfo?.user_id;
     const customerEmail = orderInfo?.customer_email;
-    const customerRut = orderInfo?.customer_rut;
 
-    console.log(` Confirmando reserva para la orden`);
+    console.log(`Confirmando reserva para orden`);
 
     let reservations: any[] = [];
 
+    // Si es usuario registrado, buscar por user_id
     if (userId) {
       reservations = await query(
         `SELECT id, product_id, quantity, identifier FROM stock_reservations 
          WHERE user_id = ? AND expires_at > NOW()`,
         [userId]
       ) as any[];
-      
+
       if (reservations.length > 0) {
-        console.log(` Encontradas ${reservations.length} reservas por usuario`);
+        console.log(`reservas encontradas`);
       }
     }
 
-    if (reservations.length === 0 && customerRut) {
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE rut = ? AND is_guest = 1`,
-        [customerRut]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        reservations = await query(
-          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por RUT`);
-        }
-      }
-    }
-
-    if (reservations.length === 0 && customerEmail) {
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
-        [customerEmail]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        reservations = await query(
-          `SELECT id, product_id, quantity, identifier FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por email`);
-        }
-      }
-    }
-
+    // Si no hay, buscar por identifier del invitado usando guest_orders
     if (reservations.length === 0) {
       const guestOrders = await query(
         `SELECT guest_session_id FROM guest_orders WHERE order_id = ?`,
         [orderId]
       ) as any[];
-      
+
       if (guestOrders.length > 0) {
         const guestSessionId = guestOrders[0].guest_session_id;
         const identifier = `guest_${guestSessionId}`;
-        
+
         reservations = await query(
           `SELECT id, product_id, quantity, identifier FROM stock_reservations 
            WHERE identifier = ? AND expires_at > NOW()`,
           [identifier]
         ) as any[];
-        
+
         if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por identifier`);
+          console.log(` ${reservations.length} reservas encontradas por el identificador`);
         }
       }
     }
 
-    if (reservations.length === 0) {
-      const allReservations = await query(
-        `SELECT id, product_id, quantity, identifier, user_id FROM stock_reservations 
-         WHERE expires_at > NOW()`
+    //  Si aún no hay, buscar por identifier basado en user_id (invitados sin guest_orders)
+    if (reservations.length === 0 && userId) {
+      reservations = await query(
+        `SELECT id, product_id, quantity, identifier FROM stock_reservations 
+         WHERE identifier LIKE 'guest_%' AND user_id = ? AND expires_at > NOW()`,
+        [userId]
       ) as any[];
-      
-      for (const res of allReservations) {
-        if (res.user_id && res.user_id === userId) {
-          reservations.push(res);
-          console.log(` Reserva encontrada por usuario`);
-          break;
-        }
-        
-        if (res.user_id) {
-          const userCheck = await query(
-            `SELECT email FROM users WHERE id = ?`,
-            [res.user_id]
-          ) as any[];
-          
-          if (userCheck.length > 0 && userCheck[0].email === customerEmail) {
-            reservations.push(res);
-            console.log(`Reserva encontrada por email del usuario`);
-            break;
-          }
-        }
+
+      if (reservations.length > 0) {
+        console.log(` ${reservations.length} reservas encontradas por user_id invitado`);
       }
     }
 
     if (reservations.length === 0) {
-      console.log(' No hay reservas activas para confirmar');
+      console.log('No hay reservas activas para confirmar');
       return true;
     }
 
+    // 5. Eliminar reservas confirmadas (el stock ya estaba descontado en el carrito)
     for (const res of reservations) {
-      console.log(`Eliminando reserva para el producto`);
       await query('DELETE FROM stock_reservations WHERE id = ?', [res.id]);
     }
-    
-    console.log(` ${reservations.length} reservas eliminadas`);
+
+    console.log(`${reservations.length} reservas confirmadas (eliminadas)`);
     return true;
 
   } catch (error) {
@@ -146,9 +91,7 @@ async function confirmarReserva(orderId: number) {
   }
 }
 
-// =====================================================
-// FUNCIÓN: LIBERAR STOCK
-// =====================================================
+// LIBERAR STOCK
 async function liberarStock(orderId: number) {
   try {
     const [orderInfo] = await query(
@@ -163,61 +106,23 @@ async function liberarStock(orderId: number) {
 
     const userId = orderInfo?.user_id;
     const customerEmail = orderInfo?.customer_email;
-    const customerRut = orderInfo?.customer_rut;
 
     let reservations: any[] = [];
 
+    // Buscar por user_id
     if (userId) {
       reservations = await query(
-        `SELECT product_id, quantity FROM stock_reservations WHERE user_id = ? AND expires_at > NOW()`,
+        `SELECT id, product_id, quantity FROM stock_reservations 
+         WHERE user_id = ? AND expires_at > NOW()`,
         [userId]
       ) as any[];
       
       if (reservations.length > 0) {
-        console.log(` Encontradas ${reservations.length} reservas por usuario: `);
+        console.log(` ${reservations.length} reservas encontradas por usuario`);
       }
     }
 
-    if (reservations.length === 0 && customerRut) {
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE rut = ? AND is_guest = 1`,
-        [customerRut]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por RUT usuario`);
-        }
-      }
-    }
-
-    if (reservations.length === 0 && customerEmail) {
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
-        [customerEmail]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        const guestUserId = guestUsers[0].id;
-        reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
-           WHERE user_id = ? AND expires_at > NOW()`,
-          [guestUserId]
-        ) as any[];
-        
-        if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por email usuario`);
-        }
-      }
-    }
-
+    // Buscar por identifier del invitado
     if (reservations.length === 0) {
       const guestOrders = await query(
         `SELECT guest_session_id FROM guest_orders WHERE order_id = ?`,
@@ -229,14 +134,27 @@ async function liberarStock(orderId: number) {
         const identifier = `guest_${guestSessionId}`;
         
         reservations = await query(
-          `SELECT product_id, quantity FROM stock_reservations 
+          `SELECT id, product_id, quantity FROM stock_reservations 
            WHERE identifier = ? AND expires_at > NOW()`,
           [identifier]
         ) as any[];
         
         if (reservations.length > 0) {
-          console.log(` Encontradas ${reservations.length} reservas por identifier: ${identifier}`);
+          console.log(` ${reservations.length} reservas encontradas por el identificador`);
         }
+      }
+    }
+
+    // 3. Buscar por identifier basado en user_id invitado
+    if (reservations.length === 0 && userId) {
+      reservations = await query(
+        `SELECT id, product_id, quantity FROM stock_reservations 
+         WHERE identifier LIKE 'guest_%' AND user_id = ? AND expires_at > NOW()`,
+        [userId]
+      ) as any[];
+
+      if (reservations.length > 0) {
+        console.log(` ${reservations.length} reservas encontradas por user_id invitado`);
       }
     }
 
@@ -247,39 +165,30 @@ async function liberarStock(orderId: number) {
     
     console.log(`Liberando ${reservations.length} reservas`);
     
+    // Devolver stock
     for (const res of reservations) {
       await query(
         `UPDATE products SET stock = stock + ? WHERE id = ?`,
         [res.quantity, res.product_id]
       );
-      console.log(`Stock devuelto para el producto`);
+      console.log(`Stock devuelto al producto`);
     }
     
-    if (userId) {
-      await query('DELETE FROM stock_reservations WHERE user_id = ?', [userId]);
-    } else if (customerEmail) {
-      const guestUsers = await query(
-        `SELECT id FROM users WHERE email = ? AND is_guest = 1`,
-        [customerEmail]
-      ) as any[];
-      
-      if (guestUsers.length > 0) {
-        await query('DELETE FROM stock_reservations WHERE user_id = ?', [guestUsers[0].id]);
-      }
+    // Eliminar reservas
+    for (const res of reservations) {
+      await query('DELETE FROM stock_reservations WHERE id = ?', [res.id]);
     }
     
     console.log(' Reservas eliminadas y stock devuelto');
     return true;
     
   } catch (error) {
-    console.error(' Error liberando stock:', error);
+    console.error('Error liberando stock:', error);
     return false;
   }
 }
 
-// =====================================================
-// FUNCIÓN: USAR CUPÓN
-// =====================================================
+//  USAR CUPÓN
 async function usarCupon(orderId: number) {
   try {
     const [order] = await query(
@@ -292,7 +201,7 @@ async function usarCupon(orderId: number) {
       return true
     }
 
-    console.log(`Usando cupón`)
+    console.log(`Usando cupón `)
 
     const [coupon] = await query(
       `SELECT id, current_uses, max_uses, is_active FROM coupons WHERE id = ?`,
@@ -300,17 +209,17 @@ async function usarCupon(orderId: number) {
     ) as any[]
 
     if (!coupon) {
-      console.log(`Cupón no encontrado`)
+      console.log(`Cupón  no encontrado`)
       return false
     }
 
     if (!coupon.is_active) {
-      console.log(` Cupón está inactivo`)
+      console.log(`Cupón  está inactivo`)
       return false
     }
 
     if (coupon.current_uses >= coupon.max_uses) {
-      console.log(` Cupón ya alcanzó su límite de usos`)
+      console.log(`Cupón ya alcanzó su límite de usos`)
       return false
     }
 
@@ -322,18 +231,16 @@ async function usarCupon(orderId: number) {
       [order.coupon_id]
     )
 
-    console.log(`Cupón usado exitosamente `)
+    console.log(` Cupón usado exitosamente `)
     return true
 
   } catch (error) {
-    console.error(' Error usando cupón:', error)
+    console.error('Error usando cupón:', error)
     return false
   }
 }
 
-// =====================================================
-// FUNCIÓN: LIMPIAR RESERVAS EXPIRADAS
-// =====================================================
+// LIMPIAR RESERVAS EXPIRADAS
 async function limpiarReservasExpiradas() {
   try {
     const expiredReservations = await query(
@@ -341,7 +248,7 @@ async function limpiarReservasExpiradas() {
     ) as any[]
 
     if (expiredReservations && expiredReservations.length > 0) {
-      console.log(`Devolviendo stock de las reservas expiradas...`)
+      console.log(`Devolviendo stock de ${expiredReservations.length} reservas expiradas...`)
       
       for (const res of expiredReservations) {
         await query(
@@ -351,11 +258,11 @@ async function limpiarReservasExpiradas() {
            WHERE id = ?`,
           [res.quantity, res.product_id]
         )
-        console.log(`Stock devuelto para el producto`)
+        console.log(`Stock devuelto para el producto `)
       }
       
       await query('DELETE FROM stock_reservations WHERE expires_at < NOW()')
-      console.log(' Reservas expiradas eliminadas y stock devuelto')
+      console.log('Reservas expiradas eliminadas y stock devuelto')
     }
     
     return true
@@ -365,9 +272,7 @@ async function limpiarReservasExpiradas() {
   }
 }
 
-// =====================================================
-// POST - PROCESAR RESPUESTA DE PAGO (RÁPIDO - SIN EMAIL)
-// =====================================================
+// POST - PROCESAR RESPUESTA DE PAGO
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -376,9 +281,9 @@ export async function POST(request: NextRequest) {
 
     await limpiarReservasExpiradas()
 
-    // CASO 1: Pago ABORTADO
+    //  Pago ABORTADO
     if (TBK_TOKEN && !token_ws) {
-      console.log(' Pago ABORTADO por el usuario')
+      console.log('Pago ABORTADO por el usuario')
       
       const orders = await query(
         `SELECT * FROM orders WHERE transbank_session_id = ?`,
@@ -387,7 +292,7 @@ export async function POST(request: NextRequest) {
 
       if (orders.length > 0) {
         const order = orders[0]
-        console.log(` Orden - Pago abortado`)
+        console.log(`Orden abortado`)
         await liberarStock(order.id);
         await query(
           `UPDATE orders SET 
@@ -405,9 +310,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // CASO 2: Pago EXITOSO
+    // Pago EXITOSO
     if (token_ws && !TBK_TOKEN) {
-      console.log('Procesando pago EXITOSO')
+      console.log(' Procesando pago EXITOSO')
       
       try {
         const commitResponse = await transbankService.commitTransaction(token_ws)
@@ -418,7 +323,7 @@ export async function POST(request: NextRequest) {
         ) as any[]
 
         if (orders.length === 0) {
-          console.log(' Orden no encontrada')
+          console.log('Orden no encontrada para orden')
           const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
           redirectUrl.searchParams.set('status', 'error')
           redirectUrl.searchParams.set('message', 'order_not_found')
@@ -426,7 +331,7 @@ export async function POST(request: NextRequest) {
         }
 
         const order = orders[0]
-        console.log(`Orden - Procesando respuesta de pago`)
+        console.log(`Orden Procesada respuesta de pago`)
 
         const isApproved = transbankService.isTransactionApproved(commitResponse)
         
@@ -446,13 +351,13 @@ export async function POST(request: NextRequest) {
           
           console.log(` Pago APROBADO - Procesando pedido `);
 
-          // 1. CONFIRMAR RESERVA
+          // CONFIRMAR RESERVA (eliminar reservas, stock ya descontado)
           await confirmarReserva(order.id);
 
-          // 2. USAR CUPÓN
+          // USAR CUPÓN
           await usarCupon(order.id);
 
-          // 3. ACTUALIZAR ESTADO DE LA ORDEN (SOLO PAGO - SIN BOLETA NI EMAIL)
+          // ACTUALIZAR ESTADO DE LA ORDEN
           await query(
             `UPDATE orders SET 
               payment_status = 'paid',
@@ -481,9 +386,7 @@ export async function POST(request: NextRequest) {
             ]
           )
 
-          console.log(` Orden actualizada (pago confirmado)`);
 
-          //  REDIRIGIR RÁPIDO - LA BOLETA Y EMAIL SE GENERAN EN ORDER-SUCCESS
           const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
           redirectUrl.searchParams.set('orderId', order.id.toString())
           redirectUrl.searchParams.set('status', 'success')
@@ -493,7 +396,7 @@ export async function POST(request: NextRequest) {
 
         } else {
           const rejectionReason = transbankService.getResponseCodeDescription(commitResponse.response_code)
-          console.log(` Pago RECHAZADO para la orden `)
+          console.log(` Pago RECHAZADO para orden`)
           
           await liberarStock(order.id);
           
@@ -524,14 +427,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.error(' Tokens invalidos o ausentes')
+    console.error('Tokens invalidos o ausentes')
     const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
     redirectUrl.searchParams.set('status', 'error')
     redirectUrl.searchParams.set('message', 'invalid_tokens')
     return NextResponse.redirect(redirectUrl)
 
   } catch (error: any) {
-    console.error(' Error CRITICO:', error)
+    console.error('Error CRITICO:', error)
     const redirectUrl = new URL('/order-success', process.env.NEXTAUTH_URL)
     redirectUrl.searchParams.set('status', 'error')
     redirectUrl.searchParams.set('message', 'processing_error')
@@ -539,9 +442,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// =====================================================
-// GET - MANEJAR REDIRECT DE TRANSBANK
-// =====================================================
+// MANEJAR REDIRECT DE TRANSBANK
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const token_ws = searchParams.get('token_ws')

@@ -1,8 +1,8 @@
 import { consultarEstadoBoleta, obtenerPDFApiGateway, listarDocumentosApiGateway } from './apigateway-service';
 
-/**
- * Obtener la fecha real de emisión desde el SII
- */
+
+// Obtener la fecha real de emisión desde el SII
+
 export async function obtenerFechaRealSII(
   folio: string | number,
   tipoDTE: number = 39
@@ -46,7 +46,7 @@ export async function obtenerFechaRealSII(
 export async function esperarBoletaAceptada(
   folio: string | number,
   fecha: string,
-  timeoutMs: number = 2 * 60 * 60 * 1000 // 2 horas
+  timeoutMs: number = 2 * 60 * 60 * 1000 
 ): Promise<{ aceptada: boolean; estado?: string; error?: string; fechaUsada?: string }> {
   
   let tiempoTranscurrido = 0;
@@ -55,10 +55,10 @@ export async function esperarBoletaAceptada(
 
   // Definir los intervalos de espera
   const intervalos = [
-    { maxIntentos: 4, espera: 30000 },   // 4 intentos cada 30 segundos
-    { maxIntentos: 10, espera: 60000 },  // 10 intentos cada 1 minuto
-    { maxIntentos: 10, espera: 120000 }, // 10 intentos cada 2 minutos
-    { maxIntentos: 99, espera: 300000 }  // Resto cada 5 minutos (hasta 2 horas)
+    { maxIntentos: 4, espera: 30000 },   
+    { maxIntentos: 10, espera: 60000 },  
+    { maxIntentos: 10, espera: 120000 }, 
+    { maxIntentos: 99, espera: 300000 }  
   ];
 
   let intervaloActual = 0;
@@ -129,16 +129,15 @@ export async function esperarBoletaAceptada(
     }
   }
   
-  // Si se acabó el tiempo (2 horas)
   return {
     aceptada: false,
-    error: `La boleta no se aceptó después de 2 horas de espera (${intento} intentos)`
+    error: `La boleta no se aceptó después de (${intento} intentos)`
   };
 }
 
-/**
- * verificación de estado
- */
+
+ // verificación de estado
+
 export async function obtenerBoletaConVerificacion(
   folio: string | number,
   fecha: string,
@@ -147,7 +146,7 @@ export async function obtenerBoletaConVerificacion(
   
   console.log(`Iniciando verificación de boleta `);
 
-  // PASO 2: Buscar fecha real en el SII
+  // Buscar fecha real en el SII
   console.log(` Buscando fecha de la boleta en el SII`);
   const fechaSII = await obtenerFechaRealSII(folio);
   
@@ -159,7 +158,7 @@ export async function obtenerBoletaConVerificacion(
     console.log(`No se encontró la boleta en el SII, usando fecha: ${fecha}`);
   }
 
-  // PASO 3: Esperar estado válido (Aceptada o En Proceso)
+  // Esperar estado válido (Aceptada o En Proceso)
   console.log(` Esperando que la boleta esté en estado válido `);
   
   const resultadoEspera = await esperarBoletaAceptada(folio, fechaUsada);
@@ -174,7 +173,7 @@ export async function obtenerBoletaConVerificacion(
   
   console.log(` Boleta en estado "${resultadoEspera.estado}" - Enviando email...`);
 
-  // PASO 4: Buscar fecha real de nuevo (confirmación)
+  // Buscar fecha real de nuevo (confirmación)
   console.log(`Buscando fecha real de la boleta ${folio} nuevamente...`);
   const fechaSIIFinal = await obtenerFechaRealSII(folio);
   
@@ -184,8 +183,6 @@ export async function obtenerBoletaConVerificacion(
     console.log(`Fecha final del SII: ${fechaFinal}`);
   }
 
-  // PASO 5: Descargar PDF
-  console.log(`Descargando PDF con fecha ${fechaFinal}...`);
   try {
     const pdfBuffer = await obtenerPDFApiGateway(folio, fechaFinal);
     console.log(`PDF descargado correctamente (${pdfBuffer.length} bytes)`);
@@ -198,7 +195,6 @@ export async function obtenerBoletaConVerificacion(
   } catch (pdfError: any) {
     console.error(`Error descargando PDF:`, pdfError.message);
     
-    // Intentar con la fecha original como fallback
     if (fechaFinal !== fecha) {
       console.log(`Intentando con fecha original ${fecha}...`);
       try {

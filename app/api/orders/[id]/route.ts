@@ -37,7 +37,7 @@ export async function GET(
         b.monto_total as boleta_monto,
         b.fecha_emision as boleta_fecha,
         b.estado_sii as boleta_estado,
-        o.boleta_pdf_path  -- ✅ Ruta del PDF subido por admin
+        o.boleta_pdf_path 
       FROM orders o 
       LEFT JOIN users u ON o.user_id = u.id 
       LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
@@ -108,12 +108,10 @@ export async function GET(
       }
     }
 
-    // ============================================================
     // OBTENER INFORMACIÓN DE LA BOLETA - PRIORIDAD: PDF ADMIN
-    // ============================================================
     let boletaInfo = null
     
-    // ✅ PRIORIDAD 1: Si hay PDF subido por admin, usarlo
+    //  PRIORIDAD 1: Si hay PDF subido por admin, usarlo
     if (order.boleta_pdf_path) {
       boletaInfo = {
         id: order.boleta_id || null,
@@ -125,7 +123,7 @@ export async function GET(
         is_admin_upload: true
       }
     } else if (order.boleta_id) {
-      // ✅ PRIORIDAD 2: Buscar en tabla boletas
+      //  PRIORIDAD 2: Buscar en tabla boletas
       const boletas = await query(
         `SELECT id, folio, monto_total, fecha_emision, estado_sii,
                 rut_receptor, razon_social_receptor
@@ -261,7 +259,7 @@ export async function GET(
       boleta_id: order.boleta_id,
       boleta_emitida: order.boleta_emitida || (boletaInfo ? 1 : 0),
       boleta_info: boletaInfo,
-      boleta_pdf_path: order.boleta_pdf_path || null,  // ✅ Ruta del PDF subido
+      boleta_pdf_path: order.boleta_pdf_path || null,  
       boleta_intentos: order.boleta_intentos || 0,
       boleta_error: order.boleta_error || null,
       boleta_ultimo_intento: order.boleta_ultimo_intento || null,

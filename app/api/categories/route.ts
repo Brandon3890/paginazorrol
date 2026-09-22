@@ -53,7 +53,7 @@ export async function GET() {
 
     await transaction.commit();
 
-    console.log(`✅ ${categoriesWithSubs.length} categorías cargadas`);
+    console.log(` ${categoriesWithSubs.length} categorías cargadas`);
     return NextResponse.json(categoriesWithSubs);
     
   } catch (error) {

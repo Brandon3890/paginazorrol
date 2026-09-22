@@ -79,7 +79,6 @@ export function CartDrawer() {
       return identifier
     }
     
-    // Último recurso: generar uno temporal
     const tempId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
     if (typeof document !== 'undefined') {
       document.cookie = `${GUEST_IDENTIFIER_COOKIE}=${encodeURIComponent(tempId)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`
@@ -100,7 +99,7 @@ export function CartDrawer() {
     }
   }, [items, hasActiveCheckout])
 
-  // Temporizador sincronizado con checkoutExpiresAt
+
   useEffect(() => {
     if (!hasActiveCheckout() || !checkoutExpiresAt) {
       setTimeLeft(null)
@@ -263,7 +262,7 @@ export function CartDrawer() {
     }
   }
 
-  // Vaciar carrito CON confirmación (cuando hay reserva activa)
+  // Vaciar carrito CON confirmación 
   const handleClearCartWithReservation = () => {
     if (hasActiveCheckout() && items.length > 0) {
       setShowCancelConfirm(true)
@@ -284,7 +283,7 @@ export function CartDrawer() {
     })
   }
 
-  // Función real para vaciar con reserva (cuando el usuario confirma)
+  // Función real para vaciar con reserva 
   const handleCancelAndClear = async () => {
     setIsCancellingCheckout(true)
     
@@ -416,7 +415,7 @@ export function CartDrawer() {
             </SheetDescription>
           </SheetHeader>
 
-          {/* Banner de temporizador - solo visible cuando hay reserva activa */}
+          {/* Banner de temporizador */}
           {hasActiveCheckout() && timeLeft !== null && timeLeft > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
@@ -455,7 +454,7 @@ export function CartDrawer() {
             </motion.div>
           )}
 
-          {/* Modal de confirmación - Para cancelar compra (invitados y autenticados) */}
+          {/* Modal de confirmación */}
           {showCancelConfirm && (
             <>
               <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCancelConfirm(false)} />

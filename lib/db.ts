@@ -1,4 +1,3 @@
-// lib/db.ts - CONFIGURACIÓN CORREGIDA CON SOPORTE PARA TRANSACCIONES
 import mysql from 'mysql2/promise'
 
 const dbConfig = {
@@ -16,7 +15,6 @@ const dbConfig = {
   keepAliveInitialDelay: 0
 };
 
-// Crear el pool con manejo de errores
 let pool: mysql.Pool;
 
 try {
@@ -37,17 +35,15 @@ try {
   throw error;
 }
 
-// Función auxiliar para verificar si es un array de filas
+// Verificar un array de filas
 function isRowDataPacket(result: any): result is mysql.RowDataPacket[] {
   return Array.isArray(result) && result.length >= 0;
 }
 
-// Función auxiliar para verificar si es OkPacket (INSERT, UPDATE, DELETE)
 function isOkPacket(result: any): result is mysql.OkPacket {
   return result && typeof result === 'object' && 'affectedRows' in result;
 }
 
-// FUNCIÓN PRINCIPAL: Usa execute para consultas preparadas (seguro contra SQL injection)
 export async function query(sql: string, params: any[] = []) {
   const startTime = Date.now();
   let connection;
@@ -73,14 +69,12 @@ export async function query(sql: string, params: any[] = []) {
   }
 }
 
-// NUEVA FUNCIÓN: Para comandos que no soporta execute (START TRANSACTION, COMMIT, etc.)
 export async function querySimple(sql: string, params: any[] = []) {
   const startTime = Date.now();
   let connection;
   
   try {    
     connection = await pool.getConnection();
-    // Usamos query() en lugar de execute() para comandos especiales
     const [rows] = await connection.query(sql, params);
     const duration = Date.now() - startTime;
     
@@ -100,19 +94,16 @@ export async function querySimple(sql: string, params: any[] = []) {
   }
 }
 
-// Función específica para SELECT que siempre devuelve array
 export async function queryRows<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   const result = await query(sql, params);
   return isRowDataPacket(result) ? result as T[] : [];
 }
 
-// Función específica para INSERT, UPDATE, DELETE
 export async function queryExecute(sql: string, params: any[] = []): Promise<mysql.OkPacket> {
   const result = await query(sql, params);
   return result as mysql.OkPacket;
 }
 
-// Función para cerrar el pool (útil para scripts)
 export async function closePool() {
   try {
     await pool.end();
@@ -122,5 +113,4 @@ export async function closePool() {
   }
 }
 
-// Exportar el pool como default
 export default pool;

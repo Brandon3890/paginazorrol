@@ -1,4 +1,3 @@
-// app/orders/mysql/[id]/page.tsx - COMPLETO Y CORREGIDO
 "use client"
 
 import { useEffect, useState } from "react"
@@ -89,7 +88,7 @@ export default function MySQLOrderDetailPage() {
         setError('Orden no encontrada')
       } else if (response.status === 401) {
         setError('No tienes permisos para ver esta orden')
-        // El middleware ya debería haber redirigido, pero por si acaso
+        // El proxy ya debería haber redirigido, pero por si acaso
         router.push('/login')
       } else if (response.status === 403) {
         setError('No tienes acceso a esta orden')
@@ -333,21 +332,21 @@ export default function MySQLOrderDetailPage() {
                 {order.payment_status === 'paid' && (
                   <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-2">
                     <p className="text-xs text-green-800 text-center">
-                      ✅ Pago verificado y confirmado
+                       Pago verificado y confirmado
                     </p>
                   </div>
                 )}
                 {order.payment_status === 'pending' && (
                   <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2">
                     <p className="text-xs text-yellow-800 text-center">
-                      ⏳ Pago pendiente de confirmación
+                       Pago pendiente de confirmación
                     </p>
                   </div>
                 )}
                 {order.payment_status === 'failed' && (
                   <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
                     <p className="text-xs text-red-800 text-center">
-                      ❌ Pago fallido o cancelado
+                       Pago fallido o cancelado
                     </p>
                   </div>
                 )}

@@ -62,9 +62,7 @@ export async function POST(request: NextRequest) {
 
     console.log(` Emitiendo boleta `);
 
-    // ============================================================
-    // 1. OBTENER LA ORDEN CON TODOS SUS DATOS
-    // ============================================================
+    // OBTENER LA ORDEN CON TODOS SUS DATOS
     const orders = await query(
       `SELECT 
         o.*,
@@ -90,9 +88,7 @@ export async function POST(request: NextRequest) {
     const order = orders[0];
 
 
-    // ============================================================
-    // 2. VERIFICAR QUE EL PAGO ESTÉ APROBADO
-    // ============================================================
+    // VERIFICAR QUE EL PAGO ESTÉ APROBADO
     if (order.payment_status !== 'paid') {
       return NextResponse.json(
         { success: false, error: 'El pago no está aprobado' },
@@ -100,9 +96,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ============================================================
-    // 3. VERIFICAR SI YA EXISTE BOLETA
-    // ============================================================
+    //  VERIFICAR SI YA EXISTE BOLETA
     const boletaExistente = await query(
       `SELECT id, folio FROM boletas WHERE order_id = ?`,
       [orderId]
@@ -118,9 +112,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ============================================================
-    // 4. OBTENER ITEMS DE LA ORDEN
-    // ============================================================
+    // OBTENER ITEMS DE LA ORDEN
     const orderItems = await query(
       `SELECT product_name, product_price, quantity, subtotal 
        FROM order_items 
@@ -135,13 +127,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ============================================================
-    // 5. PREPARAR DATOS DEL CLIENTE
-    // ============================================================
-    // 🔥 CORRECCIÓN: PRIORIDAD para el RUT
-    // 1. Usar el RUT de la orden (customer_rut) - este es el que se ingresó en checkout
-    // 2. Si no existe, usar el RUT del usuario (user_rut)
-    // 3. Si ninguno existe, usar consumidor final
+    // PREPARAR DATOS DEL CLIENTE
     let rutCliente = order.customer_rut || order.user_rut || RUT_CONSUMIDOR_FINAL;
     
     console.log('RUT antes de validar');
@@ -169,9 +155,7 @@ export async function POST(request: NextRequest) {
     const telefonoCliente = order.customer_phone || undefined;
 
 
-    // ============================================================
-    // 6. PREPARAR DIRECCIÓN
-    // ============================================================
+    // PREPARAR DIRECCIÓN
     let direccion = 'Santiago';
     let comuna = 'Santiago';
     let ciudad = 'Santiago';
@@ -196,9 +180,7 @@ export async function POST(request: NextRequest) {
       ciudad = 'Región Metropolitana';
     }
 
-    // ============================================================
-    // 7. PREPARAR PRODUCTOS
-    // ============================================================
+    // PREPARAR PRODUCTOS
     const productos = orderItems.map((item: any) => ({
       nombre: item.product_name,
       cantidad: item.quantity,
@@ -207,9 +189,7 @@ export async function POST(request: NextRequest) {
 
     const totalFinal = parseFloat(order.total);
 
-    // ============================================================
-    // 8. CONSTRUIR RECEPTOR
-    // ============================================================
+    // CONSTRUIR RECEPTOR
     const receptor = {
       rut: rutCliente,
       nombre: nombreCliente,
@@ -220,9 +200,7 @@ export async function POST(request: NextRequest) {
       email: emailCliente
     };
 
-    // ============================================================
-    // 9. EMITIR CON APIGATEWAY
-    // ============================================================
+    // EMITIR CON APIGATEWAY
     const resultado = await emitirBoletaApiGateway(
       productos,
       receptor,
@@ -238,9 +216,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Boleta emitida. Folio: ${folio}`);
 
-    // ============================================================
-    // 10. GUARDAR EN BASE DE DATOS
-    // ============================================================
+    // GUARDAR EN BASE DE DATOS
     const neto = Math.round(totalFinal / 1.19);
     const iva = totalFinal - neto;
     const fechaEmision = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -256,7 +232,7 @@ export async function POST(request: NextRequest) {
         folio,
         39,
         process.env.APIGATEWAY_RUT_EMISOR || '78364115-1',
-        receptor.rut,  // 🔥 Este es el RUT que debe ir en la boleta
+        receptor.rut,  
         receptor.nombre,
         montoTotal,
         iva,

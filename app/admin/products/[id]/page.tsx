@@ -414,8 +414,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     try {
       const productData = await fetchProduct(productId, true)
       if (productData) {
-        console.log('📦 Producto recargado:', productData.name)
-        console.log('📸 Imagen principal:', productData.image)
         
         setProduct(productData)
         
@@ -443,7 +441,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         }
         
         setImageTimestamp(Date.now())
-        console.log('✅ Producto recargado correctamente')
+        console.log(' Producto recargado correctamente')
       }
     } catch (error) {
       console.error('Error recargando producto:', error)
@@ -850,7 +848,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           cache: 'no-store',
         });
         if (response.ok) {
-          console.log(`✅ Imagen disponible después de ${attempt + 1} intentos`);
+          console.log(` Imagen disponible después de ${attempt + 1} intentos`);
           return true;
         }
       } catch (error) {
@@ -980,7 +978,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         throw new Error(errorData.error || 'Error updating product');
       }
       
-      console.log('✅ Product updated successfully');
+      console.log(' Product updated successfully');
       
       // =============================================
       // 1. LIMPIAR URLs BLOB

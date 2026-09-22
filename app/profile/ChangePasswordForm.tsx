@@ -1,4 +1,3 @@
-// app/profile/ChangePasswordForm.tsx - ACTUALIZADO
 "use client"
 
 import { useState } from "react"
@@ -85,7 +84,7 @@ export default function ChangePasswordForm() {
     setIsLoading(true)
 
     try {
-      // ✅ AÑADIR EL TOKEN EN EL HEADER
+      //  AÑADIR EL TOKEN EN EL HEADER
       const response = await fetch(`/api/user/${user?.id}`, {
         method: 'PATCH',
         headers: {

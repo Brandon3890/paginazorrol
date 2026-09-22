@@ -18,20 +18,14 @@ const config: ApiGatewayConfig = {
   ambiente: parseInt(process.env.APIGATEWAY_AMBIENTE || '0')
 };
 
-// ============================================================
-//  MODO DE PRUEBA por si se cae la api o para algo con la boleta
-// ============================================================
-// Para probar el reintento, cambia TEST_SHOULD_FAIL a true
-// y luego a false para restaurar la funcionalidad normal
-const TEST_SHOULD_FAIL = false; // ← CAMBIA a false PARA RESTAURAR
-// const TEST_SHOULD_FAIL = true; // ← DESCOMENTA PARA PROBAR
+//  Por si se cae la api 
+const TEST_SHOULD_FAIL = false; 
+// const TEST_SHOULD_FAIL = true; para probar
 
-//  RUT POR DEFECTO PARA CONSUMIDOR FINAL ANÓNIMO
+//  RUT ANONIMO
 const RUT_CONSUMIDOR_FINAL = '66666666-6';
 
-/**
- * Formatear fecha a YYYY-MM-DD
- */
+ // Formatear fecha a YYYY-MM-DD
 function formatearFecha(fecha: string | Date): string {
   if (!fecha) {
     return new Date().toISOString().split('T')[0];
@@ -68,18 +62,16 @@ function formatearFecha(fecha: string | Date): string {
   return new Date().toISOString().split('T')[0];
 }
 
-/**
- * Simular fallo de ApiGateway para pruebas
- */
+
+ // Simular fallo de ApiGateway para pruebas
+ 
 async function simulateApiFailure(): Promise<void> {
   if (TEST_SHOULD_FAIL) {
-    throw new Error('🧪 [TEST] Error simulado - ApiGateway no disponible');
+    throw new Error('[TEST] Api no disponible');
   }
 }
 
-// ============================================================
-// 1. EMITIR BOLETA
-// ============================================================
+// EMITIR BOLETA
 
 export async function emitirBoletaApiGateway(
   productos: Array<{ nombre: string; cantidad: number; precio: number }>,
@@ -95,10 +87,10 @@ export async function emitirBoletaApiGateway(
   total: number
 ): Promise<any> {
   return new Promise((resolve, reject) => {
-    //  SIMULAR FALLO EN MODO PRUEBA (si está activado)
+    //  SIMULAR FALLO EN MODO PRUEBA SOLO SI ESTA ACTIVADO
     if (TEST_SHOULD_FAIL) {
-      console.log('🧪 [TEST] Simulando fallo de ApiGateway');
-      reject(new Error('🧪 [TEST] Error simulado - ApiGateway no disponible'));
+      console.log(' [TEST] fallo de Api');
+      reject(new Error(' [TEST] Error simulado - Api no disponible'));
       return;
     }
 
@@ -127,7 +119,7 @@ export async function emitirBoletaApiGateway(
       }];
     }
 
-    //  CONSTRUIR PAYLOAD CON TODOS LOS DATOS DEL RECEPTOR
+    //  CONSTRUIR PAGO CON TODOS LOS DATOS COMO EN LA API
     const payload = {
       auth: {
         pass: {
@@ -215,9 +207,7 @@ export async function emitirBoletaApiGateway(
   });
 }
 
-// ============================================================
-// 2. CONSULTAR ESTADO DE BOLETA 
-// ============================================================
+// CONSULTAR ESTADO DE BOLETA 
 
 export async function consultarEstadoBoleta(
   folio: string | number,
@@ -263,9 +253,7 @@ export async function consultarEstadoBoleta(
   }
 }
 
-// ============================================================
-// 3. OBTENER PDF DE BOLETA
-// ============================================================
+// OBTENER PDF DE BOLETA
 
 export async function obtenerPDFApiGateway(
   folio: string | number,
@@ -351,9 +339,7 @@ export async function obtenerPDFApiGateway(
   });
 }
 
-// ============================================================
-// 4. OBTENER FECHA DE EMISIÓN DESDE EL SII
-// ============================================================
+// OBTENER FECHA DE EMISIÓN DESDE EL SII
 
 export async function obtenerFechaEmisionSII(
   folio: string | number,
@@ -394,9 +380,7 @@ export async function obtenerFechaEmisionSII(
   }
 }
 
-// ============================================================
-// 5. LISTAR DOCUMENTOS EMITIDOS
-// ============================================================
+// LISTAR DOCUMENTOS EMITIDOS
 
 export async function listarDocumentosApiGateway(
   dateFrom: string,
@@ -473,9 +457,7 @@ export async function listarDocumentosApiGateway(
   });
 }
 
-// ============================================================
-// 6. ANULAR BOLETA
-// ============================================================
+// ANULAR BOLETA
 
 export async function anularBoletaApiGateway(
   folio: string | number,

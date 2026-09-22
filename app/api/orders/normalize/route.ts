@@ -1,4 +1,3 @@
-// app/api/orders/normalize/route.ts - NUEVO ARCHIVO
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { transbankService } from '@/lib/transbank-service'
@@ -19,7 +18,6 @@ export async function POST() {
     let updatedCount = 0
 
     for (const order of orders) {
-      // Generar nuevo order_number si es necesario
       let newOrderNumber = order.order_number
       
       if (order.order_number === order.transbank_buy_order || 
@@ -28,7 +26,6 @@ export async function POST() {
         
         newOrderNumber = transbankService.generateOrderNumber()
         
-        // Generar nuevo transbank_buy_order si es null
         const newTransbankBuyOrder = order.transbank_buy_order || transbankService.generateBuyOrder()
 
         await query(

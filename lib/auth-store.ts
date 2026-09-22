@@ -1,5 +1,3 @@
-// lib/auth-store.ts - ACTUALIZADO (RUT OPCIONAL)
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -41,7 +39,7 @@ interface User {
   firstName: string
   lastName: string
   phone: string
-  rut?: string // ✅ AHORA ES OPCIONAL
+  rut?: string
   role: 'user' | 'admin'
   addresses?: UserAddress[]
   createdAt: string
@@ -54,7 +52,7 @@ interface RegisterData {
   firstName: string
   lastName: string
   phone?: string
-  rut?: string // ✅ AHORA ES OPCIONAL
+  rut: string
 }
 
 interface AuthState {
@@ -67,7 +65,7 @@ interface AuthState {
   register: (userData: RegisterData) => Promise<boolean>
   logout: () => void
   verifyToken: () => Promise<boolean>
-  updateUser: (userData: Partial<User>) => void
+  updateUser: (userData: Partial<User>) => Promise<void>  
   addUserAddress: (address: Omit<UserAddress, 'id'>) => Promise<void>
   updateUserAddress: (id: number, address: Partial<UserAddress>) => Promise<void>
   deleteUserAddress: (id: number) => Promise<void>
@@ -145,28 +143,17 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true })
           
-          // 🔥 Preparar datos para el backend - RUT es opcional
-          const registerPayload = {
-            email: userData.email,
-            password: userData.password,
-            firstName: userData.firstName,
-            lastName: userData.lastName,
-            phone: userData.phone || '',
-            // ❌ NO ENVIAR RUT - El backend lo generará automáticamente
-          }
-          
           const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(registerPayload),
+            body: JSON.stringify(userData),
           })
 
           const data = await response.json()
           
           if (data.success && data.user) {
-            // Iniciar sesión automáticamente
             const loginResponse = await fetch('/api/auth/login', {
               method: 'POST',
               headers: {
@@ -306,10 +293,48 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      updateUser: (userData: Partial<User>) => {
-        const { user } = get()
-        if (user) {
-          set({ user: { ...user, ...userData } })
+      
+      updateUser: async (userData: Partial<User>) => {
+        try {
+          const { token, user } = get()
+          
+          if (!token || !user) {
+            throw new Error('No hay sesión activa')
+          }
+
+          const response = await fetch('/api/user/update', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              email: userData.email,
+              phone: userData.phone,
+            })
+          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Error al actualizar el perfil')
+          }
+
+          
+          set({
+            user: {
+              ...user,
+              firstName: data.user.firstName,
+              lastName: data.user.lastName,
+              email: data.user.email,
+              phone: data.user.phone || '',
+            }
+          })
+        } catch (error) {
+          console.error('Error updating user:', error)
+          throw error 
         }
       },
 

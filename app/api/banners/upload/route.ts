@@ -1,4 +1,3 @@
-// app/api/banners/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
@@ -55,7 +54,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(absolutePath, buffer);
 
-    console.log('✅ Imagen guardada en:', absolutePath);
+    console.log(' Imagen guardada');
 
     return NextResponse.json({ 
       success: true, 

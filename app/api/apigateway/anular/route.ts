@@ -1,4 +1,3 @@
-// app/api/apigateway/anular/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { anularBoletaApiGateway } from '@/lib/apigateway-service';

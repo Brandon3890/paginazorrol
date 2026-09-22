@@ -1,4 +1,3 @@
-// app/api/admin/orders/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -26,7 +25,7 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes permisos para ver este pedido' }, { status: 403 })
     }
 
-    // ✅ Consulta que SIEMPRE trae los datos de la boleta antigua (LEFT JOIN)
+    //  Consulta que SIEMPRE trae los datos de la boleta antigua (LEFT JOIN)
     const orders = await query(
       `SELECT 
         o.*, 
@@ -146,7 +145,7 @@ export async function GET(
       }
     }
 
-    // ✅ DATOS DE LA BOLETA ANTIGUA (SIEMPRE que exista en la tabla boletas)
+    //  DATOS DE LA BOLETA ANTIGUA (SIEMPRE que exista en la tabla boletas)
     const boletaAntigua = order.boleta_folio ? {
       id: order.boleta_id,
       folio: order.boleta_folio,
@@ -157,7 +156,7 @@ export async function GET(
       razon_social: order.boleta_razon_social || null
     } : null
 
-    // ✅ DATOS DE LA BOLETA NUEVA (SOLO si existe boleta_pdf_path)
+    //  DATOS DE LA BOLETA NUEVA (SOLO si existe boleta_pdf_path)
     const boletaNueva = order.boleta_pdf_path ? {
       folio: order.boleta_pdf_folio || 'ADMIN-00001',
       path: order.boleta_pdf_path,
@@ -224,7 +223,7 @@ export async function GET(
       transaction_date: order.transbank_transaction_date || null
     }
 
-    // ✅ CONSTRUIR RESPUESTA CON AMBAS BOLETAS
+    //  CONSTRUIR RESPUESTA CON AMBAS BOLETAS
     const responseOrder = {
       id: order.id,
       order_number: order.order_number,
@@ -250,10 +249,10 @@ export async function GET(
       customer_phone: order.phone || '',
       customer_rut: order.customer_rut || '',
       is_guest: order.is_guest === 1,
-      // ✅ Boleta antigua (ApiGateway) - SIEMPRE que exista
+      //  Boleta antigua (ApiGateway) - SIEMPRE que exista
       boleta_emitida: order.boleta_folio ? 1 : 0,
       boleta_info: boletaAntigua,
-      // ✅ Boleta nueva (subida por admin) - SOLO si existe
+      //  Boleta nueva (subida por admin) - SOLO si existe
       boleta_pdf_path: order.boleta_pdf_path || null,
       boleta_pdf_folio: order.boleta_pdf_folio || null,
       boleta_nueva: boletaNueva,

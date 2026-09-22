@@ -1,4 +1,3 @@
-// app/api/banners/delete-image/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { unlink } from 'fs/promises';
 import path from 'path';
@@ -32,17 +31,15 @@ export async function DELETE(request: NextRequest) {
     // Decodificar URL
     imagePath = decodeURIComponent(imagePath);
 
-    // Verificar si es una ruta de archivo válida (no base64)
-    // Las rutas válidas comienzan con /banners/ y no contienen data:image
     if (!imagePath.startsWith('/banners/') || imagePath.includes('data:image')) {
-      console.log('⚠️ No es una ruta de archivo válida, omitiendo eliminación:', imagePath.substring(0, 100));
+      console.log(' No es una ruta de archivo válida, omitiendo eliminación:', imagePath.substring(0, 100));
       return NextResponse.json({ success: true, message: 'No es un archivo físico' });
     }
 
     // No eliminar imágenes por defecto
     const defaultImages = ['/banners/witcher.jpg', '/banners/banner2.jpg'];
     if (defaultImages.includes(imagePath)) {
-      console.log('📌 Imagen por defecto, no se elimina:', imagePath);
+      console.log(' Imagen por defecto, no se elimina:', imagePath);
       return NextResponse.json({ success: true, message: 'Imagen por defecto no eliminada' });
     }
 
@@ -50,10 +47,10 @@ export async function DELETE(request: NextRequest) {
     
     try {
       await unlink(absolutePath);
-      console.log('✅ Imagen eliminada:', absolutePath);
+      console.log(' Imagen eliminada:', absolutePath);
     } catch (error: any) {
       if (error.code === 'ENOENT') {
-        console.log('⚠️ Archivo no existe, continuando:', absolutePath);
+        console.log(' Archivo no existe, continuando:', absolutePath);
       } else {
         throw error;
       }

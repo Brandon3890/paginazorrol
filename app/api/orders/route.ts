@@ -11,7 +11,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // INCLUIR shipping_type y shipping_details en la consulta
     const orders = await query(
       `SELECT 
         o.*,
@@ -25,10 +24,9 @@ export async function GET(request: NextRequest) {
 
     console.log(`Found ${orders.length} orders`)
 
-    // Para cada orden, obtener los items
+    // Oobtener los items
     const ordersWithItems = await Promise.all(
       orders.map(async (order: any) => {
-        // Obtener items de la orden
         const orderItems = await query(
           `SELECT * FROM order_items WHERE order_id = ?`,
           [order.id]
@@ -57,12 +55,12 @@ export async function GET(request: NextRequest) {
           })
         )
 
-        // OBTENER DIRECCIÓN DE ENVÍO - MANEJAR CASO DE BODEGA
+        // OBTENER DIRECCIÓN DE ENVÍO 
         let shippingAddress = undefined
         const isBodegaPickup = order.shipping_type === 'bodega_pickup'
         
         if (isBodegaPickup) {
-          // SI ES RETIRO EN BODEGA, USAR DIRECCIÓN DE BODEGA
+          // O SI ES RETIRO EN BODEGA USAR DIRECCIÓN DE BODEGA
           shippingAddress = {
             street: 'Arcangel 1200, San Miguel',
             commune_name: 'San Miguel',
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
             isBodega: true
           }
         } else if (order.shipping_address_id) {
-          // SI TIENE DIRECCIÓN NORMAL
+          // SI TIENE DIRECCIÓN NORMAL TRAERLA DE LA BASE DE DATOS
           const addresses = await query(
             `SELECT street, commune_name, region_name, postal_code, department 
              FROM user_addresses WHERE id = ? AND user_id = ?`,
@@ -99,7 +97,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // DETERMINAR MÉTODO DE ENVÍO MOSTRADO
+        // DETERMINAR MÉTODO DE ENVÍO 
         let shippingMethodDisplay = 'Método no especificado'
         const shippingType = order.shipping_type || ''
         

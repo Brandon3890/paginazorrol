@@ -1,5 +1,5 @@
 class OrderNumberService {
-  // Secuencial por día (se reinicia cada día)
+  // Secuencial por día 
   private dailyCounters: Map<string, number> = new Map()
 
   // Generar número de orden único y legible
@@ -49,13 +49,13 @@ class OrderNumberService {
     const dateStr = this.formatDate(now)
     const sequentialNumber = this.getDailySequential(dateStr)
     
-    // Formato más corto: ORD-YYYYMMDD-NNN
+    // Formato ORD-YYYYMMDD-NNN
     const orderNumber = `ORD-${dateStr}-${sequentialNumber.toString().padStart(4, '0')}`
     
     return orderNumber
   }
 
-  // Generar número con timestamp (único absoluto)
+  // Generar número 
   generateTimestampOrderNumber(): string {
     const now = new Date()
     const timestamp = now.getTime()
@@ -81,7 +81,7 @@ class OrderNumberService {
   // Extraer fecha del número de orden
   extractDate(orderNumber: string): Date | null {
     try {
-      // Para formato ORD-YYYYMMDD-...
+      // Para el formato ORD-YYYYMMDD
       const match = orderNumber.match(/^ORD-(\d{8})/)
       if (match) {
         const dateStr = match[1]
@@ -91,7 +91,6 @@ class OrderNumberService {
         return new Date(year, month, day)
       }
       
-      // Para formato ORD-TIMESTAMP-...
       const timestampMatch = orderNumber.match(/^ORD-(\d{13})/)
       if (timestampMatch) {
         const timestamp = parseInt(timestampMatch[1])

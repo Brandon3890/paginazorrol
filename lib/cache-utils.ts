@@ -1,5 +1,3 @@
-// lib/cache-utils.ts
-
 const CACHE_KEY = 'products_cache';
 const CACHE_TIMESTAMP_KEY = 'products_cache_timestamp';
 const CACHE_DURATION = 10 * 1000;

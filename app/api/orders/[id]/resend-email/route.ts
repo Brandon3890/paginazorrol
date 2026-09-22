@@ -6,9 +6,7 @@ import { obtenerBoletaConVerificacion } from '@/lib/boleta-helper';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Formatear fecha a YYYY-MM-DD
- */
+ // Formatear fecha a YYYY-MM-DD
 function formatearFecha(fecha: string | Date): string {
   if (!fecha) {
     return new Date().toISOString().split('T')[0];
@@ -45,10 +43,9 @@ function formatearFecha(fecha: string | Date): string {
   return new Date().toISOString().split('T')[0];
 }
 
-/**
- * Extraer dirección de envío desde la orden
- */
-function extraerShippingAddress(order: any): {
+ // Extraer dirección de envío desde la orden
+
+ function extraerShippingAddress(order: any): {
   street: string;
   commune_name: string;
   region_name: string;
@@ -122,7 +119,7 @@ async function obtenerPDFBoletaConReintentos(
   delayMs: number = 2000
 ): Promise<{ buffer: Buffer; fuente: 'admin' | 'apigateway' } | null> {
   
-  // ✅ Si se solicita explícitamente la boleta antigua, usar ApiGateway
+  //  Si se solicita explícitamente la boleta antigua, usar ApiGateway
   if (usarBoletaAntigua) {
     if (!order.boleta_folio) {
       return null;
@@ -161,7 +158,7 @@ async function obtenerPDFBoletaConReintentos(
     return null;
   }
 
-  // ✅ PRIORIDAD 1: Si hay PDF subido por admin, usarlo
+  //  PRIORIDAD 1: Si hay PDF subido por admin, usarlo
   if (order.boleta_pdf_path) {
     try {
       let filePath = order.boleta_pdf_path;
@@ -232,9 +229,7 @@ export async function POST(
     const usarBoletaAntigua = url.searchParams.get('antigua') === 'true';
     const esAutomatico = url.searchParams.get('automatico') === 'true';
 
-    // ============================================================
-    // 1. OBTENER DATOS DE LA ORDEN
-    // ============================================================
+    // OBTENER DATOS DE LA ORDEN
     const orderData = await query(
       `SELECT 
         o.*,
@@ -275,9 +270,7 @@ export async function POST(
       );
     }
 
-    // ============================================================
-    // 2. VERIFICAR QUE EXISTA BOLETA O PDF
-    // ============================================================
+    // VERIFICAR QUE EXISTA BOLETA O PDF
     const tienePDFAdmin = !!order.boleta_pdf_path;
     const tieneFolio = !!order.boleta_folio;
 
@@ -296,9 +289,7 @@ export async function POST(
       );
     }
 
-    // ============================================================
-    // 3. OBTENER ITEMS DE LA ORDEN
-    // ============================================================
+    // OBTENER ITEMS DE LA ORDEN
     const orderItems = await query(
       `SELECT 
         oi.product_name,
@@ -317,9 +308,7 @@ export async function POST(
       );
     }
 
-    // ============================================================
-    // 4. PREPARAR DATOS PARA EL EMAIL
-    // ============================================================
+    // PREPARAR DATOS PARA EL EMAIL
     const subtotalConIVA = parseFloat(order.subtotal) || 0;
     const subtotalNeto = Math.round(subtotalConIVA / 1.19);
     const ivaIncluido = subtotalConIVA - subtotalNeto;
@@ -368,10 +357,7 @@ export async function POST(
       }
     };
 
-    // ============================================================
-    // 5. OBTENER EL PDF CON REINTENTOS
-    // ============================================================
-    // Si es automático, usar más intentos y esperar más tiempo
+    // OBTENER EL PDF CON REINTENTOS
     const maxIntentos = esAutomatico ? 6 : 3;
     const delayMs = esAutomatico ? 3000 : 2000;
     
@@ -406,9 +392,7 @@ export async function POST(
 
     console.log(` PDF obtenido desde: ${fuente === 'admin' ? ' Subido por admin' : ' Api'}`);
 
-    // ============================================================
-    // 6. ENVIAR EMAIL CON EL PDF
-    // ============================================================
+    // ENVIAR EMAIL CON EL PDF
     const emailSent = await sendBoletaEmail(emailData, pdfBuffer, folioParaEmail);
 
     if (emailSent) {

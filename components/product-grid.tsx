@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { ProductCard } from "@/components/product-card"
 import { ProductFilters } from "@/components/product-filters"
-import type { SortOption } from "@/components/product-filters" // 👈 IMPORTAR DESDE product-filters
+import type { SortOption } from "@/components/product-filters" 
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { SlidersHorizontal, X, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
@@ -54,8 +54,6 @@ interface ProductGridProps {
   onSale?: boolean
 }
 
-// 👈 ELIMINAR ESTA DEFINICIÓN LOCAL
-// type SortOption = 'default' | 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
 
 const PRODUCTS_PER_PAGE = 15
 
@@ -91,7 +89,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortOption, setSortOption] = useState<SortOption>('default') // 👈 AHORA USA EL TIPO IMPORTADO
+  const [sortOption, setSortOption] = useState<SortOption>('default') 
   const { products, fetchProducts, globalSearchQuery } = useProductStore()
   const { toast } = useToast()
 
@@ -200,7 +198,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
     durationRange: [0, maxDuration],
     inStock: false,
     tags: [] as string[],
-    sortBy: 'default' as SortOption, // 👈 AHORA USA EL TIPO IMPORTADO
+    sortBy: 'default' as SortOption, 
   })
 
   useEffect(() => {
@@ -223,12 +221,12 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       durationRange: [0, maxDuration],
       inStock: false,
       tags: [],
-      sortBy: 'default' as SortOption, // 👈 AHORA USA EL TIPO IMPORTADO
+      sortBy: 'default' as SortOption, 
     }
     setFilters(clearedFilters)
   }
 
-  // 👈 FUNCIÓN DE ORDENAMIENTO
+  //  FUNCIÓN DE ORDENAMIENTO
   const sortProducts = (products: CompatibleProduct[], sort: SortOption): CompatibleProduct[] => {
     switch (sort) {
       case 'price-asc':
@@ -296,7 +294,7 @@ export function ProductGrid({ category, subcategory, searchQuery, onSale }: Prod
       return true
     })
 
-    // 👈 APLICAR ORDENAMIENTO
+    // APLICAR ORDENAMIENTO
     let sorted = sortProducts(filtered, filters.sortBy)
 
     // Si es el orden por defecto, aplicar el priority sorting

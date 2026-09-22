@@ -58,14 +58,11 @@ export async function proxy(request: NextRequest) {
     response.headers.set(key, value)
   })
 
-  // 🔥 EXCLUIR order-success de la CSP estricta
   const isOrderSuccess = pathname === '/order-success' || pathname.startsWith('/order-success?')
   
-  // Solo aplicar CSP a páginas HTML, no a archivos estáticos
   if (!pathname.startsWith('/api/') && 
       !pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff|woff2|ttf)$/)) {
     
-    // Para order-success, usar CSP más permisiva
     if (isOrderSuccess) {
       response.headers.set(
         'Content-Security-Policy',
@@ -79,7 +76,6 @@ export async function proxy(request: NextRequest) {
         "frame-ancestors 'none';"
       )
     } else {
-      // CSP normal para otras páginas
       const cspHeaders = getCSPHeaders()
       Object.entries(cspHeaders).forEach(([key, value]) => {
         response.headers.set(key, value)

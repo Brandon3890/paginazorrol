@@ -20,7 +20,7 @@ export default function VerifyCodePage() {
   const [code, setCode] = useState(["", "", "", "", "", ""])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [timeLeft, setTimeLeft] = useState(30 * 60) // 30 minutos en segundos
+  const [timeLeft, setTimeLeft] = useState(30 * 60) 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const email = searchParams.get('email')
@@ -64,7 +64,7 @@ export default function VerifyCodePage() {
     const numericValue = value.replace(/[^0-9]/g, '')
     
     if (numericValue.length > 1) {
-      value = numericValue.slice(0, 1) // Tomar solo el primer carácter
+      value = numericValue.slice(0, 1) 
     } else {
       value = numericValue
     }

@@ -1,4 +1,3 @@
-// app/api/chilexpress/streets/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { searchStreets } from "@/lib/chilexpress-geo";
 

@@ -1,4 +1,3 @@
-// app/api/apigateway/emitir-boleta/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { emitirBoletaApiGateway } from '@/lib/apigateway-service';
@@ -100,11 +99,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ============================================================
     //  OBTENER DATOS DEL CLIENTE
-    // ============================================================
-    
-    //  RUT: Usar el RUT del cliente si existe y es válido, sino usar 66666666-6
     let rutCliente = RUT_CONSUMIDOR_FINAL;
     if (cliente.rut && cliente.rut !== RUT_CONSUMIDOR_FINAL && validarRUT(cliente.rut)) {
       rutCliente = limpiarRUT(cliente.rut);
@@ -122,9 +117,7 @@ export async function POST(request: NextRequest) {
     const telefono = cliente.telefono || undefined;
     const email = cliente.email || undefined;
 
-    // ============================================================
     //  CONSTRUIR RECEPTOR CON TODOS LOS DATOS
-    // ============================================================
     const receptor = {
       rut: rutCliente,
       nombre: nombreCliente,
@@ -135,9 +128,7 @@ export async function POST(request: NextRequest) {
       email: email
     };
 
-    // ============================================================
     //  EMITIR CON APIGATEWAY
-    // ============================================================
     const resultado = await emitirBoletaApiGateway(
       productos,
       receptor,

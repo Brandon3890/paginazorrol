@@ -5,7 +5,7 @@ import { getUserIdFromRequest } from '@/lib/auth-utils';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// GET - Obtener todos los banners
+// Obtener todos los banners
 export async function GET(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);

@@ -169,7 +169,7 @@ export default function ProfilePage() {
 
   const handleNotificationToggle = async () => {
     if (!token) {
-      console.error('No hay token disponible')
+      console.error(' No hay token disponible')
       toast({
         title: "Error",
         description: "No se encontró el token de autenticación",
@@ -248,6 +248,59 @@ export default function ProfilePage() {
     }
   }
 
+  // Formatear el teléfono
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    
+    // 1. Permitir solo números, espacios, el signo + y guiones
+    let cleaned = input.replace(/[^\d+\s-]/g, '');
+    
+    // 2. Evitar múltiples signos + al inicio
+    const plusCount = (cleaned.match(/\+/g) || []).length;
+    if (plusCount > 1) {
+      cleaned = cleaned.replace(/\+/g, ''); 
+      cleaned = '+' + cleaned; // Poner solo uno al inicio
+    } else if (plusCount === 1 && !cleaned.startsWith('+')) {
+       // Si hay un + pero no está al inicio, lo movemos al inicio
+       cleaned = '+' + cleaned.replace(/\+/g, '');
+    }
+
+    // 3. Formatear mientras escribe 
+    let formatted = cleaned;
+    
+    // Si empieza con +56 9 
+    if (cleaned.startsWith('+56') && cleaned.length > 3) {
+      const numbers = cleaned.replace(/\D/g, ''); 
+      if (numbers.length >= 9) { 
+         formatted = `+56 9 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+      } else if (numbers.length > 3) {
+         formatted = `+56 9 ${numbers.slice(3)}`;
+      }
+    } 
+    // Si empieza con +56 2 
+    else if (cleaned.startsWith('+56') && cleaned.length > 3) {
+      const numbers = cleaned.replace(/\D/g, '');
+      if (numbers.length >= 9) { 
+         formatted = `+56 2 ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+      } else if (numbers.length > 3) {
+         formatted = `+56 2 ${numbers.slice(3)}`;
+      }
+    }
+
+    setFormData({
+      ...formData,
+      phone: formatted,
+    })
+
+    if (formErrors.phone) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors.phone
+        return newErrors
+      })
+    }
+  }
+
   const handleAddressInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     const newForm = {
@@ -303,7 +356,7 @@ export default function ProfilePage() {
     setIsLoading(true)
 
     try {
-      await updateUser(formData)
+      await updateUser(formData)  
       toast({
         title: "Perfil actualizado",
         description: "Tu información ha sido guardada correctamente.",
@@ -312,7 +365,7 @@ export default function ProfilePage() {
     } catch (err) {
       toast({
         title: "Error",
-        description: "No se pudo actualizar el perfil. Inténtalo de nuevo.",
+        description: err instanceof Error ? err.message : "No se pudo actualizar el perfil.",
         variant: "destructive",
         duration: 3000,
       })
@@ -711,9 +764,11 @@ export default function ProfilePage() {
                         id="phone"
                         name="phone"
                         type="tel"
+                        inputMode="tel" // 👈 Teclado numérico en móviles
                         value={formData.phone}
-                        onChange={handleInputChange}
+                        onChange={handlePhoneChange} // 👈 Usamos la nueva función
                         placeholder="+56 9 1234 5678"
+                        maxLength={18} // 👈 Límite de caracteres
                         className="h-8 sm:h-10 text-sm transition-all focus:scale-[1.02]"
                       />
                     </motion.div>
@@ -1152,7 +1207,7 @@ export default function ProfilePage() {
                                 {address.communeName}, {address.regionName}
                               </p>
                               <p className="text-xs sm:text-sm text-muted-foreground">
-                                Codigo postal: {address.postalCode}
+                                CP: {address.postalCode}
                               </p>
                               {address.department && (
                                 <p className="text-xs sm:text-sm text-muted-foreground">

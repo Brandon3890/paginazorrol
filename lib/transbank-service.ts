@@ -57,7 +57,6 @@ class TransbankService {
 
   async createTransaction(transactionData: TransbankTransaction): Promise<TransbankResponse> {
     try {      
-      // Validaciones adicionales
       if (transactionData.amount <= 0) {
         throw new Error('El monto debe ser mayor a 0')
       }
@@ -75,7 +74,7 @@ class TransbankService {
         transactionData,
         {
           headers: this.getHeaders(),
-          timeout: 30000 // 30 segundos timeout
+          timeout: 30000 // 30 segundos 
         }
       )
 
@@ -105,15 +104,6 @@ class TransbankService {
         }
       )
       
-      /*console.log('Transacción confirmada:', {
-        status: response.data.status,
-        response_code: response.data.response_code,
-        authorization_code: response.data.authorization_code,
-        payment_type_code: response.data.payment_type_code,
-        installments_number: response.data.installments_number,
-        amount: `$${response.data.amount?.toLocaleString('es-CL')}`
-      })*/
-
       return response.data
     } catch (error: any) {
       console.error('Error confirmando transacción Webpay:', {
@@ -142,7 +132,6 @@ class TransbankService {
     }
   }
 
-  // Generar buy_order único para Transbank (DIFERENTE del order_number)
   generateBuyOrder(): string {
     const timestamp = Date.now().toString()
     const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0')
@@ -156,7 +145,7 @@ class TransbankService {
     return sessionId
   }
 
-  // Generar order_number único para nuestra base de datos (DIFERENTE del buy_order)
+  // Generar order_number único 
   generateOrderNumber(): string {
     const timestamp = Date.now().toString()
     const random = Math.random().toString(36).substr(2, 9)
@@ -170,13 +159,7 @@ class TransbankService {
       commitResponse.status === 'AUTHORIZED' && 
       commitResponse.response_code === 0
     )
-    
-    /*console.log(Validación de transacción:', {
-      status: commitResponse.status,
-      response_code: commitResponse.response_code,
-      approved: isApproved
-    })*/
-    
+        
     return isApproved
   }
 

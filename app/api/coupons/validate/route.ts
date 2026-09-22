@@ -4,7 +4,7 @@ import { query } from '@/lib/db';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { code, items = [] } = body; // Ahora recibe items para validación completa
+    const { code, items = [] } = body; 
 
     if (!code) {
       return NextResponse.json(

@@ -191,7 +191,7 @@ useEffect(() => {
         }
       }
       
-      console.log('✅ Array procesado:', result);
+      console.log(' Array procesado:', result);
       return result;
     };
     
@@ -546,7 +546,7 @@ useEffect(() => {
   // Debug: Verificar cuando se cargan los datos
   useEffect(() => {
     if (currentCoupon && categories.length > 0 && products.length > 0) {
-      console.log('✅ Datos cargados completamente:');
+      console.log(' Datos cargados completamente:');
       console.log('📦 Cupón actual:', currentCoupon);
       console.log('📂 Categorías:', categories.length);
       console.log('📦 Productos:', products.length);

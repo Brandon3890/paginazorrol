@@ -79,7 +79,6 @@ export default function OrderSuccessPage() {
   const [processMessage, setProcessMessage] = useState('Cargando información...')
   const [processProgress, setProcessProgress] = useState(0)
 
-  // Ej: 12345678-9 Ref para evitar ejecuciones múltiples
   const processingRef = useRef(false)
   const emailSentRef = useRef(false)
 
@@ -93,9 +92,7 @@ export default function OrderSuccessPage() {
     }
   }, [status, items.length, clearCart, cartClearedLocal])
 
-  // ============================================================
-  // PROCESO COMPLETO: Emitir boleta → Enviar email (SOLO UNA VEZ)
-  // ============================================================
+  //  Emitir boleta y Enviar email 
   const procesarBoletaYEmail = useCallback(async (id: string) => {
     // Ej: 12345678-9 VERIFICAR SI YA SE COMPLETÓ EL PROCESO
     if (procesoCompletado || boletaInfo || emailSentRef.current) {
@@ -108,7 +105,7 @@ export default function OrderSuccessPage() {
     setProcessProgress(20)
 
     try {
-      // PASO 1: Emitir boleta
+      //  Emitir boleta
       const boletaResponse = await fetch('/api/orders/emitir-boleta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -135,12 +132,12 @@ export default function OrderSuccessPage() {
       // Esperar 3 segundos para que el SII procese
       await new Promise(resolve => setTimeout(resolve, 3000))
 
-      // PASO 2: Enviar email con la boleta (SOLO UNA VEZ)
+      // Enviar email con la boleta 
       setProcessState('sending_email')
       setProcessMessage('Enviando correo electrónico con la boleta...')
       setProcessProgress(80)
 
-      // Ej: 12345678-9 Marcar que el email se está enviando
+      // Marcar que el email se está enviando
       emailSentRef.current = true
 
       const emailResponse = await fetch(`/api/orders/${id}/resend-email?automatico=true`, {
@@ -182,7 +179,7 @@ export default function OrderSuccessPage() {
         setBoletaError('El email no pudo enviarse automáticamente. Usa el botón "Reenviar Email" para intentarlo.')
         
         toast({
-          title: "⚠️ Boleta generada",
+          title: " Boleta generada",
           description: "La boleta se generó pero el email falló. Puedes reenviarlo manualmente.",
           variant: "destructive",
           duration: 5000,
@@ -199,11 +196,8 @@ export default function OrderSuccessPage() {
     }
   }, [procesoCompletado, boletaInfo, toast])
 
-  // ============================================================
   // CARGAR ORDEN Y PROCESAR BOLETA
-  // ============================================================
   const fetchOrderAndProcess = useCallback(async (id: string) => {
-    // Ej: 12345678-9 Evitar ejecución si ya se completó
     if (procesoCompletado || boletaInfo) {
       console.log('Proceso ya completado, no se ejecutará nuevamente')
       return
@@ -234,7 +228,6 @@ export default function OrderSuccessPage() {
             data: orderData.boleta_info
           })
           setBoletaEstado(orderData.boleta_info.estado_sii || 'emitida')
-          // Ej: 12345678-9 Marcar email como enviado (ya está en la orden)
           emailSentRef.current = true
           setLoading(false)
           return
@@ -249,7 +242,6 @@ export default function OrderSuccessPage() {
           // Iniciar el proceso de boleta y email
           await procesarBoletaYEmail(id)
         } else {
-          // Si no se requiere procesamiento, mostrar completado
           setProcessState('complete')
           setProcessMessage('¡Tu pedido está listo!')
           setProcessProgress(100)
@@ -272,9 +264,7 @@ export default function OrderSuccessPage() {
     }
   }, [status, isProcessing, procesarBoletaYEmail, procesoCompletado, boletaInfo])
 
-  // ============================================================
-  // Cargar orden al montar (SOLO UNA VEZ)
-  // ============================================================
+  // Cargar orden al montar 
   useEffect(() => {
     if (!status && !orderId) {
       router.push('/')
@@ -287,9 +277,7 @@ export default function OrderSuccessPage() {
     }
   }, [orderId, status, router, fetchOrderAndProcess])
 
-  // ============================================================
-  // REENVIAR EMAIL MANUAL (SOLO CUANDO EL USUARIO PRESIONA EL BOTÓN)
-  // ============================================================
+  // REENVIAR EMAIL MANUAL 
   const handleResendEmail = async () => {
     if (!order) {
       toast({
@@ -300,7 +288,7 @@ export default function OrderSuccessPage() {
       return
     }
     
-    // Ej: 12345678-9 Verificar si ya se envió el email y la boleta existe
+    // Verificar si ya se envió el email y la boleta existe
     if (!boletaInfo?.folio && !order.boleta_info?.folio) {
       toast({
         title: "Error",
@@ -354,9 +342,7 @@ export default function OrderSuccessPage() {
     }
   }
 
-  // ============================================================
   // DESCARGAR PDF
-  // ============================================================
   const descargarPDF = async () => {
     const folio = boletaInfo?.folio || order?.boleta_info?.folio
     if (!folio) {
@@ -408,9 +394,7 @@ export default function OrderSuccessPage() {
     }
   }
 
-  // ============================================================
   // RENDERIZADO DE ESTADO DEL PROCESO
-  // ============================================================
   const renderProcessStatus = () => {
     if (processState === 'loading') {
       return (
@@ -482,9 +466,7 @@ export default function OrderSuccessPage() {
     return null
   }
 
-  // ============================================================
   // RENDER PRINCIPAL
-  // ============================================================
   const getStatusConfig = () => {
     switch (status) {
       case 'success':

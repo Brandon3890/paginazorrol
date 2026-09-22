@@ -418,7 +418,7 @@ export default function OrderDetailPage() {
       if (response.ok && data.success) {
         if (data.already_exists) {
           toast({
-            title: "ℹ️ Boleta ya emitida",
+            title: " Boleta ya emitida",
             description: `Boleta N° ${data.folio} ya había sido generada`,
             duration: 5000,
           });
@@ -432,7 +432,7 @@ export default function OrderDetailPage() {
         fetchOrder();
       } else if (response.status === 409) {
         toast({
-          title: "⏳ Procesando",
+          title: " Procesando",
           description: "Otro usuario está procesando esta orden. Intenta nuevamente en unos segundos.",
           variant: "default",
           duration: 5000,
@@ -444,7 +444,7 @@ export default function OrderDetailPage() {
           nextAttemptAt: data.nextAttemptAt
         });
         toast({
-          title: "⏳ Espera antes de reintentar",
+          title: " Espera antes de reintentar",
           description: data.error || `Debes esperar ${data.waitingMinutes || 5} minutos`,
           variant: "default",
           duration: 5000,

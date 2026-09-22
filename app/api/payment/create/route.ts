@@ -97,9 +97,7 @@ export async function POST(request: NextRequest) {
 
     const order = orders[0]
 
-    // =====================================================
-    // IMPORTANTE: Usar el RUT que viene del checkout
-    // =====================================================
+    // Usar el RUT que viene del checkout
     const rutToUse = customerRut || userRut || null
     
 

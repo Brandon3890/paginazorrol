@@ -1,4 +1,3 @@
-// app/api/apigateway/consultar/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { consultarEstadoBoleta, obtenerFechaEmisionSII } from '@/lib/apigateway-service';

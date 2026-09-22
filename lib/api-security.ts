@@ -1,21 +1,19 @@
-// lib/api-security.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 
-// Token interno para peticiones SSR (solo conocido por el servidor)
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || '';
 
-// Lista de APIs que son públicas (no requieren token interno)
+// Lista de APIS que son públicas 
 const PUBLIC_APIS = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
   '/api/auth/verify',
-  '/api/webhook/',  // Si tienes webhooks
-  '/api/public/',   // APIs explícitamente públicas
+  '/api/webhook/',  
+  '/api/public/',   
 ];
 
-// Lista de APIs que requieren autenticación de usuario (además del token interno)
+// Lista de APIs que requieren autenticación 
 const AUTH_REQUIRED_APIS = [
   '/api/checkout',
   '/api/orders',
@@ -24,24 +22,22 @@ const AUTH_REQUIRED_APIS = [
   '/api/admin',
 ];
 
-/**
- * Verifica que la petición venga de una fuente confiable (mismo servidor o con token)
- */
-export async function verifyInternalRequest(request: NextRequest): Promise<boolean> {
-  // En desarrollo, permitir todo para facilitar debugging
+ // La petición viene del mismo servidor o con token
+
+ export async function verifyInternalRequest(request: NextRequest): Promise<boolean> {
   if (process.env.NODE_ENV === 'development') {
     return true;
   }
 
   const headersList = await headers();
   
-  // 1. Verificar token interno (para peticiones SSR)
+  // Verificar token 
   const internalToken = headersList.get('x-internal-token') || request.headers.get('x-internal-token');
   if (internalToken === INTERNAL_API_TOKEN) {
     return true;
   }
   
-  // 2. Verificar que viene del mismo servidor (localhost/127.0.0.1)
+  // Verificar que viene del mismo servidor
   const host = headersList.get('host') || '';
   const referer = headersList.get('referer') || '';
   
@@ -49,7 +45,7 @@ export async function verifyInternalRequest(request: NextRequest): Promise<boole
     return true;
   }
   
-  // 3. Verificar que es una petición interna de Next.js
+  // Verificar que es una petición interna de Next.js
   const userAgent = headersList.get('user-agent') || '';
   const isNextJsInternal = userAgent.includes('Next.js') || 
                            userAgent.includes('Node.js') ||
@@ -59,7 +55,7 @@ export async function verifyInternalRequest(request: NextRequest): Promise<boole
     return true;
   }
   
-  // 4. Verificar que la IP es local (para servidores en producción)
+  // Verificar que la IP es local 
   const forwardedFor = request.headers.get('x-forwarded-for') || '';
   const realIp = request.headers.get('x-real-ip') || '';
   
@@ -70,10 +66,9 @@ export async function verifyInternalRequest(request: NextRequest): Promise<boole
   return false;
 }
 
-/**
- * Verifica autenticación de usuario para APIs que lo requieren
- */
-export async function verifyUserAuth(request: NextRequest): Promise<{ userId: number; role: string } | null> {
+ // Verifica autenticación de usuario para APIs que lo requieren
+
+ export async function verifyUserAuth(request: NextRequest): Promise<{ userId: number; role: string } | null> {
   try {
     // Obtener token de cookies o header
     const cookieHeader = request.headers.get('cookie') || '';
@@ -110,24 +105,21 @@ export async function verifyUserAuth(request: NextRequest): Promise<{ userId: nu
   }
 }
 
-/**
- * Verifica si una API es pública (no requiere token interno)
- */
+ // Verifica si una API es pública 
+
 export function isPublicApi(pathname: string): boolean {
   return PUBLIC_APIS.some(api => pathname.startsWith(api));
 }
 
-/**
- * Verifica si una API requiere autenticación de usuario
- */
-export function requiresUserAuth(pathname: string): boolean {
+ // Verifica si una API requiere autenticación de usuario
+
+ export function requiresUserAuth(pathname: string): boolean {
   return AUTH_REQUIRED_APIS.some(api => pathname.startsWith(api));
 }
 
-/**
- * Middleware unificado de seguridad para APIs
- */
-export async function protectApiRoute(request: NextRequest): Promise<NextResponse | null> {
+ // Proxy unificado de seguridad para APIs
+
+ export async function protectApiRoute(request: NextRequest): Promise<NextResponse | null> {
   const { pathname } = request.nextUrl;
   
   // Solo aplicar a APIs
@@ -135,21 +127,21 @@ export async function protectApiRoute(request: NextRequest): Promise<NextRespons
     return null;
   }
   
-  // 1. APIs públicas (no requieren nada)
+  // 1. APIs públicas 
   if (isPublicApi(pathname)) {
     return null;
   }
   
-  // 2. Verificar token interno (protección contra acceso directo)
+  //  Verificar token interno 
   const isInternal = await verifyInternalRequest(request);
   if (!isInternal) {
     return NextResponse.json(
-      { error: 'Acceso no autorizado', message: 'Esta API solo puede ser consumida internamente' },
+      { error: 'Acceso no autorizado', message: 'Solo puede ser consumido internamente' },
       { status: 403 }
     );
   }
   
-  // 3. Para APIs que requieren autenticación de usuario
+  // Para APIs que requieren autenticación de usuario
   if (requiresUserAuth(pathname)) {
     const user = await verifyUserAuth(request);
     if (!user) {

@@ -38,11 +38,11 @@ export default function ContactPage() {
     return emailRegex.test(email)
   }
 
-  // Función para validar teléfono chileno (+569XXXXXXXX)
+  // Función para validar teléfono 
   const validatePhone = (phone: string): boolean => {
-    // Permite formato +569XXXXXXXX (11 dígitos en total)
+    // Permite formato +569....
     const phoneRegex = /^\+569\d{8}$/
-    // También permite 9XXXXXXXX (9 dígitos)
+    // O 9XXXXXXXX 
     const phoneRegexAlt = /^9\d{8}$/
     return phoneRegex.test(phone) || phoneRegexAlt.test(phone) || phone === ""
   }
@@ -121,10 +121,9 @@ export default function ContactPage() {
     
     setIsSubmitting(true)
     
-    // Limpiar el teléfono para enviar (quitar +56 si es necesario)
     let cleanPhone = formData.phone
     if (cleanPhone.startsWith('+569') && cleanPhone.length === 12) {
-      cleanPhone = cleanPhone.substring(3) // Quitar +56
+      cleanPhone = cleanPhone.substring(3) 
     }
     
     const dataToSend = {

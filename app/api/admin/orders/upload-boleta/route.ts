@@ -1,4 +1,3 @@
-// app/api/admin/orders/upload-boleta/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserIdFromRequest } from '@/lib/auth-utils'
@@ -100,8 +99,6 @@ export async function POST(request: NextRequest) {
       [orderId, folioAdmin]
     )
 
-    //  SOLO actualizar la orden con la ruta del PDF y el folio admin
-    //  NO modificar la tabla boletas
     await query(
       `UPDATE orders SET 
         boleta_pdf_path = ?,

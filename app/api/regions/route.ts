@@ -3,7 +3,6 @@ import regionsData from './re.json'
 
 export async function GET() {
   try {
-    // El JSON tiene la estructura { regions: [...] }
     return NextResponse.json(regionsData)
   } catch (error) {
     return NextResponse.json(

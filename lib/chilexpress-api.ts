@@ -1,4 +1,3 @@
-// lib/chilexpress-api.ts
 const RATING_API_URL = process.env.CHILEXPRESS_RATING_URL;
 const RATING_API_KEY = process.env.CHILEXPRESS_RATING_KEY;
 const API_VERSION = process.env.CHILEXPRESS_API_VERSION || "1.0";

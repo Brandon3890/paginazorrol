@@ -1,4 +1,3 @@
-// app/api/chilexpress/regions/route.ts
 import { NextResponse } from "next/server";
 import { getRegions } from "@/lib/chilexpress-geo";
 

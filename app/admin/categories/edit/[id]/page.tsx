@@ -358,13 +358,13 @@ export default function EditCategoryPage() {
 
       if (subcategoryToEdit) {
         await updateSubcategory(parseInt(subcategoryToEdit), subcategoryData)
-        console.log('✅ Subcategoría actualizada')
+        console.log(' Subcategoría actualizada')
       } else {
         await addSubcategory({
           ...subcategoryData,
           category_id: categoryId
         })
-        console.log('✅ Subcategoría creada')
+        console.log(' Subcategoría creada')
       }
 
       setSubcategoryForm({ name: "", is_active: true })

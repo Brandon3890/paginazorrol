@@ -1,4 +1,3 @@
-// app/api/chilexpress/nearby-offices/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { georeferenceAddress, getNearbyOffices } from "@/lib/chilexpress-geo";
 

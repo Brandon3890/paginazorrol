@@ -20,7 +20,6 @@ interface Coupon {
   updatedAt: string;
 }
 
-// CORRECCIÓN: Agregar useCoupon a la interfaz
 interface CouponStore {
   coupons: Coupon[];
   loading: boolean;
@@ -31,7 +30,7 @@ interface CouponStore {
   deleteCoupon: (id: number) => Promise<void>;
   validateCoupon: (code: string, productId?: number, categoryId?: number, subcategoryId?: number) => { valid: boolean; coupon?: Coupon; message?: string } | null;
   getHighestDiscountCoupon: () => Coupon | null;
-  useCoupon: (couponId: number) => Promise<void>; // AGREGAR ESTA LÍNEA
+  useCoupon: (couponId: number) => Promise<void>; 
   clearError: () => void;
 }
 
@@ -91,7 +90,6 @@ export const useCouponStore = create<CouponStore>()(
 
         const result = await response.json();
         
-        // Actualizar el estado local incrementando currentUses
         set(state => ({
           coupons: state.coupons.map(coupon => 
             coupon.id === couponId 
@@ -234,8 +232,6 @@ export const useCouponStore = create<CouponStore>()(
             break;
             
           case 'multiple':
-            // Para múltiples, en checkout asumimos que es válido
-            // La validación específica se hará con los productos del carrito
             isValid = true;
             break;
             

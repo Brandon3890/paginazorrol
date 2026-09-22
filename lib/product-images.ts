@@ -15,13 +15,13 @@ export const productImages: { [key: string]: string } = {
 };
 
 export const getProductImage = (productName: string, imagePath?: string): string => {
-  // Si tenemos un mapeo directo por nombre
+  // Con mapeo directo por nombre
   const lowerName = productName.toLowerCase();
   if (productImages[lowerName]) {
     return productImages[lowerName];
   }
   
-  // Si tenemos la ruta de imagen, intentar extraer el nombre del archivo
+  // Ruta de imagen, y extraer el nombre del archivo
   if (imagePath) {
     const fileName = imagePath.split('/').pop() || '';
     if (fileName && productImages[fileName]) {

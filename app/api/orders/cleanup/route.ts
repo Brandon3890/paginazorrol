@@ -1,4 +1,3 @@
-// app/api/orders/cleanup/route.ts - VERSIÓN CORREGIDA
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 

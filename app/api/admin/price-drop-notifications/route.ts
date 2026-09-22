@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
 
-// POST - Registrar notificación de oferta
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);

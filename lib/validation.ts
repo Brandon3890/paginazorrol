@@ -28,19 +28,17 @@ export const productSchema = z.object({
   category_id: z.number().int().positive('Categoría inválida'),
 })
 
-// Sanitización básica
 export function sanitizeString(input: string): string {
   return input
-    .replace(/[<>]/g, '') // Remover < y >
+    .replace(/[<>]/g, '') 
     .trim()
-    .substring(0, 1000) // Limitar longitud
+    .substring(0, 1000) 
 }
 
 export function sanitizeEmail(email: string): string {
   return email.toLowerCase().trim()
 }
 
-// Validación de archivos
 export function validateFile(file: File): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
   const maxSize = 5 * 1024 * 1024 // 5MB

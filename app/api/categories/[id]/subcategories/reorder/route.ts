@@ -3,11 +3,10 @@ import pool, { queryRows } from '@/lib/db'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // ← Nota: params es una Promise
+  { params }: { params: Promise<{ id: string }> } 
 ) {
   
   try {
-    // CORRECCIÓN: Esperar a que params se resuelva
     const { id } = await params
     const categoryId = parseInt(id)
     

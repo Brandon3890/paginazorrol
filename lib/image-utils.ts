@@ -9,7 +9,7 @@ export async function processImage(
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
-  // Procesar imagen con sharp
+  // Procesar imagen
   const processedImage = await sharp(buffer)
     .resize(width, height, {
       fit: 'inside',
@@ -18,7 +18,7 @@ export async function processImage(
     .jpeg({ quality: 80 })
     .toBuffer();
 
-  // Guardar en sistema de archivos
+  // Guardar en sistema 
   const uploadDir = `${process.cwd()}/public/uploads/products`;
   const uniqueFilename = `${filename}-${Date.now()}.jpg`;
   const filepath = `${uploadDir}/${uniqueFilename}`;

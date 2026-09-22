@@ -56,7 +56,7 @@ const getTextSizeClasses = (size: string) => {
         subtitle: "text-lg md:text-xl",
         text: "text-base md:text-lg"
       }
-    default: // medium
+    default: 
       return {
         title: "text-2xl md:text-3xl",
         subtitle: "text-base md:text-lg",

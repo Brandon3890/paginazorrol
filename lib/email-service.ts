@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const createTransporter = () => {
-  // Si no hay configuración SMTP, usar un transporter de desarrollo
+  // Por si no hay configuración SMTP
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
     return nodemailer.createTransport({
       streamTransport: true,
@@ -12,7 +12,7 @@ const createTransporter = () => {
     });
   }
 
-  // Configuración para producción
+  // Para producción
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587'),
@@ -26,7 +26,6 @@ const createTransporter = () => {
 
 const transporter = createTransporter();
 
-// FUNCIÓN: Enviar boleta electrónica por correo con PDF adjunto
 export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: string) {
   const {
     orderNumber,
@@ -81,10 +80,8 @@ export async function sendBoletaEmail(orderData: any, pdfBuffer: Buffer, folio: 
     }).format(price);
   };
 
-  //  Verificar que shippingAddress existe y tiene datos
-  console.log(' shippingAddress en email:', shippingAddress);
+  console.log(' Direccion en email:', shippingAddress);
 
-  //  Construir dirección de envío correctamente
   const direccionCompleta = shippingAddress?.street 
     ? `${shippingAddress.street}${shippingAddress.department ? `, Depto: ${shippingAddress.department}` : ''}`
     : 'No especificada';
@@ -414,7 +411,7 @@ Contáctanos en ${process.env.APIGATEWAY_CORREO || 'jinfranko@zorroludico.cl'}
   }
 }
 
-// Función para recuperación de contraseña
+// Recuperación de contraseña
 export async function sendPasswordResetEmail(email: string, verificationCode: string) {
   const encodedEmail = encodeURIComponent(email);
   const verifyUrl = `${process.env.NEXTAUTH_URL}/verify-code?email=${encodedEmail}`;
@@ -608,7 +605,6 @@ Ingresar Código
   }
 }
 
-// Exportar el transporter por si se necesita usar directamente
 export { transporter };
 
 
@@ -626,7 +622,7 @@ export async function sendContactEmail(formData: {
     return false;
   }
 
-  // Correo destino
+  // Correo de jin
   const destEmail = "jinfranko@zorroludico.cl";
 
   const formatDate = () => {
@@ -1593,7 +1589,6 @@ export async function sendProductOnSaleEmail(
   }
 }
 
-// Función auxiliar para escapar HTML
 function escapeHtml(text: string): string {
   if (!text) return '';
   return text
